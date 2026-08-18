@@ -1,0 +1,65 @@
+name: soc-agent-poc
+
+services:
+  # Kusto Emulator — the query engine behind Mock Sentinel.
+  #
+  # INTERNAL dependency. It is published on the host only so the bootstrap
+  # loader and Mock Sentinel can reach it; no investigator or agent code may
+  # connect to it directly (PRD-1 §7).
+  #
+  # Pinned by digest: the upstream repository publishes ~25k rolling build tags
+  # and `latest` moves daily, which cannot satisfy ADR 001's determinism
+  # requirement. Treat a digest change as a dependency upgrade.
+  kusto:
+    image: mcr.microsoft.com/azuredataexplorer/kustainer-linux@sha256:82a748bbb2301e59160ef3b1b20cf4638e756341c350ac1d96f1149b1562408e
+    # The image is amd64-only. On Apple Silicon this needs a host providing the
+    # Apple Virtualization framework + Rosetta (Colima --vz-rosetta). QEMU does not work.
+    platform: linux/amd64
+    container_name: soc-kusto
+    environment:
+      ACCEPT_EULA: "Y"
+      # Rosetta cannot service the SIGSEGV traffic .NET's JIT generates when it
+      # flips page permissions, and kills the process with
+      # "rosetta error: rt_tgsigqueueinfo failed in pend_signal: 11" (exit 133).
+      # Measured over ~10 min of continuous querying: 2 crashes without these,
+      # 0 with. Harmless on amd64 hosts, so they are set unconditionally.
+      DOTNET_EnableWriteXorExecute: "0"
+      DOTNET_TieredCompilation: "0"
+    ports:
+      # Override KUSTO_PORT if 8080 is taken locally. In-compose traffic uses
+      # http://kusto:8080 and is unaffected either way.
+      - "${KUSTO_PORT:-8080}:8080"
+    mem_limit: 4g
+    # Belt-and-braces alongside the DOTNET_* vars above: verified to recover the
+    # container automatically from an exit-133 Rosetta crash.
+    restart: unless-stopped
+    healthcheck:
+      # The emulator ships no HTTP client, so this only proves the process is
+      # listening. Real readiness is probed over HTTP from the host by the
+      # bootstrap loader / testkit.
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      # Engine starts in ~3-4s under Rosetta. Kept generous for slower hosts
+      # and for the first run on a cold image.
+      start_period: 90s
+      retries: 10
+
+  mock-sentinel:
+    build:
+      context: ..
+      dockerfile: apps/mock-sentinel/Dockerfile
+    container_name: soc-mock-sentinel
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      KUSTO_ENDPOINT: http://kusto:8080
+      KUSTO_DATABASE: "${KUSTO_DATABASE:-SentinelLab}"
+      QUERY_MAX_ROWS: "${QUERY_MAX_ROWS:-500}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    ports:
+      - "${PORT:-8787}:8787"
+    depends_on:
+      kusto:
+        condition: service_healthy
+    restart: unless-stopped
