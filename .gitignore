@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Generated BAML client (regenerate with `bunx baml-cli generate`)
+baml_client/
+
+# Local scratch for the bootstrap loader. The Training Lab telemetry itself is
+# vendored under fixtures/telemetry/ (MIT, pinned revision) — see that directory's
+# SOURCE.md and docs/adr/001-training-lab-kusto.md.
+.data/
+
+# Local environment
+.env
+.env.local
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "env": {
+    "builtin": true,
+    "es2024": true
+  },
+  "rules": {
+    "no-console": "off",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "eslint/no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/apps/mock-sentinel/**"],
+            "message": "Mock Sentinel internals are private. Consumers must go through the Sentinel Client / REST boundary (AGENTS.md \u00a73)."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["apps/mock-sentinel/**"],
+      "rules": {
+        "eslint/no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["scripts/**"],
+      "rules": {
+        "eslint/no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/test/**"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["baml_client/", "node_modules/", "dist/"]
+}
