@@ -1,0 +1,15 @@
+{
+  "name": "@soc/mock-sentinel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@soc/contracts": "workspace:*",
+    "hono": "4.13.2",
+    "zod": "4.4.3"
+  }
+}
