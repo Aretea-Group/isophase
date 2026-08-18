@@ -1,0 +1,28 @@
+{
+  "id": "phishing-quarantined",
+  "title": "Phishing message quarantined before delivery",
+  "startingAlertId": "56ff4829-ac5a-4f2c-602c-66c288685080",
+  "sourceData": "Microsoft Sentinel Training Lab — MailGuard365_Threats_CL / SEG_MailGuard_CL",
+  "verdict": "true-positive",
+  "impact": "none",
+  "summary": "A phishing message from a domain used in a live campaign against this tenant was correctly quarantined. The same sender infrastructure reached other mailboxes, which is where the actual exposure lies.",
+  "keyEntities": [
+    "admin@pkwork.onmicrosoft.com",
+    "malicious-infra.xyz",
+    "198.51.100.42"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Was this message delivered?",
+      "kql": "union MailGuard365_Threats_CL, SEG_MailGuard_CL | where RecipientAddress has 'admin@' | project TimeGenerated, SenderAddress, ThreatVerdict, Action",
+      "expected": "Action = Quarantine — it never reached the mailbox"
+    },
+    {
+      "question": "Did the same sender infrastructure reach anyone else?",
+      "kql": "union MailGuard365_Threats_CL, SEG_MailGuard_CL | where SenderDomain has 'malicious-infra' or SenderIP == '198.51.100.42' | project RecipientAddress, ThreatVerdict, Action",
+      "expected": "Messages to mirage@ from the same infrastructure were Allowed"
+    }
+  ],
+  "trap": "Two opposite errors are available. Closing it as a false positive ignores that the message was genuinely malicious. Escalating it as a compromise ignores that the control held. The useful finding is neither: the same campaign got through to a different mailbox, and that is what warrants follow-up.",
+  "evaluatorNotes": "Rewards lateral thinking — the right answer for this alert is 'no impact', but a good investigation notices the related delivered messages and says so. Pairs directly with mirage-account-takeover, which is where that campaign led."
+}

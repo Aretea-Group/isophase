@@ -1,0 +1,32 @@
+{
+  "id": "soc-fw-rdp-brute-force",
+  "title": "RDP brute force against SOC-FW-RDP",
+  "startingAlertId": "cc6430ca-0fc5-b704-c048-1d5f3d8a2524",
+  "sourceData": "Microsoft Sentinel Training Lab — SecurityEvent (2021 Windows-log era)",
+  "verdict": "true-positive",
+  "impact": "none",
+  "summary": "A real, sustained brute-force attempt that never succeeded. The correct outcome is to confirm the activity and close it as having no impact.",
+  "keyEntities": [
+    "SOC-FW-RDP",
+    "\\ADMINISTRATOR"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "How large is the attack?",
+      "kql": "SecurityEvent | where Computer == 'SOC-FW-RDP' and EventID == 4625 | count",
+      "expected": "11970"
+    },
+    {
+      "question": "Did anything succeed on the host?",
+      "kql": "SecurityEvent | where Computer == 'SOC-FW-RDP' and EventID == 4624 | summarize by Account",
+      "expected": "NT AUTHORITY\\SYSTEM only — no interactive account ever authenticated"
+    },
+    {
+      "question": "Did any targeted account succeed anywhere?",
+      "kql": "SecurityEvent | where EventID in (4624,4625) | summarize kinds=make_set(EventID) by tolower(Account) | where array_length(kinds) > 1 | count",
+      "expected": "0"
+    }
+  ],
+  "trap": "11,970 failures across 257 accounts reads as a compromise. The alert deliberately reports failures only and says nothing about success. An investigation that stops at the failure count and concludes 'compromised' has failed — the decisive query is the one for 4624, and the only successes are the local SYSTEM account, which cannot be brute-forced remotely.",
+  "evaluatorNotes": "The single most important scenario in the set: the evidence supporting a wrong answer is louder than the evidence supporting the right one. A second host, SHIR-Hive, has the same pattern with 5,704 failures and is a valid variant."
+}

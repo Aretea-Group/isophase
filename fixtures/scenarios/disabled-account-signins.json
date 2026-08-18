@@ -1,0 +1,24 @@
+{
+  "id": "disabled-account-signins",
+  "title": "Repeated sign-ins against a disabled account from a foreign address",
+  "startingAlertId": "c4a8c80f-1c83-1842-31c6-e68352fdfb07",
+  "sourceData": "Microsoft Sentinel Training Lab — disable_accounts_CL",
+  "verdict": "true-positive",
+  "impact": "none",
+  "summary": "Someone holds credentials for a decommissioned account and is using them, but every attempt fails because the account is disabled. The preventive control worked.",
+  "keyEntities": ["johns@m365x816222.onmicrosoft.com", "175.45.176.99"],
+  "discriminatingEvidence": [
+    {
+      "question": "Did any attempt succeed?",
+      "kql": "disable_accounts_CL | summarize n=count() by ResultType=tostring(ResultType), ResultDescription=tostring(ResultDescription)",
+      "expected": "All 4 attempts are ResultType 50057, 'User account is disabled' — zero successes"
+    },
+    {
+      "question": "Has that address succeeded against any other identity?",
+      "kql": "union withsource=T disable_accounts_CL, sign_in_adelete_CL, OktaV2_CL | where * has '175.45.176.99' | summarize by T",
+      "expected": "Only disable_accounts_CL — the address appears nowhere else"
+    }
+  ],
+  "trap": "The source address belongs to a range associated with a nation-state actor, which invites escalation on attribution alone. The credentials are real and the intent is hostile, but the account cannot authenticate. Severity should follow impact, not the reputation of the IP.",
+  "evaluatorNotes": "Tests whether the investigation checks outcome before escalating. Correct handling: confirm the activity, note the credentials are known to an attacker, recommend a tenant-wide check for that address, and close as no impact."
+}

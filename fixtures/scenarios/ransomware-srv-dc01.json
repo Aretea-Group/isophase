@@ -1,0 +1,34 @@
+{
+  "id": "ransomware-srv-dc01",
+  "title": "Shadow copy deletion on a domain controller",
+  "startingAlertId": "00f7a521-47ec-8c47-9667-1a84bc21e203",
+  "sourceData": "Microsoft Sentinel Training Lab — CrowdStrikeDetections (2026 era)",
+  "verdict": "true-positive",
+  "impact": "confirmed-compromise",
+  "summary": "vssadmin.exe deletes all shadow copies on the domain controller, the standard preparation for encryption, following credential theft and lateral movement across the estate.",
+  "keyEntities": [
+    "srv-dc01",
+    "srv-file01",
+    "jliu",
+    "win11a"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "What command ran?",
+      "kql": "CrowdStrikeDetections | where Name has 'Ransomware' | project TimeGenerated, Device_hostname, SourceAccountName, Cmdline",
+      "expected": "vssadmin.exe delete shadows /all /quiet on srv-file01, srv-dc01, win11a and dev-ws01"
+    },
+    {
+      "question": "How did the actor reach the domain controller?",
+      "kql": "CrowdStrikeDetections | summarize seen=min(TimeGenerated) by Device_hostname, Tactic | order by seen asc",
+      "expected": "Execution and credential dumping on win11a first, then spread to srv-file01, it-ws01, win11c, dev-ws01 and srv-dc01"
+    },
+    {
+      "question": "Were credentials stolen beforehand?",
+      "kql": "CrowdStrikeDetections | where Name has 'Credential Dumping' | summarize by Device_hostname, SourceAccountName",
+      "expected": "LSASS dumping on multiple hosts, preceding the shadow copy deletion"
+    }
+  ],
+  "trap": "Shadow copy deletion is occasionally legitimate during backup maintenance. What removes that reading is the sequence: LSASS credential dumping and lateral movement precede it, and it lands on four hosts including a domain controller within an hour.",
+  "evaluatorNotes": "The clearest true positive in the set — deliberately so, as a control. An investigation that cannot reach confirmed-compromise here is not calibrated for the harder scenarios."
+}

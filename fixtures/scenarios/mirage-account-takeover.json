@@ -1,0 +1,39 @@
+{
+  "id": "mirage-account-takeover",
+  "title": "Account takeover of mirage leading to multi-cloud compromise",
+  "startingAlertId": "6f8c3424-40a6-de72-b641-fdb86a159625",
+  "sourceData": "Microsoft Sentinel Training Lab — OktaV2_CL, AWSCloudTrail, GCPAuditLogs, CommonSecurityLog, MailGuard (2026 era)",
+  "verdict": "true-positive",
+  "impact": "confirmed-compromise",
+  "summary": "A phished identity is taken over from a foreign address, escalated, stripped of MFA, then used to establish persistence in AWS and GCP and exfiltrate ~183 MB.",
+  "keyEntities": [
+    "mirage@pkwork.onmicrosoft.com",
+    "198.51.100.42",
+    "192.0.2.100",
+    "backdoor-svc"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "What did the identity do after signing in?",
+      "kql": "OktaV2_CL | where ActorUsername has 'mirage' | project TimeGenerated, EventOriginalType, SrcIpAddr, SrcGeoCountry | order by TimeGenerated asc",
+      "expected": "session.start (RU) -> privilege.grant -> api_token.create -> mfa.factor.deactivate -> reset_all, inside four minutes"
+    },
+    {
+      "question": "Did the same source address appear elsewhere?",
+      "kql": "AWSCloudTrail | where SourceIpAddress == '198.51.100.42' | summarize by EventName",
+      "expected": "ConsoleLogin, enumeration, CreateUser, CreateAccessKey, AttachUserPolicy, AuthorizeSecurityGroupIngress, RunInstances"
+    },
+    {
+      "question": "Was data moved?",
+      "kql": "CommonSecurityLog | summarize BytesSent = sum(todouble(SentBytes)) by DestinationIP | order by BytesSent desc",
+      "expected": "~183 MB to 192.0.2.100 over SSL, with a spyware verdict to the same address"
+    },
+    {
+      "question": "How did the attacker get in?",
+      "kql": "union MailGuard365_Threats_CL, SEG_MailGuard_CL | where RecipientAddress has 'mirage' and tolower(tostring(ThreatVerdict)) != 'clean' | project TimeGenerated, SenderAddress, ThreatVerdict, Action",
+      "expected": "Multiple phishing messages to mirage from 198.51.100.42, all with action Allow"
+    }
+  ],
+  "trap": "The starting alert only shows an Okta privilege grant, which is routine administrative activity in isolation. Concluding 'benign admin action' without pivoting on the source address misses a full cloud compromise. The address is the pivot that connects identity, cloud and network evidence.",
+  "evaluatorNotes": "The richest scenario: five data sources, an 80-minute span, and a verdict that requires at least three distinct queries. Strong evidence exists for every step, so a competent investigation should reach confirmed-compromise with high confidence."
+}

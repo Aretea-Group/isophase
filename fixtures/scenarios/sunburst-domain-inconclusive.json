@@ -1,0 +1,28 @@
+{
+  "id": "sunburst-domain-inconclusive",
+  "title": "Known malicious domain resolved, with no corroborating evidence",
+  "startingAlertId": "d52663c4-9e5d-c225-9489-780322169846",
+  "sourceData": "Microsoft Sentinel Training Lab — solarigate_beacon_umbrella_CL (single record, 2019 era)",
+  "verdict": "inconclusive",
+  "impact": "unknown",
+  "summary": "A single DNS resolution of avsvmcloud.com, the SUNBURST/SolarWinds command-and-control domain, which the resolver allowed. No other source contains anything that corroborates or refutes it.",
+  "keyEntities": [
+    "avsvmcloud.com",
+    "17.81.146.1",
+    "15.230.137.45"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Is there any supporting activity for the host or the addresses?",
+      "kql": "union withsource=T CommonSecurityLog, AWSCloudTrail, OktaV2_CL, CrowdStrikeDetections, SecurityEvent | where * has 'avsvmcloud' or * has '17.81.146.1' or * has '15.230.137.45' | summarize hits=count() by T",
+      "expected": "No rows at all"
+    },
+    {
+      "question": "What does the source record actually contain?",
+      "kql": "solarigate_beacon_umbrella_CL | project Timestamp, Domain, Action, InternalIp, ExternalIp, Categories_0",
+      "expected": "One row: avsvmcloud.com, Allowed, from 17.81.146.1 — and nothing else"
+    }
+  ],
+  "trap": "avsvmcloud.com is genuinely notorious, so the temptation is to declare a confirmed SolarWinds compromise. There is exactly one record, from an era five years removed from the rest of the estate, and no endpoint, firewall or identity evidence exists for the host. The honest verdict is that the alert cannot be substantiated with the available data.",
+  "evaluatorNotes": "The calibration scenario. An investigation that returns confirmed-compromise here is over-confident; one that returns false-positive is dismissive of a real indicator. The correct answer is inconclusive with a clear statement of what evidence would settle it — endpoint telemetry for 17.81.146.1, or firewall logs for the same period."
+}
