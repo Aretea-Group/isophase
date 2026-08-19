@@ -96,11 +96,60 @@ export interface RunRow {
   detail: string;
 }
 
+/**
+ * The sweep's headline.
+ *
+ * Sized by what the run set out to cover, not by what has finished: a single-alert run has no
+ * finished result for as long as it takes — up to `limits.timeoutMs` — and labelling it "(no
+ * alerts yet)" for those ten minutes described the artifact rather than the investigation. The
+ * planned list carries the title, so a run is named from the moment it starts.
+ *
+ * "(no alerts yet)" survives for artifacts written before the planned list existed, where an
+ * unfinished run genuinely has nothing to be named after.
+ */
 export function runLabel(run: RunArtifact): string {
-  const first = run.results[0];
-  if (run.results.length === 1 && first?.alertTitle !== undefined) return first.alertTitle;
-  if (run.results.length > 1) return `${run.results.length} alerts`;
+  const planned = run.plannedAlerts ?? [];
+  const covered = Math.max(run.results.length, run.alertCount ?? 0, planned.length);
+  if (covered > 1) return `${covered} alerts`;
+  const first = run.results[0] ?? planned[0];
   return first?.alertTitle ?? first?.alertId ?? "(no alerts yet)";
+}
+
+/**
+ * The alerts a sweep is still working through, as rows the rest of the console can address.
+ *
+ * The artifact records `results` only when an alert *finishes*, so everything downstream of a
+ * selected result — the transcript tail, the tab bar, pane [4] — had nothing to point at while an
+ * investigation was in flight, and a single-alert run is entirely in flight until it is entirely
+ * over. These rows exist only in the view: nothing writes a `running` result to disk, and the per
+ * alert status on disk stays `completed | failed`.
+ *
+ * Only for a run whose artifact still claims to be running. An interrupted sweep's unstarted
+ * alerts are not pending, they are abandoned, and showing them as live work on a dead run would
+ * be the same lie `classifyRun` exists to avoid (PRD-3 §10.2).
+ */
+export function pendingResults(run: RunArtifact | undefined): RunResult[] {
+  if (run === undefined || run.status !== "running") return [];
+  const finished = new Set(run.results.map((result) => result.alertId));
+  const pending: RunResult[] = [];
+  for (const planned of run.plannedAlerts ?? []) {
+    if (finished.has(planned.alertId)) continue;
+    const row: RunResult = { alertId: planned.alertId, status: "running" };
+    if (planned.alertTitle !== undefined) row.alertTitle = planned.alertTitle;
+    pending.push(row);
+  }
+  return pending;
+}
+
+/** A run's alerts: what has finished, then what it is still working through, in planned order. */
+export function resultsWithPending(run: RunArtifact | undefined): RunResult[] {
+  if (run === undefined) return [];
+  return [...run.results, ...pendingResults(run)];
+}
+
+/** A row synthesised by `pendingResults`, rather than an outcome the investigator wrote. */
+export function isPending(result: RunResult): boolean {
+  return result.status === "running";
 }
 
 export function toRunRow(input: LivenessInput): RunRow {
@@ -139,6 +188,8 @@ export interface ResultRow {
   alertId: string;
   title: string;
   failed: boolean;
+  /** Still being investigated — a `pendingResults` row, with no outcome of its own yet. */
+  pending: boolean;
   glyph: string;
   tpPercent?: number;
   band: VerdictBand;
@@ -148,15 +199,23 @@ export interface ResultRow {
 
 export function toResultRow(result: RunResult, width = 44): ResultRow {
   const failed = result.status === "failed";
+  const pending = isPending(result);
   const tpPercent = result.summary?.tpPercent;
   return {
     alertId: result.alertId,
     title: truncate(result.alertTitle ?? result.alertId, width),
     failed,
-    glyph: failed ? "✗" : "✓",
+    pending,
+    // The same glyph the run list gives a live run, for the same reason: this row is one, and its
+    // outcome is not a quiet "✓" that happens to have no verdict beside it (PRD-3 §9.8).
+    glyph: pending ? RUN_GLYPH.running : failed ? "✗" : "✓",
     ...(tpPercent === undefined ? {} : { tpPercent }),
     band: verdictBand(tpPercent),
     ...(result.summary?.impact === undefined ? {} : { impact: result.summary.impact }),
-    detail: failed ? (result.error?.name ?? "failed") : duration(result.durationMs),
+    detail: pending
+      ? "investigating"
+      : failed
+        ? (result.error?.name ?? "failed")
+        : duration(result.durationMs),
   };
 }

@@ -9,7 +9,13 @@ import { leadingTable, toActivityView } from "../src/view/activity.ts";
 import { alertFactsFromResult, enrichWithAlertJson } from "../src/view/alert.ts";
 import { duration, tokens, tpBar, truncate, verdictBand } from "../src/view/format.ts";
 import { lineText } from "../src/view/format.ts";
-import { classifyRun, toResultRow } from "../src/view/run-list.ts";
+import {
+  classifyRun,
+  pendingResults,
+  resultsWithPending,
+  runLabel,
+  toResultRow,
+} from "../src/view/run-list.ts";
 import { toVerdictView } from "../src/view/verdict.ts";
 
 const FIXTURES = join(import.meta.dir, "fixtures");
@@ -84,6 +90,62 @@ describe("classifyRun", () => {
     // `interrupted` describes a sweep and has no meaning for a single alert.
     const row = toResultRow({ alertId: "a", alertTitle: "t", status: "interrupted" } as RunResult);
     expect(row.failed).toBe(false);
+  });
+});
+
+describe("alerts a sweep has not finished", () => {
+  const planned = [
+    { alertId: "alert-1", alertTitle: "First alert" },
+    { alertId: "alert-2", alertTitle: "Second alert" },
+  ];
+  const finished: RunResult = {
+    alertId: "alert-1",
+    alertTitle: "First alert",
+    status: "completed",
+  };
+
+  test("a running sweep offers a row for each alert it has not reached", () => {
+    const rows = resultsWithPending(
+      run({ status: "running", alertCount: 2, plannedAlerts: planned, results: [finished] }),
+    );
+    expect(rows.map((row) => row.alertId)).toEqual(["alert-1", "alert-2"]);
+    // Planned order, so a finishing alert replaces its own row rather than shifting the selection.
+    expect(rows[1]?.status).toBe("running");
+  });
+
+  test("a finished or abandoned sweep has no pending alerts", () => {
+    for (const status of ["completed", "interrupted"]) {
+      expect(
+        pendingResults(run({ status, alertCount: 2, plannedAlerts: planned, results: [finished] })),
+      ).toEqual([]);
+    }
+  });
+
+  test("a pending row reads as live work, not as a passed investigation", () => {
+    const row = toResultRow({ alertId: "alert-2", alertTitle: "Second alert", status: "running" });
+    expect(row.pending).toBe(true);
+    expect(row.failed).toBe(false);
+    expect(row.glyph).toBe("●");
+    expect(row.detail).toBe("investigating");
+  });
+
+  test("a run is named by the alert it is investigating, not by what has finished", () => {
+    // The symptom this fixes: a single-alert run has no result for its whole lifetime.
+    expect(
+      runLabel(
+        run({
+          status: "running",
+          alertCount: 1,
+          plannedAlerts: [{ alertId: "alert-1", alertTitle: "Anonymous sharing" }],
+        }),
+      ),
+    ).toBe("Anonymous sharing");
+    // A sweep is sized by what it set out to cover, not by what it has got through.
+    expect(runLabel(run({ status: "running", alertCount: 9, results: [finished] }))).toBe(
+      "9 alerts",
+    );
+    // Artifacts written before the planned list existed keep the old answer.
+    expect(runLabel(run({ status: "running" }))).toBe("(no alerts yet)");
   });
 });
 

@@ -110,9 +110,15 @@ async function main(): Promise<void> {
       startedAt,
       completedAt: new Date().toISOString(),
       status,
-      // Written before the first alert so a reader can say how much of the sweep is left;
-      // `results` only ever holds finished alerts (PRD-3 §7, §11).
+      // Written before the first alert so a reader can say how much of the sweep is left, and
+      // which alert each remaining slot is; `results` only ever holds finished alerts (PRD-3 §7,
+      // §11). A reader needs the id to find the in-flight alert's transcript, which is named after
+      // it, and the title to name the alert without one.
       alertCount: alerts.length,
+      plannedAlerts: alerts.map((alert) => ({
+        alertId: alert.properties.systemAlertId,
+        alertTitle: alert.properties.alertDisplayName,
+      })),
       ...(env.INVESTIGATOR_TRACE ? { traceDir: env.INVESTIGATOR_TRACE_DIR } : {}),
       config: {
         thinkingLevel: env.INVESTIGATOR_THINKING_LEVEL,

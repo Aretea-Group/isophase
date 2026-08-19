@@ -170,11 +170,14 @@ export function resultRows(results: RunResult[], selected: number, width: number
     const row = toResultRow(result, width);
     const facts = alertFactsFromResult(result);
     const impact = shortImpact(result.summary?.impact) ?? "";
-    const outcome = row.failed
-      ? "FAIL"
-      : row.tpPercent === undefined
-        ? "—"
-        : `TP ${row.tpPercent}%`;
+    const outcome = row.pending
+      ? "running"
+      : row.failed
+        ? "FAIL"
+        : row.tpPercent === undefined
+          ? "—"
+          : `TP ${row.tpPercent}%`;
+    const tone = row.pending ? "running" : row.failed ? "failed" : undefined;
 
     const outcomeText = truncate(outcome, 7).padStart(7);
     const impactText = pad(truncate(impact, IMPACT_WIDTH - 1), IMPACT_WIDTH - 1);
@@ -187,10 +190,10 @@ export function resultRows(results: RunResult[], selected: number, width: number
     return highlight(
       [
         marker(isSelected),
-        { text: `${row.glyph} `, tone: row.failed ? "failed" : "ok" },
+        { text: `${row.glyph} `, tone: tone ?? "ok" },
         { text: `${facts.severityTag} `, tone: severityTone(facts.severity) },
         { text: pad(truncate(row.title, room), room), bold: isSelected },
-        { text: ` ${outcomeText}`, tone: row.failed ? "failed" : bandTone(row.band) },
+        { text: ` ${outcomeText}`, tone: tone ?? bandTone(row.band) },
         { text: ` ${impactText}`, tone: impactTone(result.summary?.impact) },
       ],
       isSelected,

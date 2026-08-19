@@ -2,7 +2,7 @@ import type { RunArtifact, RunResult } from "../../data/runs.ts";
 import type { Aggregate, RunTotals } from "../../data/stats.ts";
 import type { TraceIndex } from "../../data/trace-index.ts";
 import type { ConsoleEnv } from "../../env.ts";
-import { toActivityView, type ActivityRow } from "../../view/activity.ts";
+import { summariseArgs, toActivityView, type ActivityRow } from "../../view/activity.ts";
 import { entityPairs, remediationLines, type AlertFacts } from "../../view/alert.ts";
 import { DATA_SOURCES, toConfigRows } from "../../view/config.ts";
 import {
@@ -63,6 +63,87 @@ function verdictHead(view: VerdictView, width: number): Line[] {
   ];
 }
 
+/**
+ * Severity, when it happened and what it hit, repeated from pane [1] — which is hidden below 100
+ * columns, where the main pane is all there is (PRD-3 §9.6).
+ */
+function factsHead(facts: AlertFacts | undefined): Line[] {
+  if (facts === undefined) return [];
+  return [
+    "",
+    [
+      { text: `  ${facts.severityTag.trim()}`, tone: severityTone(facts.severity), bold: true },
+      { text: "   incident ", tone: "label" },
+      { text: facts.window },
+      { text: "   asset ", tone: "label" },
+      { text: facts.compromisedEntity ?? "—" },
+    ],
+    "",
+  ];
+}
+
+/**
+ * An investigation that is still running (PRD-3 §11, §13).
+ *
+ * There is no verdict to show and there will not be one until the end — the agent submits its
+ * assessment in a single `submit_investigation` call — so this pane says what the agent is doing
+ * instead of rendering an empty verdict with "—" where the numbers go. What it can say depends on
+ * whether the run was traced, which is the same fork the transcript tabs make.
+ */
+export function progressBody(
+  facts: AlertFacts | undefined,
+  index: TraceIndex | undefined,
+  traced: boolean,
+  width: number,
+): Line[] {
+  const lines: Line[] = [...factsHead(facts)];
+
+  lines.push([
+    { text: "  ● INVESTIGATING", tone: "running", bold: true },
+    ...(index?.startedAt === undefined
+      ? []
+      : [{ text: "   started ", tone: "label" as const }, { text: clockTime(index.startedAt) }]),
+  ]);
+  lines.push("");
+
+  if (index !== undefined) {
+    // Read off the index rather than through `toActivityView`: this pane redraws on every append
+    // to a live transcript, and the counts are all it needs.
+    const last = index.toolCalls.at(-1);
+    lines.push([
+      { text: "  " },
+      { text: `${index.turns.length} turns · ${index.toolCalls.length} calls · ` },
+      { text: tokens(index.totals.totalTokens), tone: "label" },
+      { text: `  ${cost(index.totals.cost)}`, tone: "dim" },
+    ]);
+    if (last !== undefined) {
+      lines.push([
+        { text: "  latest  ", tone: "label" },
+        { text: last.toolName, tone: "accent" },
+        { text: `  ${truncate(summariseArgs(last, width - 30), Math.max(12, width - 26))}` },
+        { text: last.endedAt === undefined ? "  ·  running" : "", tone: "running" },
+      ]);
+    }
+    lines.push(
+      "",
+      ...wrap("Activity and Stream follow this live as the transcript grows.", width - 4).map(
+        (l) => `  ${l}`,
+      ),
+    );
+    return lines;
+  }
+
+  lines.push(
+    ...wrap(
+      traced
+        ? "The transcript has not appeared yet. This pane picks it up within a second of the agent writing its first event."
+        : "Tracing is off for this run (INVESTIGATOR_TRACE=false), so its progress cannot be followed. The verdict appears here when the investigation finishes.",
+      width - 4,
+    ).map((l) => `  ${l}`),
+  );
+  return lines;
+}
+
 export function verdictBody(
   result: RunResult,
   facts: AlertFacts | undefined,
@@ -77,18 +158,7 @@ export function verdictBody(
     return lines;
   }
 
-  // Severity, when it happened and what it hit, repeated from pane [1] — which is hidden below
-  // 100 columns, where this pane is all there is (PRD-3 §9.6).
-  if (facts !== undefined) {
-    lines.push("", [
-      { text: `  ${facts.severityTag.trim()}`, tone: severityTone(facts.severity), bold: true },
-      { text: "   incident ", tone: "label" },
-      { text: facts.window },
-      { text: "   asset ", tone: "label" },
-      { text: facts.compromisedEntity ?? "—" },
-    ]);
-    lines.push("");
-  }
+  lines.push(...factsHead(facts));
 
   // The verdict leads, then what it is a verdict about, then the case for and against it.
   //
