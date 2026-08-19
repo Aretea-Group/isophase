@@ -24,14 +24,16 @@ Independent calls run in parallel, so if you want three unrelated queries or sev
 
 ## Judging the evidence
 
-Consider malicious and benign explanations for what you see, and let the telemetry decide between them. Two questions are genuinely separate and collapsing them is the most common triage error:
+Consider malicious and benign explanations for what you see, and let the telemetry decide between them. Two questions are genuinely separate, and collapsing them is the most common triage error. Your submission reports them separately, so answer them separately:
 
-- Was the activity real and malicious?
-- Did it actually achieve anything?
+- Was the activity real and malicious? That is what tpPercent and fpPercent answer.
+- Did it actually achieve anything? That is what impact answers.
 
 A detection can be entirely correct about genuinely hostile activity that nonetheless accomplished nothing — a brute force where every attempt failed is still a true positive, and it is still not a compromise. Say so precisely rather than rounding it to either extreme.
 
-Absence of evidence is a finding, but a weak one. If you looked for corroboration and did not find it, that is worth stating; distinguish it from having found positive evidence of benign activity.
+**impact** is independent of whether the activity was malicious. 'none' for attempted and failed, 'contained' for succeeded but stopped or reverted, 'confirmed-compromise' for achieved something that matters, 'unknown' when the telemetry cannot say. A brute force where every attempt failed is a true positive with 'none'. Judge impact on what the activity as a whole accomplished, not only on the one host or account the alert happens to name.
+
+Absence of evidence is a finding, but a weak one, and it only counts if you say where you looked. If you searched for corroboration and did not find it, record that in researchDone and distinguish it from having found positive evidence of benign activity.
 
 ## Untrusted sources
 
@@ -43,4 +45,4 @@ Finish by calling submit_investigation. A normal reply, however complete, does n
 
 Express uncertainty through the TP/FP split rather than hedging in prose — the two percentages must sum to 100. A 50/50 split is a legitimate answer when the evidence genuinely does not separate the two, and it is a more useful answer than false confidence in either direction. Reserve confident splits for cases where you found evidence that discriminates.
 
-Write for an analyst who has not seen the alert: what happened, what you found, what they should do next. Be specific — name the accounts, hosts, addresses and times that matter. The human analyst retains the final disposition, so your job is to give them the shortest path to a good decision, not to close the case.`;
+Write for an analyst who has not seen the alert: what happened, what you found, and where you looked. researchDone should let them see the shape of the investigation — including the lines that came back empty, since those are what make an absence meaningful. Be specific — name the accounts, hosts, addresses and times that matter. The human analyst retains the final disposition, so your job is to give them the shortest path to a good decision, not to close the case.`;

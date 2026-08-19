@@ -36,6 +36,26 @@ scenario is now judged by whether the split lands near even, not by a label.
 BAML is deferred, not rejected. Nothing here prevents adding it later if free-form submissions prove
 unreliable in practice.
 
+**Amended 2026-08-19, after the first evaluation run.** The submission contract now carries an
+`impact` field (`none | contained | confirmed-compromise | unknown`) and a `researchDone` list, and
+has dropped `nextAction`. This amends PRD-2 §14's field set and §15's "no separate confidence field"
+position.
+
+`impact` exists because a single TP/FP axis cannot express *the detection is real, its significance
+is unknowable*. That is precisely what the `sunburst-domain-inconclusive` scenario tests, and both
+models tested answered it with a confident TP (95% and 80%) while their prose said the opposite —
+`gpt-5.6-terra` wrote "Do not claim compromise from this lookup alone" and then submitted 80/20. The
+scenario fixtures have always carried `verdict` and `impact` separately; collapsing them into one
+number discarded a distinction the agent was already making unprompted.
+
+`researchDone` replaces `nextAction` because it records the negative space. "Checked X, found
+nothing" is a materially different claim from never having checked X, and both observed failures
+turn on that distinction — one on absent corroboration, the other on a line of enquiry never opened.
+Coverage is visible in a trace, but traces are optional and off by default, and the artifact is what
+evaluation reads. `nextAction` was scored by nothing, sits adjacent to the remediation plan PRD-2
+§15 already excludes, and was the field that overran its length limit in a live run and cost a turn
+to correct.
+
 ### 2. A run artifact replaces the PostgreSQL trace store
 
 **Was:** `AGENTS.md` §12 and Milestone 6 called for PostgreSQL/Drizzle persistence of alerts, schema

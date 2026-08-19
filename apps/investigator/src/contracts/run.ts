@@ -16,8 +16,11 @@ export const InvestigationSummaryRecord = z.object({
   fpPercent: z.number().int().min(0).max(100),
   fpReason: z.string(),
   whatHappened: z.string(),
+  impact: z.enum(["none", "contained", "confirmed-compromise", "unknown"]).optional(),
   keyEvidence: z.array(z.string()),
-  nextAction: z.string(),
+  researchDone: z.array(z.string()).optional(),
+  /** Present only on artifacts written before `researchDone` replaced it. */
+  nextAction: z.string().optional(),
 });
 
 export const InvestigationResult = z.object({
