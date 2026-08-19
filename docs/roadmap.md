@@ -72,7 +72,46 @@ Potential capabilities:
   the shipping AI-SOC products expose — but the published evaluation checklists ask for hypotheses
   listed individually with the evidence that rejected each.
 
-### 6. Evaluation at Scale
+### 6. Console as an Operator Surface
+
+Give the console a write path, so an analyst can act on what they are reading rather than switching
+to a second terminal to do it.
+
+Potential capabilities:
+
+* **Browse alerts that have never been investigated.** The console currently lists runs; it cannot
+  see the 145 alerts with no run against them. This means reading `/alerts` from Mock Sentinel.
+* **Start an investigation for the selected alert**, and **re-run** one — the same alert, same
+  configuration, to see whether the verdict is stable, which is currently a manual `bun run
+  investigate --alert <id>` and a mental diff.
+* **Re-run with analyst-supplied context**: "this host is a scanner", "this account belongs to a
+  contractor who left last week". The agent has no way to be told something the telemetry does not
+  say, and that is the most common reason a human overrules it.
+* **Promote that context to memory**, so the next investigation of a related alert starts with it.
+
+**This reverses PRD-3's central design decision, and should not be done casually.** §4.1 is "the
+console reads files; it never drives the agent", and §4.2 makes the artifact and the transcript the
+entire contract — which is what lets the console have no provider key, no network, and no way to
+corrupt a run. Every capability above breaks one of those. PRD-3 §14 excludes all four by name.
+
+So this needs its own PRD, and it owes answers to questions PRD-3 got to avoid:
+
+* **Where does a run execute?** A child process the console owns dies with the console. A daemon is
+  a new service, and AGENTS.md §2 has no room for one. Neither is obviously right.
+* **What happens to the read-only guarantee?** It is currently absolute and testable. A console that
+  writes needs a narrower claim that is still worth making — "it writes only through the
+  investigator, never to `runs/` directly" is a candidate.
+* **Two consoles, one runs directory.** Artifacts are flushed per alert and rewritten in place;
+  nothing today arbitrates two writers.
+* **Ground-truth isolation must survive.** PRD-2 §20 makes it a property of the system. A console
+  that can start a run is agent-side code, and the `no-restricted-imports` rule and
+  `ground-truth-isolation.test.ts` need to cover it.
+
+Overlaps two items above rather than replacing them: analyst-supplied context is the write half of
+**§2 Human Feedback**, and promoting it to something durable is **§1 Case Memory**. This item is the
+surface; those two are the substance behind it.
+
+### 7. Evaluation at Scale
 
 Exercise the investigator beyond the six alerts that have ground truth, and close the verification
 gaps PRD-2 left open.
