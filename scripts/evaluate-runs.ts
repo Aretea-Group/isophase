@@ -96,8 +96,8 @@ function score(runs: RunFile[], scenarios: Scenario[]): Scored[] {
   for (const run of runs) {
     for (const result of run.results) {
       const scenario = byAlert.get(result.alertId);
-      // Alerts without ground truth are not failures, they are simply unscoreable — 145 of the
-      // 151 alerts are in that position.
+      // Alerts without ground truth are not failures, they are simply unscoreable — 140 of the
+      // 154 alerts are in that position.
       if (!scenario || result.status !== "completed" || !result.summary) continue;
 
       const actualImpact = result.summary.impact;

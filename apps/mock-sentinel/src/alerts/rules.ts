@@ -399,6 +399,57 @@ export const ANALYTICS_RULES: readonly AnalyticsRule[] = [
     },
   },
 
+  {
+    id: "SOC-RULE-0014-SuspiciousSignInVolume",
+    displayName: "High volume of successful sign-ins from a single address",
+    description:
+      "One account authenticated successfully many times from a single address in a short " +
+      "window. Unremarkable for a scripted client, and also the shape credential replay takes " +
+      "once the credentials are valid.",
+    severity: "Medium",
+    tactics: ["InitialAccess", "CredentialAccess"],
+    techniques: ["T1078.004"],
+    remediationSteps: [
+      "Confirm the sign-ins with the account owner.",
+      "Establish what the account did after authenticating.",
+    ],
+    query: `
+      // Successes only. Failed authentication against a live account is a
+      // different question, and SOC-RULE-0012 already asks it of disabled ones.
+      sign_in_adelete_CL
+      | where ResultType == 0
+      | summarize
+          SignIns = count(),
+          Apps = array_slice(array_sort_asc(make_set(AppDisplayName)), 0, 6),
+          Locations = array_slice(array_sort_asc(make_set(Location)), 0, 4),
+          StartTime = min(CreatedDateTime),
+          EndTime = max(CreatedDateTime)
+        by UserPrincipalName, IPAddress
+      | where SignIns >= 20
+    `,
+    build: (row, entities) => {
+      const user = str(row, "UserPrincipalName");
+      const address = str(row, "IPAddress");
+      addUpnAccount(entities, user);
+      if (address !== "") entities.ip(address);
+      return {
+        displayName: `${num(row, "SignIns")} successful sign-ins for ${user} from ${address}`,
+        description:
+          `${user} authenticated successfully ${num(row, "SignIns")} time(s) from ${address}, ` +
+          `across ${set(row, "Apps").length} application(s).`,
+        compromisedEntity: user,
+        additionalData: {
+          "Sign-ins": num(row, "SignIns"),
+          "Source Address": address,
+          Applications: set(row, "Apps"),
+          // Reported, not relied on: the vendored data labels this same address
+          // differently in different tables.
+          Locations: set(row, "Locations"),
+        },
+      };
+    },
+  },
+
   // ------------------------------------------------------------------- cloud
   {
     id: "SOC-RULE-0020-AwsIamPersistence",
@@ -646,6 +697,57 @@ export const ANALYTICS_RULES: readonly AnalyticsRule[] = [
     },
   },
 
+  {
+    id: "SOC-RULE-0026-CloudResourceDestruction",
+    displayName: "Multiple cloud resources deleted by one principal",
+    description:
+      "A single caller deleted several Azure resources in a short window. Routine during a " +
+      "planned teardown, and what destructive impact looks like from the control plane.",
+    severity: "High",
+    tactics: ["Impact"],
+    techniques: ["T1485"],
+    remediationSteps: [
+      "Confirm the deletions were planned, with the team that owns the resources.",
+      "Check whether the caller authenticated from an unfamiliar address.",
+    ],
+    query: `
+      // Azure Activity logs one operation as several rows — Start, Accept and
+      // Success for the same delete — so counting rows would report one
+      // deletion as three. Only terminal successes count.
+      azureActivity_adele_CL
+      | where OperationNameValue endswith "/DELETE"
+      | where ActivityStatusValue == "Success"
+      | summarize
+          Deletions = count(),
+          Operations = array_slice(array_sort_asc(make_set(OperationNameValue)), 0, 8),
+          ResourceGroups = array_slice(array_sort_asc(make_set(ResourceGroup)), 0, 8),
+          StartTime = min(TimeGenerated),
+          EndTime = max(TimeGenerated)
+        by Caller, CallerIpAddress
+      | where Deletions >= 5
+    `,
+    build: (row, entities) => {
+      const caller = str(row, "Caller");
+      const address = str(row, "CallerIpAddress");
+      addUpnAccount(entities, caller);
+      if (address !== "") entities.ip(address);
+      entities.cloudApplication({ name: "Microsoft Azure" });
+      return {
+        displayName: `${num(row, "Deletions")} Azure resources deleted by ${caller}`,
+        description:
+          `${caller} deleted ${num(row, "Deletions")} resource(s) from ${address}, spanning ` +
+          `${set(row, "ResourceGroups").length} resource group(s).`,
+        compromisedEntity: caller,
+        additionalData: {
+          Deletions: num(row, "Deletions"),
+          Operations: set(row, "Operations"),
+          "Resource Groups": set(row, "ResourceGroups"),
+          "Caller Address": address,
+        },
+      };
+    },
+  },
+
   // ----------------------------------------------------------------- network
   {
     id: "SOC-RULE-0030-FirewallThreatDetected",
@@ -888,6 +990,57 @@ export const ANALYTICS_RULES: readonly AnalyticsRule[] = [
         description: `${num(row, "Attempts")} model evasion attempt(s) were submitted by ${account}.`,
         compromisedEntity: account,
         additionalData: { Attempts: num(row, "Attempts"), Hosts: set(row, "Hosts") },
+      };
+    },
+  },
+
+  {
+    id: "SOC-RULE-0042-AnonymousSharingLinkCreated",
+    displayName: "Anonymous sharing link created for a document",
+    description:
+      "A link requiring no authentication was created for a file in SharePoint or OneDrive. " +
+      "Anyone holding the URL can retrieve the document, and the audit trail ends at the link.",
+    severity: "High",
+    tactics: ["Exfiltration", "Collection"],
+    techniques: ["T1567", "T1213.002"],
+    remediationSteps: [
+      "Revoke the link and establish who received it.",
+      "Review what else the account did in the same session.",
+    ],
+    query: `
+      // Event-shaped rather than volume-shaped on purpose. This table is mostly
+      // FileAccessed and PageViewed; a volume rule would fire on reading.
+      OfficeActivity_CL
+      | where Operation == "AnonymousLinkCreated"
+      | summarize
+          Links = count(),
+          Files = array_slice(array_sort_asc(make_set(SourceFileName)), 0, 6),
+          Objects = array_slice(array_sort_asc(make_set(OfficeObjectId)), 0, 4),
+          Clients = array_slice(array_sort_asc(make_set(ClientIP)), 0, 4),
+          Workloads = array_slice(array_sort_asc(make_set(OfficeWorkload)), 0, 3),
+          StartTime = min(TimeGenerated),
+          EndTime = max(TimeGenerated)
+        by UserId
+    `,
+    build: (row, entities) => {
+      const user = str(row, "UserId");
+      const files = set(row, "Files");
+      addUpnAccount(entities, user);
+      for (const address of set(row, "Clients")) entities.ip(address);
+      for (const name of files) entities.file({ name });
+      for (const object of set(row, "Objects")) entities.url(object);
+      return {
+        displayName: `Anonymous sharing link created by ${user}`,
+        description:
+          `${user} created ${num(row, "Links")} anonymous link(s)` +
+          (files.length === 0 ? "." : ` for ${files.join(", ")}.`),
+        compromisedEntity: user,
+        additionalData: {
+          Links: num(row, "Links"),
+          Files: files,
+          Clients: set(row, "Clients"),
+          Workloads: set(row, "Workloads"),
+        },
       };
     },
   },

@@ -1,0 +1,34 @@
+{
+  "id": "adele-sharepoint-exfiltration",
+  "title": "Anonymous sharing link created on a sensitive spreadsheet, then a file deleted",
+  "startingAlertId": "fcf15f79-09ce-f459-2a1f-26c97d28a253",
+  "sourceData": "Microsoft Sentinel Training Lab — OfficeActivity_CL, sign_in_adelete_CL (2021 era, m365x816222 tenant)",
+  "verdict": "true-positive",
+  "impact": "confirmed-compromise",
+  "summary": "A link requiring no authentication was created for 'Contoso Purchasing Data - Q1.xlsx' in adelev's OneDrive from 175.45.176.99. It is preceded within nine seconds by three permission grants and three sharing changes, and followed seventy seconds later by a file deletion from the same address — the address that authenticated to this account 53 times.",
+  "keyEntities": [
+    "adelev@m365x816222.onmicrosoft.com",
+    "175.45.176.99",
+    "Contoso Purchasing Data - Q1.xlsx",
+    "Timesheet_AdeleV.xlsx"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "What surrounds the link in time?",
+      "kql": "OfficeActivity_CL | where UserId has 'adelev' | where Operation in ('PermissionLevelAdded','SharingSet','SharingInheritanceBroken','AnonymousLinkCreated','FileDeleted','FileDownloaded') | project TimeGenerated, Operation, SourceFileName, ClientIP | order by TimeGenerated asc",
+      "expected": "Eleven rows. After an unrelated FileDownloaded from a different address, a tight burst from 175.45.176.99: PermissionLevelAdded three times, then SharingSet and SharingInheritanceBroken on 'Contoso Purchasing Data - Q1.xlsx', then AnonymousLinkCreated, then FileDeleted — inside about ninety seconds"
+    },
+    {
+      "question": "Is the sharing address the same one that authenticated?",
+      "kql": "sign_in_adelete_CL | where IPAddress == '175.45.176.99' | summarize SignIns=count(), Successful=countif(ResultType == 0) by UserPrincipalName",
+      "expected": "adelev, 56 sign-ins of which 53 succeeded — the sharing and the authentication come from one address"
+    },
+    {
+      "question": "Is anonymous sharing normal for this tenant?",
+      "kql": "OfficeActivity_CL | summarize n=count() by Operation | order by n desc",
+      "expected": "AnonymousLinkCreated occurs exactly once in 266 rows; 106 of the rows are FileAccessed, FilePreviewed or PageViewed"
+    }
+  ],
+  "trap": "OfficeActivity_CL is 266 rows of ordinary document work — FileAccessed, FilePreviewed, PageViewed — so an investigation that samples the table sees routine collaboration and treats one sharing link as noise. Anonymous sharing is also a legitimate feature that people use daily, which makes 'user shared a file' an easy dismissal. What settles it is that the link was created by an address that authenticated 53 times and had already failed against a decommissioned account, and that a file was deleted immediately afterwards.",
+  "evaluatorNotes": "The exfiltration stage of the cluster-3 attack, and a different evidence path from adele-signin-compromise: this one starts from a single event and has to establish the session around it, where that one starts from volume and has to establish what followed. An investigation that reaches confirmed-compromise purely because the account name matches another alert has not done the work — the sequence within OfficeActivity_CL is what carries it. Impact is confirmed-compromise: the link was created and the audit trail ends there, so the document must be treated as disclosed."
+}

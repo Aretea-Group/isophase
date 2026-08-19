@@ -1,0 +1,34 @@
+{
+  "id": "aws-backdoor-account",
+  "title": "Console sign-in by an account created twenty-six minutes earlier, from its creator's address",
+  "startingAlertId": "b11a4e1c-59b3-75e1-3c95-c068a1548765",
+  "sourceData": "Microsoft Sentinel Training Lab — AWSCloudTrail (2026 era, pkwork estate)",
+  "verdict": "true-positive",
+  "impact": "confirmed-compromise",
+  "summary": "backdoor-svc signed in to the AWS console twice. The account does not predate the incident: mirage created it with CreateUser, issued it an access key and attached a policy within two minutes, and backdoor-svc's first sign-in comes from 198.51.100.42 — mirage's own address. Its second sign-in, five minutes later, comes from 203.0.113.77. Between mirage creating the account and that second sign-in, mirage called StopLogging and DeleteTrail.",
+  "keyEntities": [
+    "backdoor-svc",
+    "mirage",
+    "198.51.100.42",
+    "203.0.113.77"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Where did this account come from?",
+      "kql": "AWSCloudTrail | where EventName in ('CreateUser','CreateAccessKey','AttachUserPolicy','CreateLoginProfile') | project TimeGenerated, UserIdentityUserName, EventName, SourceIpAddress | order by TimeGenerated asc",
+      "expected": "mirage performs CreateUser, CreateAccessKey and AttachUserPolicy from 198.51.100.42 within about two minutes, and CreateLoginProfile later — the account is minutes old when it first signs in"
+    },
+    {
+      "question": "Does the backdoor account share an address with anyone?",
+      "kql": "AWSCloudTrail | where EventName == 'ConsoleLogin' | project TimeGenerated, UserIdentityUserName, SourceIpAddress | order by TimeGenerated asc",
+      "expected": "Seven console sign-ins. backdoor-svc's first is from 198.51.100.42, the same address mirage signs in from; its second, about five minutes later, is from 203.0.113.77"
+    },
+    {
+      "question": "Was anything done to the audit trail?",
+      "kql": "AWSCloudTrail | where EventName in ('StopLogging','DeleteTrail') | project TimeGenerated, UserIdentityUserName, EventName, SourceIpAddress",
+      "expected": "mirage calls StopLogging and then DeleteTrail about five minutes apart, both from 198.51.100.42, and both before backdoor-svc's second sign-in"
+    }
+  ],
+  "trap": "The alert says only that a service account signed in from an external address, which is unremarkable on its own — service accounts sign in, and an external address is normal for anything cloud-hosted. Nothing in the alert says the account is new. The investigation only turns when its creation is traced, and the decisive detail is the shared source address: the backdoor's first sign-in comes from the same IP as the account that created it.",
+  "evaluatorNotes": "The only cluster-1 scenario that tests CloudTrail identity pivoting rather than the Okta path that mirage-account-takeover already covers. Getting this right requires reconstructing an account's provenance from event history rather than assessing the sign-in in isolation. Impact is confirmed-compromise because persistence was established and the audit trail was disabled around it. An investigation that treats backdoor-svc as a pre-existing service account and calls the sign-in benign has not asked where the account came from."
+}

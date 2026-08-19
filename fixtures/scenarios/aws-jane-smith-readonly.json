@@ -1,0 +1,44 @@
+{
+  "id": "aws-jane-smith-readonly",
+  "title": "MFA-authenticated administrator enumerating trails and users during someone else's intrusion",
+  "startingAlertId": "ca236d56-0cb5-d3ed-615c-525e01e2b74b",
+  "sourceData": "Microsoft Sentinel Training Lab — AWSCloudTrail (2026 era, pkwork estate)",
+  "verdict": "false-positive",
+  "impact": "none",
+  "summary": "jane.smith made five read-only API calls and one console sign-in from 198.51.100.22. Two of them — DescribeTrails and ListUsers — land between the intruder's StopLogging and DeleteTrail, which is the worst possible timing for an innocent account. Every one of her sessions is MFA-authenticated, her session was established roughly ninety minutes before the intruder's first event, nothing she called mutates state, and her client is macOS with the AWS CLI. All three confirmed attackers authenticated without MFA from Windows or Linux browsers.",
+  "keyEntities": [
+    "jane.smith",
+    "198.51.100.22",
+    "198.51.100.42",
+    "mirage"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Was MFA satisfied, and how does that compare with the rest of the tenant?",
+      "kql": "AWSCloudTrail | summarize Events=count(), MfaSessions=countif(SessionMfaAuthenticated==true), NonMfaSessions=countif(SessionMfaAuthenticated!=true) by UserIdentityUserName | order by NonMfaSessions desc",
+      "expected": "A clean split. jane.smith 6/6 and bob.jones 5/5 MFA-authenticated; mirage 0 of 25, backdoor-svc 0 of 3 and eve.hacker 0 of 2 — every confirmed attacker session lacks MFA and neither of these two does"
+    },
+    {
+      "question": "Was the session established before or after the intrusion began?",
+      "kql": "AWSCloudTrail | summarize FirstSession=min(SessionCreationDate), FirstEvent=min(TimeGenerated) by UserIdentityUserName | order by FirstSession asc",
+      "expected": "jane.smith's session is created well before mirage's first event — a credential stolen by mirage cannot produce a session that predates mirage's own first activity"
+    },
+    {
+      "question": "Did the account change anything?",
+      "kql": "AWSCloudTrail | where UserIdentityUserName == 'jane.smith' | project TimeGenerated, EventName, ReadOnly, SourceIpAddress, UserAgent | order by TimeGenerated asc",
+      "expected": "Six events. DescribeInstances, ListBuckets, DescribeTrails, ListUsers and DescribeAlarms are all ReadOnly true; only the ConsoleLogin is not read-only, because it is a sign-in rather than an API call"
+    },
+    {
+      "question": "Does the client match the attacker's tooling?",
+      "kql": "AWSCloudTrail | summarize Agents=make_set(UserAgent,4) by UserIdentityUserName | order by UserIdentityUserName asc",
+      "expected": "jane.smith and bob.jones use aws-cli/2.15.0 with a macOS browser; mirage and backdoor-svc use a Windows browser and eve.hacker a Linux one. Different platform and different tooling from every confirmed attacker"
+    },
+    {
+      "question": "How bad does the timing actually look?",
+      "kql": "AWSCloudTrail | where EventName in ('DescribeTrails','ListUsers','StopLogging','DeleteTrail','CreateUser') | project TimeGenerated, UserIdentityUserName, EventName, SourceIpAddress | order by TimeGenerated asc",
+      "expected": "Six rows: mirage ListUsers, mirage CreateUser, mirage StopLogging, jane.smith DescribeTrails, jane.smith ListUsers, mirage DeleteTrail. Her two calls do fall between the log-tampering events — genuinely damning-looking, and still not what the identity evidence says"
+    }
+  ],
+  "trap": "This is the harder of the pair, and deliberately so. jane.smith runs DescribeTrails and ListUsers — precisely the calls mirage made — from an address one host from mirage's, in the window between logging being stopped and the trail being deleted. Every circumstantial signal says second compromised credential. All of it is coincidence the fixture was built to produce: the /24 adjacency is an RFC 5737 documentation-range artifact, and an administrator checking trails and users while an incident is unfolding is the most ordinary thing in the world. MFA, session age, read-only and client platform all separate her cleanly from the three real attackers.",
+  "evaluatorNotes": "The strongest contamination control in the key: an account whose circumstantial profile looks worse than bob.jones's and which resolves the same way. An investigation that condemns jane.smith while clearing bob.jones has ranked them by how incriminating the coincidence looks rather than by evidence. Upstream corroborates independently — the Training Lab's `known_bad_ips.csv` names 198.51.100.42, 203.0.113.77 and 192.0.2.100 as attacker infrastructure and excludes 198.51.100.22, while including its /24 neighbour. That file is deliberately not vendored: it names the answer for the whole 2026 chain."
+}
