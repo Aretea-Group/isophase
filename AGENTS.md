@@ -45,7 +45,6 @@ Do not implement:
 - frontend;
 - RBAC/authentication;
 - threat intelligence;
-- web research;
 - alert grouping;
 - multi-tenancy;
 - production HA.
@@ -116,10 +115,7 @@ apps/
 
 packages/
   sentinel-client/
-  agent-runtime/
   contracts/
-  persistence/
-  testkit/
 
 baml_src/
 
@@ -143,6 +139,10 @@ AGENTS.md
 ```
 
 Do not create empty future-capability packages.
+
+`agent-runtime` is deliberately absent: `apps/investigator/src/harness.ts` is the single
+Pi boundary ADR 002 asks for, and wrapping one class in a package would be the generic
+agent framework PRD-2 §24 excludes. `persistence` and `testkit` remain unbuilt.
 
 ## 6. Quality Rules
 
@@ -234,15 +234,25 @@ Return useful query errors. Do not silently rewrite invalid KQL.
 
 ## 10. Agent Tooling
 
-Initial tool:
+Current surface (PRD-2 §9, extended by ADR 005):
 
 ```text
+get_security_schema(tables)
 query_security_data(kql)
+web_search(query)
+web_fetch(url)
+submit_investigation(...)
 ```
 
-It calls the Sentinel Client and returns bounded evidence/query errors to the agent.
+`query_security_data` calls the Sentinel Client and returns the raw result to the agent.
+Do not summarise, extract or normalise it — anything this layer emphasises is a playbook
+smuggled in through formatting.
 
-Do not initially add semantic tools such as `get_user`, `investigate_powershell`, or `investigate_signin`.
+Web content is untrusted. It is returned inside a provenance envelope and the system
+prompt standing-orders it as data rather than instructions. See ADR 005 §3.
+
+Do not add semantic tools such as `get_user`, `investigate_powershell`, or
+`investigate_signin`.
 
 Add new tools only when a real investigation failure demonstrates the need.
 
@@ -251,8 +261,12 @@ Add new tools only when a real investigation failure demonstrates the need.
 Each investigation starts with:
 - system instructions;
 - current alert;
-- current queryable schema;
+- available table names;
 - available tools.
+
+The complete schema is fetched once per investigation and held by the harness, but only
+table names enter model context — 22 tables and 1,168 columns would spend the window
+before the agent knows what matters. It requests schemas it wants (ADR 005 §4).
 
 No prior-case memory in the current slice.
 
@@ -260,7 +274,9 @@ Do not build vector search or generalized memory.
 
 ## 12. Persistence
 
-When the investigator slice begins, persist:
+PRD-2 persists one `runs/<run-id>.json` artifact per invocation, holding per-alert
+outcomes only — not a trace (ADR 005 §2). The list below is the eventual target for a
+trace store, deferred until evaluation shows a concrete need:
 - source alert;
 - schema snapshot/version;
 - configured provider/model;
@@ -274,13 +290,16 @@ When the investigator slice begins, persist:
 
 Do not store hidden chain-of-thought as a product requirement.
 
-## 13. BAML
+## 13. Structured Assessment
 
-BAML owns the final LLM assessment contract.
+The agent submits its own assessment through the `submit_investigation` tool, and a valid
+call is the Definition of Done. Pi validates it against the tool schema before execution,
+so an invalid submission returns to the model as a correctable error (ADR 005 §1).
 
-Keep autonomous investigation and final contractual formatting separate in the first implementation.
+BAML is deferred, not rejected. Revisit if free-form submissions prove unreliable.
 
-Do not weaken the assessment into unvalidated free text.
+Do not weaken the assessment into unvalidated free text, and never convert a final
+assistant message into a result.
 
 ## 14. Implementation Order
 
@@ -310,18 +329,17 @@ Acceptance:
 - application can perform the same manual investigation through the client without knowing the mock internals.
 
 ### Phase 5
-Investigator + Pi.
+Investigator + Pi (PRD-2).
 
 Acceptance:
-- agent receives alert/schema;
-- agent can optionally call KQL;
-- tool traces are observable.
+- agent receives the alert and available table names;
+- agent may call any of the five tools, or none;
+- a valid `submit_investigation` is required for success;
+- each invocation writes a run artifact.
 
 ### Phase 6
-BAML assessment + persistence.
-
-Acceptance:
-- autonomous run ends with a valid structured assessment and stored trace.
+Evaluation against the hidden scenario metadata, then BAML/trace persistence if
+demonstrated necessary (ADR 005 §1, §2).
 
 ## 15. When to Stop and Ask for Architecture Input
 

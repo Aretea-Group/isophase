@@ -36,7 +36,7 @@ export function alertRoutes(options: AlertRoutesOptions): Hono {
   const app = new Hono();
 
   app.get("/alerts", async (c) => {
-    // `$top` follows the ARM convention. Optional: the full list is 171 alerts,
+    // `$top` follows the ARM convention. Optional: the full list is 151 alerts,
     // which is a realistic queue rather than something needing pagination.
     const topRaw = c.req.query("$top");
     const top = topRaw === undefined ? undefined : Number(topRaw);

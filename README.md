@@ -8,8 +8,8 @@ The architecture baseline is [`docs/architecture.md`](./docs/architecture.md).
 
 ## Status
 
-**Phase 3 — Mock Sentinel REST API. Complete.**
-([PRD-1 §4.2–4.5](./docs/prd-1-mock-sentinel.md), AGENTS.md §14.)
+**Phases 4–5 — Sentinel Client and Core Investigation Agent. Complete.**
+([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), AGENTS.md §14.)
 
 `bun run data:bootstrap` takes a cold emulator to 22 populated tables — 25,130 rows
 across 1,168 columns — in about two seconds, from telemetry vendored at a pinned
@@ -27,7 +27,24 @@ GET  /schema          22 tables, read from the engine
 POST /query           read-only KQL
 ```
 
-Next is Phase 4, the Sentinel Client.
+An autonomous agent investigates those alerts:
+
+```bash
+bun run investigate                     # every alert, sequentially
+bun run investigate --alert <alert-id>  # one alert
+```
+
+Each invocation writes `runs/<run-id>.json` with a TP/FP assessment per alert,
+keyed by `systemAlertId` so it joins directly to the hidden scenario fixtures.
+The agent gets the alert, the table names, read-only KQL, public web research and
+a structured submission — and decides for itself what to look at. There is no
+playbook (PRD-2 §2).
+
+A valid `submit_investigation` is the only way an investigation succeeds; a
+confident closing message is not a result (PRD-2 §16).
+
+Requires a provider key — see [`.env.example`](./.env.example). Next is Phase 6,
+evaluating runs against the scenario ground truth.
 
 ## Prerequisites
 
