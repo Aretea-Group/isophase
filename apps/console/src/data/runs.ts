@@ -61,6 +61,17 @@ const Artifact = z.object({
   /** The sweep's lifecycle: `running | completed | interrupted`. Absent before PRD-3. */
   status: z.string().optional(),
   alertCount: z.number().optional(),
+  /**
+   * Which alerts the sweep set out to investigate, in the order it takes them (PRD-3 §7).
+   *
+   * `alertCount` says how many; this says which, and an in-flight alert cannot be named — or its
+   * transcript found, since it is named `<runId>-<alertId>.jsonl` — without it. Absent on
+   * artifacts written before it was recorded, and the title is optional for the same reason every
+   * field here is.
+   */
+  plannedAlerts: z
+    .array(z.object({ alertId: z.string(), alertTitle: z.string().optional() }))
+    .optional(),
   traceDir: z.string().optional(),
   config: z
     .object({

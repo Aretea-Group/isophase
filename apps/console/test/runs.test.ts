@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { readRun, readRuns } from "../src/data/runs.ts";
@@ -32,6 +34,32 @@ describe("readRuns", () => {
 });
 
 describe("artifact shapes", () => {
+  test("reads the alerts an in-flight sweep set out to investigate", async () => {
+    const root = await mkdtemp(join(tmpdir(), "console-runs-"));
+    const path = join(root, "in-flight.json");
+    try {
+      await Bun.write(
+        path,
+        JSON.stringify({
+          runId: "01a0195f-2222-7000-2222-000000000002",
+          status: "running",
+          alertCount: 1,
+          plannedAlerts: [{ alertId: "alert-1", alertTitle: "Anonymous sharing" }],
+          results: [],
+        }),
+      );
+      const run = await readRun(path);
+      expect("issue" in run).toBe(false);
+      if ("issue" in run) return;
+
+      // The alert is named before anything has finished — `results` is still empty.
+      expect(run.plannedAlerts?.[0]?.alertTitle).toBe("Anonymous sharing");
+      expect(run.results).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("reads the current shape, with impact and researchDone", async () => {
     const run = await readRun(join(FIXTURES, "01a0194c-b7c1-7000-8a3b-fe9d2b647919.json"));
     expect("issue" in run).toBe(false);

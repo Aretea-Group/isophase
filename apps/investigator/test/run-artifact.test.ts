@@ -42,6 +42,22 @@ describe("InvestigationRun", () => {
     expect(parsed.config?.thinkingLevel).toBe("medium");
   });
 
+  test("records which alerts the sweep set out to investigate, not only how many", () => {
+    // Without the ids a reader cannot name — or find the transcript of — the alert being
+    // investigated right now, because `results` holds only alerts that have finished.
+    const parsed = InvestigationRun.parse({
+      ...base,
+      status: "running",
+      alertCount: 2,
+      plannedAlerts: [
+        { alertId: "cccccccc-0000-0000-0000-000000000009", alertTitle: "Anonymous sharing" },
+        { alertId: "cccccccc-0000-0000-0000-00000000000a", alertTitle: "Disabled account sign-in" },
+      ],
+    });
+    expect(parsed.plannedAlerts?.[0]?.alertTitle).toBe("Anonymous sharing");
+    expect(InvestigationRun.parse(base).plannedAlerts).toBeUndefined();
+  });
+
   test("accepts the alert's own triage facts, and keeps them optional", () => {
     const withAlert = InvestigationRun.parse({
       ...base,

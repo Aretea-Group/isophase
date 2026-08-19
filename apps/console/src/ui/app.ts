@@ -21,6 +21,7 @@ import {
   type AlertFacts,
 } from "../view/alert.ts";
 import { bandLabel, linesText, truncate, verdictBand, type Line } from "../view/format.ts";
+import { isPending, resultsWithPending } from "../view/run-list.ts";
 import { toTranscript, transcriptLines, type TranscriptBlock } from "../view/transcript.ts";
 import { pendingLine, resultRows, runRows, scrollOffset, windowed } from "./panes/lists.ts";
 import {
@@ -28,6 +29,7 @@ import {
   callArgsText,
   callDetail,
   configBody,
+  progressBody,
   streamBody,
   verdictBody,
 } from "./panes/main.ts";
@@ -56,7 +58,24 @@ const RUNS_MIN_HEIGHT = 6;
 const NARROW_WIDTH = 100;
 const MIN_WIDTH = 60;
 
-function noTranscriptLines(): string[] {
+/**
+ * Why the transcript tabs have nothing to show.
+ *
+ * Two different absences, and telling an analyst the wrong one is worse than saying nothing: a
+ * traced run that has only just started has no transcript *yet*, and reporting that as "tracing
+ * was off" describes a configuration the run does not have (PRD-3 §11).
+ */
+function noTranscriptLines(waiting: boolean): string[] {
+  if (waiting) {
+    return [
+      "",
+      "  Waiting for this investigation's transcript.",
+      "",
+      "  Tracing is on for this run, so the file appears as soon as the agent",
+      "  writes its first event; this pane picks it up within a second and",
+      "  follows it from there.",
+    ];
+  }
   return [
     "",
     "  No transcript for this investigation.",
@@ -307,8 +326,19 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     return state.runs.filter((run) => runHaystack(run).includes(needle));
   }
 
+  /**
+   * The selected run's alerts: finished ones, then the ones it is still working through.
+   *
+   * The pending rows are what let everything downstream address an alert *while* it is being
+   * investigated — the transcript tail, the tab bar, pane [4]. Without them a single-alert run is
+   * a row with nothing behind it for its whole lifetime (PRD-3 §13).
+   */
+  function allResults(): RunResult[] {
+    return resultsWithPending(visibleRuns()[state.runIndex]);
+  }
+
   function visibleResults(): RunResult[] {
-    const results = visibleRuns()[state.runIndex]?.results ?? [];
+    const results = allResults();
     if (state.filter === "" || state.filterTarget !== 1) return results;
     const needle = state.filter.toLowerCase();
     return results.filter((result) => resultHaystack(result).includes(needle));
@@ -491,10 +521,11 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // running and the pending count is the only progress indicator (PRD-3 §8.1, §11).
     // Always present. Hiding it for single-alert runs made `1-4` a lie on almost every run in the
     // corpus and left ⏎ walking to a pane that was not there.
-    const many = (run?.results.length ?? 0) > 1;
+    const held = allResults().length;
+    const many = held > 1;
     alertsBox.visible = !narrow;
     alertsBox.title = truncate(
-      `${many ? "[1] Alerts" : "[1] Alert"}${filterSuffix(1, run?.results.length ?? 0, results.length)}${pending === undefined ? "" : ` —${pending.trimEnd()}`}`,
+      `${many ? "[1] Alerts" : "[1] Alert"}${filterSuffix(1, held, results.length)}${pending === undefined ? "" : ` —${pending.trimEnd()}`}`,
       SIDEBAR_WIDTH - 4,
     );
     const alertRowsAll = resultRows(results, state.resultIndex, listWidth);
@@ -506,7 +537,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     );
     alertsText.content = styled(
       alertRowsAll.length === 0
-        ? [[{ text: "  no finished alerts yet", tone: "dim" }]]
+        ? [[{ text: "  no alerts recorded yet", tone: "dim" }]]
         : windowed(alertRowsAll, state.alertScroll, alertsHeight - 2),
     );
 
@@ -628,10 +659,21 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       ];
     }
 
-    if (state.tab === "verdict") return verdictBody(result, state.alertFacts, width);
+    // Waiting on a transcript, rather than never having had one: the run says it is tracing and
+    // this alert is the one being investigated right now.
+    const traced = currentRun()?.traceDir !== undefined;
+    const waiting = traced && isPending(result);
+
+    // An in-flight investigation has no verdict — the agent submits one call at the end — so the
+    // Verdict tab reports progress instead of an empty assessment (PRD-3 §13).
+    if (state.tab === "verdict") {
+      return isPending(result)
+        ? progressBody(state.alertFacts, state.index, traced, width)
+        : verdictBody(result, state.alertFacts, width);
+    }
 
     if (state.tab === "transcript") {
-      if (state.index === undefined) return noTranscriptLines();
+      if (state.index === undefined) return noTranscriptLines(waiting);
       state.transcriptBlocks = toTranscript(state.index, width);
       // A tailing transcript grows underneath the selection; clamp rather than let it point past
       // the end of the conversation.
@@ -647,7 +689,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       );
     }
 
-    if (state.index === undefined) return noTranscriptLines();
+    if (state.index === undefined) return noTranscriptLines(waiting);
 
     if (state.tab === "stream") return streamBody(state.index, width);
 

@@ -101,6 +101,22 @@ export const InvestigationRun = z.object({
    * without this a reader can show what completed but cannot say how much is left (PRD-3 §11).
    */
   alertCount: z.number().int().nonnegative().optional(),
+  /**
+   * The alerts the sweep set out to investigate, in the order it will take them (PRD-3 §7).
+   *
+   * `alertCount` says how many are left; this says *which*, and that is the difference between a
+   * reader being able to describe an in-flight sweep and not. A transcript is named
+   * `<runId>-<alertId>.jsonl`, so without the id the console cannot find the transcript of the
+   * alert being investigated right now — and for a single-alert run `results` is empty for the
+   * whole 600 s it may take, which made PRD-3 §13's "its turns and tool calls also stream as the
+   * transcript grows" unreachable for the only alert there was.
+   *
+   * The title travels with the id because the artifact must stand on its own with tracing off:
+   * an id names a file, and an analyst watching a sweep is looking for the alert.
+   */
+  plannedAlerts: z
+    .array(z.object({ alertId: z.string().min(1), alertTitle: z.string() }))
+    .optional(),
   /** Where this run's transcripts landed. Absent when tracing was off. */
   traceDir: z.string().min(1).optional(),
   config: InvestigationRunConfig.optional(),

@@ -273,11 +273,12 @@ PRD-2 writes the artifact once, when the sweep ends. Nothing on disk marks a run
 PRD-3 adds a lifecycle to `InvestigationRun`, additively:
 
 ```text
-status      running | completed | interrupted     optional
-alertCount  how many alerts this sweep will cover optional
-traceDir    where this run's transcripts landed   optional
-config      thinkingLevel, resultMaxChars,        optional
-            sentinelBaseUrl, webSearchConfigured
+status         running | completed | interrupted      optional
+alertCount     how many alerts this sweep will cover  optional
+plannedAlerts  which ones: alertId + alertTitle       optional
+traceDir       where this run's transcripts landed    optional
+config         thinkingLevel, resultMaxChars,         optional
+               sentinelBaseUrl, webSearchConfigured
 ```
 
 These are run-level fields. `InvestigationResult.status` already exists with a different enum,
@@ -287,6 +288,14 @@ author looking for somewhere to put `interrupted`, which describes a sweep and n
 `alertCount` is written before the first alert, and it is what makes §11's mid-sweep state
 renderable. `results` only ever holds finished alerts, so without a planned total the console can
 show what has completed but cannot say how much is left.
+
+`plannedAlerts` is written at the same moment and answers the next question: *which* alerts those
+are. The count alone was not enough. A transcript is named `<runId>-<alertId>.jsonl`, so without
+the id the console cannot find the transcript of the alert being investigated **now** — and a
+single-alert run holds `results: []` for its entire lifetime, up to `limits.timeoutMs`. §13's "with
+tracing on, its turns and tool calls also stream as the transcript grows" was therefore unreachable
+for the one alert such a run has, and the run itself could only be labelled "(no alerts yet)" for
+ten minutes. The title travels with the id so the artifact still names the alert with tracing off.
 
 The artifact is flushed more often: once before the first alert, once after each alert through the
 existing `onResult` seam, and once at the end. The SIGINT path already flushes, and now sets the
@@ -321,7 +330,7 @@ rather than left to be discovered, and §10.2 reads it as the liveness heartbeat
 Runs newest first, active runs pinned above completed ones. Selecting a run lists its results;
 selecting a result opens it.
 
-A sweep can hold 151 results, so this view reads only the artifact. No transcript is opened to
+A sweep can hold 154 results, so this view reads only the artifact. No transcript is opened to
 render a list. Rows lead with severity, the incident date and the title; the run id moves to a
 second line, because it identifies a file rather than an incident.
 
@@ -859,7 +868,9 @@ Every one of these is a designed state with explanatory text, not a blank panel:
 ```text
 no runs at all              name the command that produces one
 run has no transcript       say tracing was off for that run, and how to enable it
-run is mid-sweep            show what has completed, and `alertCount` minus those as pending
+transcript not written yet  say the console is waiting, not that tracing was off
+run is mid-sweep            show what has completed, and `plannedAlerts` minus those as pending
+alert under investigation   a row of its own, and its progress instead of an empty verdict
 run claims to be running    say stale, and when the artifact was last written (§10.2)
 artifact will not parse     name the file and the validation failure, keep the rest usable
 terminal too narrow         say so instead of rendering corrupted boxes
