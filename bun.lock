@@ -16,6 +16,18 @@
         "typescript": "7.0.2",
       },
     },
+    "apps/investigator": {
+      "name": "@soc/investigator",
+      "version": "0.0.0",
+      "dependencies": {
+        "@earendil-works/pi-agent-core": "0.84.2",
+        "@earendil-works/pi-ai": "0.84.2",
+        "@soc/contracts": "workspace:*",
+        "@soc/sentinel-client": "workspace:*",
+        "@t3-oss/env-core": "0.13.11",
+        "zod": "4.4.3",
+      },
+    },
     "apps/mock-sentinel": {
       "name": "@soc/mock-sentinel",
       "version": "0.0.0",
@@ -217,6 +229,8 @@
     "@smithy/util-utf8": ["@smithy/util-utf8@2.3.0", "", { "dependencies": { "@smithy/util-buffer-from": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A=="],
 
     "@soc/contracts": ["@soc/contracts@workspace:packages/contracts"],
+
+    "@soc/investigator": ["@soc/investigator@workspace:apps/investigator"],
 
     "@soc/mock-sentinel": ["@soc/mock-sentinel@workspace:apps/mock-sentinel"],
 
