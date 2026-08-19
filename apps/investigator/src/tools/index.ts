@@ -18,6 +18,8 @@ export interface InvestigationToolDeps {
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   onSubmit: (summary: InvestigationSummary) => void;
+  /** Character budget for a single query result. */
+  resultMaxChars?: number;
 }
 
 /**
@@ -36,7 +38,7 @@ export interface InvestigationToolDeps {
 export function createInvestigationTools(deps: InvestigationToolDeps): AgentTool[] {
   return [
     createGetSecuritySchemaTool(deps.tables),
-    createQuerySecurityDataTool(deps.sentinel),
+    createQuerySecurityDataTool(deps.sentinel, deps.resultMaxChars),
     createWebSearchTool(deps.webSearch),
     createWebFetchTool(deps.webFetch),
     createSubmitInvestigationTool(deps.onSubmit),

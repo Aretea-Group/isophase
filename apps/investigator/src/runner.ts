@@ -1,3 +1,4 @@
+import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlertResource } from "@soc/contracts";
 
 import type { InvestigationResult } from "./contracts/run.ts";
@@ -9,6 +10,8 @@ export interface RunAlertsOptions {
   log?: (message: string) => void;
   /** Called after each alert so a long sweep can be flushed if it is interrupted. */
   onResult?: (result: InvestigationResult) => void;
+  /** Build a per-alert Pi event observer, when tracing is enabled. */
+  createEventSink?: (alert: SecurityAlertResource) => ((event: AgentEvent) => void) | undefined;
 }
 
 function describe(error: unknown): { name: string; message: string } {
@@ -37,8 +40,9 @@ export async function runAlerts(options: RunAlertsOptions): Promise<Investigatio
 
     let result: InvestigationResult;
     try {
+      const onEvent = options.createEventSink?.(alert);
       // eslint-disable-next-line no-await-in-loop -- sequential by design (PRD-2 §6)
-      const summary = await harness.investigate(alert);
+      const summary = await harness.investigate(alert, onEvent === undefined ? {} : { onEvent });
       const completed = new Date();
       result = {
         alertId,

@@ -27,6 +27,12 @@ export const env = createEnv({
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     /** Ceiling on elapsed time for one investigation. A different failure mode to max turns. */
     INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+    /**
+     * Character budget for a single query result (ADR 002, "result-size limits"). Measured against
+     * this environment, one unbounded wide-table query serialises to ~88k tokens compact, which
+     * exceeds a typical per-minute token budget on its own.
+     */
+    INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
 
     // Provider API keys are deliberately absent here. pi-ai reads them straight from the ambient
     // environment, so declaring them would imply this object supplies them. The provider-aware
@@ -38,6 +44,17 @@ export const env = createEnv({
     WEB_FETCH_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 
     RUNS_DIR: z.string().min(1).default("runs"),
+
+    /**
+     * Capture the full Pi transcript per investigation. Off by default — the run artifact is the
+     * durable output (PRD-2 §19). Worth turning on while the system is new: the first live runs
+     * died on provider token limits with no record of which queries filled the context.
+     */
+    INVESTIGATOR_TRACE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+    INVESTIGATOR_TRACE_DIR: z.string().min(1).default("runs/traces"),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

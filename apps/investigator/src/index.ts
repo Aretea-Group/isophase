@@ -10,6 +10,7 @@ import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { resolveModel } from "./model.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
 import { runAlerts } from "./runner.ts";
+import { createTracer } from "./trace.ts";
 
 export interface CliArgs {
   alertId?: string;
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
     thinkingLevel: env.INVESTIGATOR_THINKING_LEVEL,
     maxTurns: env.INVESTIGATOR_MAX_TURNS,
     timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
+    resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
   });
 
   const alerts =
@@ -119,11 +121,25 @@ async function main(): Promise<void> {
     });
   });
 
+  if (env.INVESTIGATOR_TRACE) {
+    log(`[investigator] tracing enabled — transcripts in ${env.INVESTIGATOR_TRACE_DIR}/`);
+  }
+
   await runAlerts({
     harness,
     alerts,
     log,
     onResult: (result) => collected.push(result),
+    createEventSink: env.INVESTIGATOR_TRACE
+      ? (alert) =>
+          createTracer({
+            runId,
+            alertId: alert.properties.systemAlertId,
+            dir: env.INVESTIGATOR_TRACE_DIR,
+            console: true,
+            log,
+          }).onEvent
+      : undefined,
   });
 
   const path = await flush();

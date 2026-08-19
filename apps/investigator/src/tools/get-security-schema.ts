@@ -36,9 +36,11 @@ export function createGetSecuritySchemaTool(
         );
       }
 
+      // Compact rather than pretty-printed: the full 22-table schema is ~60 KB, most of which is
+      // indentation. No information is lost, only whitespace.
       const requested = params.tables.map((name) => tables.get(name));
       return {
-        content: [{ type: "text", text: JSON.stringify(requested, null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(requested) }],
         details: { tables: params.tables },
       };
     },

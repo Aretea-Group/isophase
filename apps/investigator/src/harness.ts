@@ -1,4 +1,9 @@
-import { Agent, type StreamFn, type ThinkingLevel } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  type AgentEvent,
+  type StreamFn,
+  type ThinkingLevel,
+} from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SecurityAlertResource } from "@soc/contracts";
 import type { SentinelApiClient } from "@soc/sentinel-client";
@@ -15,6 +20,15 @@ import {
 } from "./errors.ts";
 import { createInvestigationTools } from "./tools/index.ts";
 
+export interface InvestigateOptions {
+  /**
+   * Observer for this investigation's Pi events. Off by default: the run artifact is the durable
+   * output and a transcript is a debugging aid (PRD-2 §19). Passed per call rather than per
+   * harness so a trace belongs to exactly one investigation.
+   */
+  onEvent?: (event: AgentEvent) => void;
+}
+
 export interface InvestigationHarnessOptions {
   sentinel: SentinelApiClient;
   webSearch: WebSearchClient;
@@ -28,6 +42,8 @@ export interface InvestigationHarnessOptions {
   maxTurns?: number;
   /** Ceiling on elapsed time for one investigation (PRD-2 §17). */
   timeoutMs?: number;
+  /** Character budget for a single query result (ADR 002, "result-size limits"). */
+  resultMaxChars?: number;
   log?: (message: string) => void;
 }
 
@@ -54,7 +70,10 @@ export class InvestigationHarness {
     this.#options = options;
   }
 
-  async investigate(alert: SecurityAlertResource): Promise<InvestigationSummary> {
+  async investigate(
+    alert: SecurityAlertResource,
+    options: InvestigateOptions = {},
+  ): Promise<InvestigationSummary> {
     const { sentinel, webSearch, webFetch, model, streamFn, instructions } = this.#options;
     const maxTurns = this.#options.maxTurns ?? 50;
     const timeoutMs = this.#options.timeoutMs ?? 600_000;
@@ -92,11 +111,17 @@ export class InvestigationHarness {
       sentinel,
       webSearch,
       webFetch,
+      ...(this.#options.resultMaxChars === undefined
+        ? {}
+        : { resultMaxChars: this.#options.resultMaxChars }),
       // First valid submission wins. A second one cannot overwrite an assessment already made.
       onSubmit: (summary) => {
         submission ??= summary;
       },
     });
+
+    const unsubscribe =
+      options.onEvent === undefined ? undefined : agent.subscribe(options.onEvent);
 
     // An Agent owns its AbortSignal and will not accept one, so the timeout bridges into abort().
     const timer = setTimeout(() => {
@@ -108,6 +133,7 @@ export class InvestigationHarness {
       await agent.prompt(buildInitialContext(alert, [...tables.keys()]));
     } finally {
       clearTimeout(timer);
+      unsubscribe?.();
     }
 
     if (submission) return submission;
