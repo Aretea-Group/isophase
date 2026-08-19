@@ -1013,6 +1013,17 @@ The console is the obvious place to capture an analyst's disposition, and roadma
 It is excluded here because a read-only tool has no write path, no schema for a decision, and no
 story for where that decision lives. Adding one is a PRD, not a feature.
 
+### Driving the agent
+
+Roadmap §6 wants the console to browse un-investigated alerts, start a run, re-run one, and re-run
+it with context the analyst supplies. All four are excluded here by §14, and each one reverses §4.1
+— the console reads files and never drives the agent, which is exactly what lets it hold no provider
+key and have no way to corrupt a run.
+
+That is a PRD of its own, not a feature. It has to answer where a run executes, what replaces the
+read-only guarantee, how two consoles share one `runs/` directory, and how PRD-2 §20's ground-truth
+isolation survives the console becoming agent-side code.
+
 ### Evaluation surface
 
 If comparing a verdict against `fixtures/scenarios/` becomes routine, the scenario loader should
