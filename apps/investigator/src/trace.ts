@@ -10,6 +10,16 @@ export interface TracerOptions {
   dir: string;
   /** Also narrate to stdout. */
   console: boolean;
+  /**
+   * Persist `message_update` streaming deltas.
+   *
+   * Off by default, and the difference is not marginal: measured on a real run these were 1,636 of
+   * the 1,752 events and **96.4% of a 16.5 MB file**, because each delta carries the whole partial
+   * message — quadratic in message length. Dropping them takes a trace to ~0.6 MB and loses
+   * nothing, since `message_end` already holds the completed message. Only turn this on to debug
+   * streaming itself.
+   */
+  streamDeltas?: boolean;
   log?: (message: string) => void;
 }
 
@@ -62,9 +72,13 @@ export function createTracer(options: TracerOptions): Tracer {
     appendFileSync(path, `${JSON.stringify({ at: new Date().toISOString(), ...record })}\n`);
   };
 
+  const streamDeltas = options.streamDeltas ?? false;
+
   const onEvent = (event: AgentEvent): void => {
-    // The JSONL side keeps everything, uncut — that is the point of having it.
-    write(event as unknown as Record<string, unknown>);
+    // Everything except the streaming deltas is kept uncut — that is the point of having it.
+    if (streamDeltas || event.type !== "message_update") {
+      write(event as unknown as Record<string, unknown>);
+    }
     if (!options.console) return;
 
     switch (event.type) {

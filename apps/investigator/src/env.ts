@@ -55,6 +55,14 @@ export const env = createEnv({
       .default("false")
       .transform((value) => value === "true"),
     INVESTIGATOR_TRACE_DIR: z.string().min(1).default("runs/traces"),
+    /**
+     * Persist streaming deltas too. Off by default — they were 96% of the first traces we wrote
+     * and add nothing that `message_end` does not already carry.
+     */
+    INVESTIGATOR_TRACE_STREAM: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

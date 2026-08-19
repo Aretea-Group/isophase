@@ -137,6 +137,7 @@ async function main(): Promise<void> {
             alertId: alert.properties.systemAlertId,
             dir: env.INVESTIGATOR_TRACE_DIR,
             console: true,
+            streamDeltas: env.INVESTIGATOR_TRACE_STREAM,
             log,
           }).onEvent
       : undefined,
