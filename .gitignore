@@ -23,3 +23,7 @@ baml_client/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Investigation run artifacts (PRD-2 §19). The durable output of a run, but local
+# to a developer's experiments — regenerate with `bun run investigate`.
+runs/

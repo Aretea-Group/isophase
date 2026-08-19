@@ -27,7 +27,7 @@ function buildModels() {
  * single most likely startup mistake and `getModel` returns `undefined` for both an unknown model
  * and an unknown provider.
  */
-export function resolveModel(provider: string, id: string): ResolvedModel {
+export async function resolveModel(provider: string, id: string): Promise<ResolvedModel> {
   const models = buildModels();
   const model = models.getModel(provider, id);
 
@@ -38,6 +38,16 @@ export function resolveModel(provider: string, id: string): ResolvedModel {
         ? `Provider "${provider}" is not registered. Known providers: openai, anthropic, google.`
         : `Available ${provider} models: ${available.join(", ")}`;
     throw new Error(`Unknown model "${provider}/${id}". ${detail}`);
+  }
+
+  // Fail before the first investigation rather than turning every alert in a sweep into a provider
+  // error. getAuth resolves the credential the same way a real request would, and returns undefined
+  // when the provider is unconfigured.
+  const auth = await models.getAuth(model);
+  if (!auth) {
+    throw new Error(
+      `No credentials for provider "${provider}". Set the provider's API key (e.g. OPENAI_API_KEY for openai, ANTHROPIC_API_KEY for anthropic) and retry.`,
+    );
   }
 
   return { model, streamFn: models.streamSimple.bind(models) };

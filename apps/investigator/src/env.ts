@@ -28,10 +28,9 @@ export const env = createEnv({
     /** Ceiling on elapsed time for one investigation. A different failure mode to max turns. */
     INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
 
-    /** Read by pi-ai directly from the environment; declared here so it fails fast when absent. */
-    OPENAI_API_KEY: z.string().min(1).optional(),
-    ANTHROPIC_API_KEY: z.string().min(1).optional(),
-    GEMINI_API_KEY: z.string().min(1).optional(),
+    // Provider API keys are deliberately absent here. pi-ai reads them straight from the ambient
+    // environment, so declaring them would imply this object supplies them. The provider-aware
+    // check lives in model.ts, which can ask pi-ai which variable it would actually look for.
 
     BRAVE_API_KEY: z.string().min(1).optional(),
     BRAVE_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
