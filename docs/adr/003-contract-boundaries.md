@@ -1,6 +1,8 @@
 # ADR 003 — Separate Runtime Contracts (Zod) from LLM Contracts (BAML)
 
-**Status:** Accepted  
+**Status:** Accepted; partly superseded by ADR 005 — tool schemas are TypeBox because Pi offers no
+Zod path (§5), and the BAML finalizer became a `submit_investigation` tool (§1). The Zod-at-runtime-
+boundaries principle is unchanged  
 **Date:** 2026-08-18
 
 ## Context

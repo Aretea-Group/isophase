@@ -1,6 +1,6 @@
 # PRD — Mock Sentinel Investigation Environment
 
-**Status:** Accepted for implementation  
+**Status:** Delivered — see `docs/adr/004-alert-api-shape.md` for what shipped  
 **Owner:** SOC Investigation Agent project  
 **Purpose:** Local deterministic investigation environment
 

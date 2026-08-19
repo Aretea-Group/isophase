@@ -1,10 +1,10 @@
 # PRD-2 — Core Investigation Agent
 
-**Status:** Ready for implementation  
+**Status:** Implemented — see `docs/adr/005-investigation-agent-boundary.md` for accepted deviations and open items  
 **Depends on:** PRD-1 — Mock Sentinel  
 **Primary runtime:** `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`  
 **Language/runtime:** TypeScript strict mode, Bun  
-**Runtime schemas:** TypeBox
+**Runtime schemas:** TypeBox at the Pi tool boundary, Zod elsewhere (ADR 005 §5)
 
 ---
 

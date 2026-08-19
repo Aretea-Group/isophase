@@ -16,8 +16,9 @@ Mock Sentinel
 -> Sentinel Client
 -> Investigation Runner
 -> Pi autonomous agent
--> BAML assessment
--> persisted trace
+-> structured submission
+-> run artifact
+-> evaluation against ground truth
 ```
 
 ## 2. Current Scope
@@ -33,9 +34,9 @@ Implement:
 - Sentinel Client;
 - investigation runtime;
 - Pi agent integration;
-- one KQL investigation tool;
-- BAML assessment finalization;
-- PostgreSQL/Drizzle trace persistence.
+- the five agent tools (§10);
+- structured submission as the Definition of Done;
+- run artifacts, and evaluation against the hidden scenario metadata.
 
 Do not implement:
 - cross-investigation memory;
@@ -80,11 +81,15 @@ Do not force a KQL call. The agent may conclude that the starting alert contains
 
 ### Contracts
 
-Use Zod 4 for runtime/network/tool validation.
+Use Zod 4 for runtime and network validation — REST, configuration, run artifacts.
 
-Use BAML for LLM contracts and the final structured assessment.
+Use TypeBox for the Pi tool boundary: tool parameters and the submission contract. This is forced
+rather than preferred — `pi-agent-core` types `AgentTool.parameters` as a TypeBox `TSchema` and
+offers no Zod path. It is re-exported by `pi-ai`, so it adds no dependency (ADR 005 §5).
 
-Avoid duplicate hand-written TypeScript interfaces when Zod or BAML already generates the type.
+BAML is deferred (ADR 005 §1).
+
+Avoid duplicate hand-written TypeScript interfaces when a schema already generates the type.
 
 ## 4. Technology Baseline
 
@@ -94,9 +99,8 @@ Avoid duplicate hand-written TypeScript interfaces when Zod or BAML already gene
 - Hono REST APIs
 - Zod 4
 - Pi Agent Core + Pi AI
-- BAML
-- PostgreSQL
-- Drizzle
+- TypeBox (via `@earendil-works/pi-ai`)
+- `@t3-oss/env-core`
 - Microsoft Kusto Emulator
 - Docker Compose
 - Oxlint
@@ -185,7 +189,7 @@ Priority:
 3. Sentinel Client;
 4. query error propagation;
 5. investigation runner;
-6. BAML contract integration.
+6. ground-truth isolation — the agent must never be able to reach `fixtures/scenarios/`.
 
 Do not mock KQL with query-string conditionals such as:
 

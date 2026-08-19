@@ -1,6 +1,8 @@
 # ADR 002 — Use Pi Agent Core as the Initial Investigation Runtime
 
-**Status:** Accepted  
+**Status:** Accepted; partly superseded by ADR 005 — the final assessment is a tool rather than a
+BAML step (§1), and Pi's replaceable boundary is `harness.ts` rather than a `packages/agent-runtime`
+(§7)  
 **Date:** 2026-08-18
 
 ## Context

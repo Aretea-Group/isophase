@@ -1,9 +1,16 @@
 # SOC Investigation Agent — Architecture
 
-**Status:** v0.1 baseline  
+**Status:** v0.2 — Mock Sentinel and the Core Investigation Agent are delivered  
 **Scope:** Mock Sentinel environment + first autonomous investigation agent  
 **Language:** TypeScript  
 **Runtime:** Bun
+
+> **Where this document is superseded.** It was written before PRD-2 was implemented, and
+> ADR 005 changed several decisions recorded here: the BAML finalizer became a
+> `submit_investigation` tool, the PostgreSQL trace store became a per-run JSON artifact, the tool
+> surface grew from one to five, and the full schema is no longer injected at startup. Sections
+> below are updated where that happened and say so. ADR 005 is the authority on any remaining
+> disagreement.
 
 ## 1. Purpose
 
@@ -52,7 +59,7 @@ The future investigation runtime must not know whether it is using the local Moc
 
 ### 2.5 Keep the agent runtime replaceable
 
-Pi is the initial agent harness, not the domain architecture. Sentinel access, persistence, BAML contracts, and investigation state belong to the application.
+Pi is the initial agent harness, not the domain architecture. Sentinel access, the run artifact, the submission contract, and investigation state belong to the application.
 
 ## 3. High-Level Architecture
 
@@ -110,10 +117,10 @@ Pi is the initial agent harness, not the domain architecture. Sentinel access, p
 Agent completes
       |
       v
-BAML assessment finalization
+submit_investigation  (validated on the way in)
       |
       v
-PostgreSQL trace + assessment
+runs/<run-id>.json
 ```
 
 ## 4. Major Components
@@ -160,8 +167,8 @@ The client is the application boundary. No investigator code may directly call M
 - create the Pi agent;
 - register capabilities/tools;
 - subscribe to runtime events;
-- persist tool/model trace;
-- call the final BAML assessment step;
+- enforce runtime limits;
+- require a valid `submit_investigation`;
 - finish as completed or failed.
 
 The runner must not implement its own LLM/tool loop.
@@ -185,48 +192,49 @@ Application code owns:
 - context construction;
 - Sentinel tool implementations;
 - execution limits;
-- trace persistence;
+- run artifact;
 - final assessment contract.
 
-### 4.5 BAML Contracts
+Pi sits behind a single replaceable boundary: `apps/investigator/src/harness.ts` is the only file in
+the repository that imports it. ADR 005 §7 records why that is the class rather than a wrapper
+package.
 
-BAML owns LLM-facing structured contracts, initially the final investigation assessment.
+### 4.5 Structured Assessment
 
-The initial flow is:
+*Superseded by ADR 005 §1 — this was a BAML finalizer.*
+
+The agent submits its own assessment through the `submit_investigation` tool, and a valid call is the
+Definition of Done. Pi validates arguments against the tool's TypeBox schema before execution, so an
+invalid submission returns to the model as a correctable error rather than needing a second LLM call
+to repair it.
 
 ```text
 Pi autonomous investigation
         |
         v
-investigation evidence / trace
+submit_investigation  (validated on the way in)
         |
         v
-BAML FinalizeAssessment
-        |
-        v
-validated structured assessment
+InvestigationSummary
 ```
 
-This intentionally keeps autonomous investigation and contractual output separate.
+A normal assistant message never becomes a result, however complete it reads.
+
+BAML is deferred, not rejected. Revisit if free-form submissions prove unreliable.
 
 ### 4.6 Persistence
 
-PostgreSQL with Drizzle is the initial persistence layer for the investigator.
+*Superseded by ADR 005 §2 — this was PostgreSQL with Drizzle.*
 
-Persist enough information to inspect and later learn from a case:
+Each invocation writes one `runs/<run-id>.json` artifact holding per-alert outcomes: the assessment,
+timing, the model that produced it, the runtime limits, and any failure. It is deliberately not a
+trace — no transcript, no tokens, no raw KQL or web results.
 
-- original alert;
-- schema snapshot/version used;
-- model/provider configuration;
-- agent events/messages required for debugging;
-- tool calls;
-- exact KQL;
-- tool results or stored result references;
-- final BAML assessment;
-- timestamps;
-- failures.
+Full Pi transcripts are available per investigation behind `INVESTIGATOR_TRACE=true`, written beside
+the artifact as JSONL. Off by default: the artifact is the durable, comparable output and a trace is
+a debugging aid for one run.
 
-Cross-investigation retrieval and human-feedback learning are not implemented in the current slice, but this data becomes the input to the later Memory PRD.
+A trace database remains the right answer once evaluation demonstrates it is needed. It has not.
 
 ## 5. Mock Sentinel REST Surface
 
@@ -286,7 +294,7 @@ Initial context:
 ```text
 System instructions
 + current alert
-+ current queryable schema
++ available table names
 + available tools
 ```
 
@@ -296,26 +304,39 @@ Later, the Memory PRD will add relevant prior cases as additional retrieved cont
 
 ### 7.1 Schema strategy
 
-For the first implementation, inject the current schema at startup.
+*Superseded by ADR 005 §4 — this said inject the full schema at startup.*
 
-If measurement shows that the full schema is too large or noisy, a later optimization may replace or complement this with dynamic schema discovery. Do not add that complexity before measuring the real schema.
+The measurement was taken: the loaded environment reports 22 tables and 1,168 columns, about 60 KB of
+JSON. That is spent before the agent knows which telemetry matters, so only table names enter model
+context and the agent pulls the schemas it decides are relevant via `get_security_schema`.
+
+The complete schema is still fetched once per investigation and held by the harness; what changed is
+its placement in context, not how it is loaded.
 
 ## 8. Agent Tool Surface
 
-Start with one security investigation tool:
+*Extended by ADR 005 §3 — this started at one tool.*
 
 ```text
-query_security_data(kql)
+get_security_schema(tables)     column definitions for tables the agent picks
+query_security_data(kql)        arbitrary read-only KQL, returned uninterpreted
+web_search(query)               public web search, snippets only
+web_fetch(url)                  read one https page
+submit_investigation(...)       the Definition of Done
 ```
 
-The tool:
-- accepts KQL;
-- calls the Sentinel Client;
-- receives query data or a useful query error;
-- returns bounded results to the agent;
-- records the exact query and response metadata.
+`query_security_data` calls the Sentinel Client and returns the raw result. It does not summarise,
+extract or normalise — anything this layer chose to emphasise would be an investigation playbook
+smuggled in through formatting. Results carry a row cap and a size budget, and report when either
+was hit, so the model can narrow the query rather than reason over a silently partial result.
 
-The agent decides whether to call it.
+The first four are parallel-capable; independent calls in one turn execute concurrently.
+
+Web content is untrusted. It is returned inside a provenance envelope and the system prompt
+standing-orders it as data rather than instructions. The exposure `web_fetch` adds is prompt
+injection rather than network reach — see ADR 005 §3 for what that buys and what it costs.
+
+The agent decides which, if any, to call.
 
 Do not initially add semantic SOC tools such as:
 - `investigate_signin`;
@@ -340,22 +361,22 @@ Use Zod 4 for software/runtime boundaries:
 - agent tool input/output;
 - persisted JSON structures where external/untrusted data crosses a boundary.
 
-### 9.2 BAML
+### 9.2 TypeBox
 
-Use BAML for LLM contracts:
+*Superseded by ADR 005 §5 — this was BAML.*
 
-- final assessment structure;
-- associated LLM instructions/prompts;
-- provider-independent structured output generation.
-
-Rule:
+Pi types `AgentTool.parameters` as a TypeBox `TSchema` and offers no Zod path, so tool parameter
+schemas and the `InvestigationSummary` contract are TypeBox. `Type`, `Static` and `TSchema` are
+re-exported by `@earendil-works/pi-ai`, so this adds no dependency and stays version-aligned with the
+validator Pi actually runs.
 
 ```text
-Zod = application/runtime validation
-BAML = LLM input/output contracts
+Zod     = application/runtime boundaries — REST, config, run artifact
+TypeBox = the Pi tool boundary — tool parameters, submission contract
 ```
 
-Do not duplicate the same responsibility in both systems unless integration requires a generated adapter.
+The principle from ADR 003 is unchanged: schemas live at boundaries and types are inferred, never
+hand-duplicated. BAML remains deferred.
 
 ## 10. Technology Stack
 
@@ -368,11 +389,12 @@ Do not duplicate the same responsibility in both systems unless integration requ
 | Runtime validation | Zod 4 |
 | Agent harness | `@earendil-works/pi-agent-core` |
 | Model abstraction | `@earendil-works/pi-ai` |
-| LLM contracts | BAML |
+| LLM tool/output contracts | TypeBox (via `@earendil-works/pi-ai`) |
+| Environment validation | `@t3-oss/env-core` |
+| Web search | Brave Search API |
 | Query backend | Microsoft Kusto Emulator |
 | Mock telemetry | Microsoft Sentinel Training Lab telemetry |
-| Database | PostgreSQL |
-| DB access | Drizzle |
+| Run artifacts | JSON on disk (`runs/`) |
 | Lint | Oxlint |
 | Format | Oxfmt |
 | Typecheck | `tsc --noEmit` |
@@ -393,25 +415,21 @@ soc-investigator/
 |
 +-- packages/
 |   +-- sentinel-client/
-|   +-- agent-runtime/
 |   +-- contracts/
-|   +-- persistence/
-|   +-- testkit/
-|
-+-- baml_src/
-|   +-- assessment.baml
-|   +-- clients.baml
 |
 +-- fixtures/
-|   +-- alerts/
-|   +-- scenarios/
+|   +-- telemetry/
+|   +-- scenarios/          <- hidden answer key, never reachable by the agent
 |
 +-- infra/
 |   +-- docker-compose.yml
 |   +-- kusto/
 |
++-- runs/                  <- run artifacts, gitignored
+|
 +-- scripts/
 |   +-- bootstrap-sentinel-data.ts
+|   +-- evaluate-runs.ts   <- joins runs to ground truth, outside the agent
 |
 +-- docs/
 |   +-- architecture.md
@@ -425,7 +443,8 @@ soc-investigator/
 +-- oxfmt.config.ts
 ```
 
-Do not create empty packages for future roadmap capabilities.
+Do not create empty packages for future roadmap capabilities. `agent-runtime`, `persistence` and
+`testkit` are deliberately absent — see ADR 005 §7 for `agent-runtime` specifically.
 
 ## 12. Quality Gates
 
@@ -491,21 +510,19 @@ Do not add ESLint or Prettier.
 - Zod response parsing;
 - manual investigation performed only through this client/API boundary.
 
-### Milestone 5 — Investigation runtime
+### Milestone 5 — Investigation runtime *(delivered)*
 
-- PostgreSQL/Drizzle;
 - Investigation Runner;
-- Pi runtime;
-- model configuration;
-- one `query_security_data` tool;
-- agent event persistence.
+- Pi runtime behind a single harness boundary;
+- model and limits from configuration;
+- five agent tools;
+- run artifact, with optional full transcripts.
 
-### Milestone 6 — Assessment
+### Milestone 6 — Evaluation *(in progress)*
 
-- BAML final assessment contract;
-- finalizer;
-- persisted result;
-- first end-to-end autonomous investigation.
+- `bun run evaluate` joins run artifacts to the hidden scenario metadata;
+- qualitative review against ground truth;
+- BAML and a trace store if — and only if — evaluation demonstrates the need.
 
 ## 14. Current Non-Goals
 
@@ -516,7 +533,6 @@ Do not implement in this architecture slice:
 - generalized SIEM ingestion;
 - SOAR/forwarding;
 - alert grouping;
-- web research;
 - threat intelligence;
 - Nuxt frontend;
 - authentication/RBAC;
@@ -570,8 +586,7 @@ Major roadmap PRDs:
 - Microsoft Learn: Azure Data Explorer Kusto Emulator overview and installation.
 - Microsoft Azure-Sentinel repository: Microsoft Sentinel Training Lab.
 - Pi repository: `earendil-works/pi`, especially `pi-agent-core` and `pi-ai`.
-- Boundary BAML documentation.
-- Zod documentation.
+- Zod documentation, and TypeBox as re-exported by `pi-ai`.
 - Oxc documentation for Oxlint and Oxfmt.
 - Hono Bun documentation.
-- Drizzle Bun/PostgreSQL documentation.
+- Brave Search API documentation.

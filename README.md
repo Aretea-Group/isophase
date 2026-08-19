@@ -8,8 +8,9 @@ The architecture baseline is [`docs/architecture.md`](./docs/architecture.md).
 
 ## Status
 
-**Phases 4–5 — Sentinel Client and Core Investigation Agent. Complete.**
-([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), AGENTS.md §14.)
+**Phases 4–5 — Sentinel Client and Core Investigation Agent. Delivered.**
+Phase 6 — evaluation — is in progress.
+([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), [ADR 005](./docs/adr/005-investigation-agent-boundary.md), AGENTS.md §14.)
 
 `bun run data:bootstrap` takes a cold emulator to 22 populated tables — 25,130 rows
 across 1,168 columns — in about two seconds, from telemetry vendored at a pinned
@@ -43,8 +44,31 @@ playbook (PRD-2 §2).
 A valid `submit_investigation` is the only way an investigation succeeds; a
 confident closing message is not a result (PRD-2 §16).
 
-Requires a provider key — see [`.env.example`](./.env.example). Next is Phase 6,
-evaluating runs against the scenario ground truth.
+Requires a provider key — see [`.env.example`](./.env.example). Set
+`INVESTIGATOR_TRACE=true` to capture the full agent transcript per investigation.
+
+Runs are scored against the hidden scenario fixtures, outside the agent:
+
+```bash
+bun run evaluate                  # scorecard vs ground truth, by model
+bun run evaluate --compare a b    # diff two runs
+```
+
+### What it has answered so far
+
+> Can an autonomous LLM investigator, with general access to security telemetry and
+> public research, produce useful T1/T2 assessments without predefined playbooks?
+
+Yes at `gpt-5.6-terra`, no at `gpt-5.6-luna`, on an identical prompt, tool set and
+contract. Terra reached the correct direction on 5 of the 6 ground-truth scenarios
+including the one the fixtures designate as the calibration control, found a
+multi-host intrusion without being told to look past the alert's named entity, and
+declined to treat a vendor `false_positive` label as evidence. Luna failed that
+control and scoped every one of its sixteen queries to the single named host.
+
+Read the numbers with care: n=6 is too small to tune against. Two impact judgements
+flipped in opposite directions between runs differing only in wording that does not
+touch impact, so single-point score movements are variance rather than signal.
 
 ## Prerequisites
 
@@ -160,10 +184,16 @@ apps/mock-sentinel/     REST facade — owns the entire public surface of the mo
   src/kusto/            HTTP client for the emulator; the only thing that talks to it
   src/telemetry/        manifest, CSV normalisation, ingestion, verification
   src/scenarios/        answer-key loader — never routed
+apps/investigator/      the autonomous agent
+  src/harness.ts        the only file in the repo that imports Pi
+  src/tools/            the five agent capabilities
+  src/clients/          Brave search and guarded page fetch
+packages/sentinel-client/  typed client for the REST boundary
 packages/contracts/     Zod contracts crossing the REST boundary
 fixtures/telemetry/     vendored Training Lab CSVs (MIT, pinned revision)
 fixtures/scenarios/     evaluation metadata, hidden from consumers
-scripts/                bootstrap and manifest generation CLIs
+runs/                   run artifacts and traces (gitignored)
+scripts/                bootstrap, manifest generation, and run evaluation
 infra/                  docker-compose + Kusto Emulator notes
 docs/                   architecture, PRDs, ADRs
 ```
@@ -172,9 +202,10 @@ Packages are consumed **as TypeScript source** via workspace `exports`; nothing 
 compiled ahead of time.
 
 New packages are created when a milestone needs them, not in advance
-(AGENTS.md §5). `packages/sentinel-client`, `packages/agent-runtime`,
-`packages/persistence`, `packages/testkit` and `baml_src/` therefore do not exist
-yet.
+(AGENTS.md §5). `packages/agent-runtime`, `packages/persistence`,
+`packages/testkit` and `baml_src/` therefore do not exist — and `agent-runtime`
+deliberately never will, since `harness.ts` is already the single replaceable Pi
+boundary ADR 002 asked for ([ADR 005 §7](./docs/adr/005-investigation-agent-boundary.md)).
 
 ## Architectural boundaries
 
@@ -183,14 +214,29 @@ Two rules are enforced by tooling rather than convention:
 - **Mock Sentinel internals are private.** An `oxlint` `no-restricted-imports`
   rule fails the build if anything outside `apps/mock-sentinel` imports its
   source. Consumers must go through HTTP, and later the Sentinel Client.
-- **Configuration is validated once.** Only `apps/mock-sentinel/src/config.ts`
-  reads the environment; everything else receives a parsed `Config`.
+- **Configuration is validated once.** Only `apps/mock-sentinel/src/config.ts` and
+  `apps/investigator/src/env.ts` read the environment; everything else receives a
+  parsed config. The investigator validates at import, so a missing key stops the
+  process before the first alert rather than partway through a sweep.
+- **The agent cannot reach ground truth.** `fixtures/scenarios/` holds each
+  scenario's verdict, the KQL that settles it, and the trap it was built to catch.
+  An `oxlint` rule blocks importing it, and
+  `apps/investigator/test/ground-truth-isolation.test.ts` scans agent-side source
+  for any reference or runtime read — the lint rule alone would miss
+  `Bun.file(...)`. Evaluation joins the two in `scripts/`, outside the agent.
 
 ## Contracts
 
 Per [ADR 003](./docs/adr/003-contract-boundaries.md):
 
-- **Zod 4** validates runtime and network boundaries.
-- **BAML** owns LLM prompt/output contracts, and arrives with the assessment slice.
+- **Zod 4** validates runtime and network boundaries — REST, configuration, run
+  artifacts.
+- **TypeBox** owns the Pi tool boundary: tool parameters and the submission
+  contract. Not a preference — `pi-agent-core` types `AgentTool.parameters` as a
+  TypeBox `TSchema` and offers no Zod path
+  ([ADR 005 §5](./docs/adr/005-investigation-agent-boundary.md)). It is re-exported
+  by `pi-ai`, so it adds no dependency.
+- **BAML** is deferred. The agent submits its own assessment through a validated
+  tool call instead ([ADR 005 §1](./docs/adr/005-investigation-agent-boundary.md)).
 
 Types are inferred from schemas. Do not hand-write parallel interfaces.
