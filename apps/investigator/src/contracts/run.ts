@@ -24,7 +24,7 @@ export const InvestigationSummaryRecord = z.object({
 });
 
 export const InvestigationResult = z.object({
-  /** The alert's systemAlertId — the same key the scenario fixtures use as startingAlertId. */
+  /** The alert's systemAlertId. Evaluation tooling joins on this, outside the agent (PRD-2 §20). */
   alertId: z.string().min(1),
   alertTitle: z.string(),
   status: z.enum(["completed", "failed"]),

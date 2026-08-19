@@ -21,7 +21,11 @@
         "patterns": [
           {
             "group": ["**/apps/mock-sentinel/**"],
-            "message": "Mock Sentinel internals are private. Consumers must go through the Sentinel Client / REST boundary (AGENTS.md \u00a73)."
+            "message": "Mock Sentinel internals are private. Consumers must go through the Sentinel Client / REST boundary (AGENTS.md §3)."
+          },
+          {
+            "group": ["**/fixtures/scenarios/**", "**/scenarios/scenarios.ts"],
+            "message": "Scenario metadata is the hidden answer key: verdicts, discriminating KQL and the trap each scenario is built to catch. It must never reach the investigation agent (PRD-2 §20). Evaluation tooling joins runs to ground truth in scripts/, which is exempt."
           }
         ]
       }

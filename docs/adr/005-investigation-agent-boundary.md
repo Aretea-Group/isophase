@@ -159,6 +159,50 @@ outcome classification will surface as a confusing failed investigation rather t
 `pi-ai` ships a `faux` provider that scripts assistant turns and tool calls with no network and no
 API cost, which is how every completion path was verified during implementation.
 
+## PRD-2 Acceptance: what is met, and what is not
+
+Recorded here rather than left implicit, because two acceptance criteria in PRD-2 §22 are not
+satisfied by the delivered slice and one of them is deliberate.
+
+**Ground-truth isolation is now enforced, not merely observed.** §22 requires that hidden scenario
+metadata is never exposed to the agent. That was true by construction but nothing prevented it
+regressing. Two guards now exist: an oxlint `no-restricted-imports` pattern covering
+`**/fixtures/scenarios/**` and the loader module, and a source scan
+(`apps/investigator/test/ground-truth-isolation.test.ts`) asserting that no file under
+`apps/investigator/src` or `packages/sentinel-client/src` names the answer key or reads that
+directory at runtime.
+
+The scan exists because the lint rule is necessary and not sufficient: `no-restricted-imports` sees
+static imports, and the realistic leak is a runtime read — `Bun.file("fixtures/scenarios/…")` or a
+path assembled at runtime — which no import rule can catch. The scan was verified by injecting such
+a read and confirming it fails.
+
+**"A developer can run all available alerts" is implemented but has never been exercised.** Every
+run artifact to date covers a single alert. The code path exists and per-alert failure isolation is
+verified across a multi-alert batch, but the full 151-alert sweep has not been run, so the aggregate
+failure rate, cost and step-limit behaviour at that scale are unknown. Accepted knowingly: the
+sweep is a cost decision rather than an engineering one, and nothing about it blocks the question
+PRD-2 exists to answer.
+
+**Investigation timeout is supported but has never fired** in a real run. Implemented and wired;
+unverified in anger.
+
+### What PRD-2 actually answered
+
+> Can an autonomous LLM investigator, with general access to security telemetry and public research,
+> produce useful T1/T2 SOC assessments without predefined investigation playbooks?
+
+Yes at `gpt-5.6-terra`, no at `gpt-5.6-luna`, on the same prompt, tools and contract. Terra reached
+the correct direction on 5 of 6 ground-truth scenarios including the one the fixtures designate as
+the calibration control, found a multi-host intrusion without being told to look beyond the alert's
+named entity, and declined to treat a vendor `false_positive` label as evidence. Luna failed that
+control and scoped every one of its sixteen queries to the single host the alert named.
+
+The caveat that matters for anyone reading the numbers: n=6 is too small to tune against. Two impact
+judgements flipped in opposite directions between runs differing only in wording that does not touch
+impact, so single-point score movements are variance, not signal. Expanding ground-truth coverage
+would do more for confidence than any further prompt work.
+
 ## Consequences
 
 **Positive:** no second LLM call on the critical path; no infrastructure ahead of need; the agent
