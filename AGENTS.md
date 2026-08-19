@@ -360,6 +360,17 @@ Acceptance:
 - a finished investigation's verdict, tool calls, exact KQL and web research are readable;
 - token and cost figures state how many runs they cover.
 
+### Phase 8
+Ground-Truth Expansion (PRD-4).
+
+Returns to Phase 6 evaluation work rather than skipping ahead: six scenarios covering four
+clusters, three of them one incident, is too thin a baseline to measure a change against.
+
+Acceptance:
+- analytics rules surface the cluster-3 attack, so its stages can start an investigation;
+- every scenario pins an alert that resolves against a bootstrapped database;
+- `disabled-account-signins` states evidence that matches what its query actually returns.
+
 ## 15. When to Stop and Ask for Architecture Input
 
 Stop implementation and surface the decision if any of these occur:

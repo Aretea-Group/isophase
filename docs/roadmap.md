@@ -80,7 +80,7 @@ to a second terminal to do it.
 Potential capabilities:
 
 * **Browse alerts that have never been investigated.** The console currently lists runs; it cannot
-  see the 145 alerts with no run against them. This means reading `/alerts` from Mock Sentinel.
+  see the 148 alerts with no run against them. This means reading `/alerts` from Mock Sentinel.
 * **Start an investigation for the selected alert**, and **re-run** one — the same alert, same
   configuration, to see whether the verdict is stable, which is currently a manual `bun run
   investigate --alert <id>` and a mental diff.
@@ -118,13 +118,62 @@ gaps PRD-2 left open.
 
 Potential capabilities:
 
-* Run the full 151-alert sweep — aggregate failure rate, cost and step-limit behaviour at scale are
+* Run the full 154-alert sweep — aggregate failure rate, cost and step-limit behaviour at scale are
   currently unknown, since every run to date has covered a single alert
 * Exercise the investigation timeout, which is implemented and wired but has never fired
-* Expand ground-truth coverage beyond six scenarios — with n=6, two impact judgements have already
-  been observed flipping in opposite directions between runs differing only in wording that does not
-  touch impact, so single-point score movements are variance rather than signal
+* Expand ground-truth coverage beyond six scenarios — **owned by PRD-4**
+* Fix the overlapping scoring bands. `evaluate-runs.ts` passes a true positive at `tpPercent >= 60`
+  and an inconclusive at 30–70, so the two ranges overlap and a constant answer of 65 satisfies
+  both — it scores 6/6 against the current key without investigating anything. Making the three
+  classes partition the range (FP `<= 40`, inconclusive 41–59, TP `>= 60`) is a one-line change, and
+  none of the 21 scored runs to date changes verdict under it. PRD-4 §9 deliberately leaves this
+  alone so that ground-truth authoring and scoring changes do not land together
+* Score whether an investigation covered the ground its scenario says settles it. Every fixture
+  carries `discriminatingEvidence` — the queries a correct investigation cannot skip — and nothing
+  reads it; `scenarios.test.ts` only asserts the array is non-empty. Trace-level coverage would
+  measure this, and would require eval runs to set `INVESTIGATOR_TRACE=true`. Weigh against PRD-2
+  §23's rule that the trajectory must not be graded
+* Widen false-positive coverage. PRD-4 found three verified benign identities — `bob.jones` and
+  `jane.smith`, both now false-positive scenarios, and `deploy-svc` / `deploy-pipeline`, which is
+  still unused. That is the whole supply: every rule and connector filters for adverse conditions,
+  and the tables that look like baseline are the Adele compromise (PRD-4 §3). Going beyond three
+  identities needs telemetry from outside the Training Lab, which amends ADR 001 and needs its own
+  decision record
 * Spot-check alerts that have no ground truth, to catch reasoning failures the six scenarios
   structurally cannot see
 * Model-tier comparison as a product question: terra-class reasoning cleared the calibration control
   that luna failed, at roughly ten times the token price
+
+### 8. Alert Grouping and Incident Correlation
+
+The system investigates each alert in isolation and never learns that several of them are one
+incident. AGENTS.md §2 lists `alert grouping` under **Do not implement**; PRD-4's trace analysis is
+the first concrete evidence for why it eventually matters.
+
+Upstream documents the corpus's 2026 telemetry as a single ten-stage attack chain — phishing,
+endpoint execution, credential dumping, Okta takeover, exfiltration, then AWS and GCP escalation.
+The agent does not traverse it. Measured across the twenty traces in `runs/traces/`:
+
+* zero of four `ransomware-srv-dc01` runs queried `OktaV2_CL`, `AWSCloudTrail`, `GCPAuditLogs` or
+  MailGuard — the identity compromise that led to the ransomware was never looked at
+* one of three `mirage-account-takeover` runs touched any CrowdStrike table
+* each run scopes to the entity named in its own alert and stops there
+
+Every one of those investigations is defensible on its own, and triage does work one alert at a
+time — so this is not a defect in PRD-2. It is the ceiling of per-alert investigation: roughly
+ninety alerts drawn from one intrusion produce ninety unrelated verdicts, and none of them says an
+intrusion occurred.
+
+Potential capabilities:
+
+* Group alerts into incidents by shared entity, time proximity or attack chain
+* Carry findings from one investigation into related ones without re-querying the same evidence
+* An incident-level verdict, distinct from the per-alert verdicts that compose it
+* Fold correlated duplicates rather than paying for each separately — 107 of the 154 alerts are two
+  vendor views of the same 54 endpoint events, which the system currently investigates twice
+* Evaluation that scores an incident rather than an alert, which needs ground truth expressed at
+  incident level and therefore builds on the cluster structure PRD-4 introduces
+
+Depends on **§1 Case Memory** for anything that carries findings between investigations, and is the
+main consumer of **§7 Evaluation at Scale** — grouping is hard to justify until a sweep has shown
+what the duplicate-investigation cost actually is.
