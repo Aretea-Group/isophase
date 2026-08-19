@@ -3,7 +3,7 @@ import { SentinelApiClient } from "@soc/sentinel-client";
 
 import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
-import type { InvestigationResult } from "./contracts/run.ts";
+import type { InvestigationResult, InvestigationRun } from "./contracts/run.ts";
 import { env } from "./env.ts";
 import { InvestigationHarness } from "./harness.ts";
 import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
@@ -51,6 +51,13 @@ function log(message: string): void {
   console.info(message);
 }
 
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The sweep's lifecycle, distinct from the per-alert `InvestigationResult.status` (PRD-3 §7). */
+type RunStatus = NonNullable<InvestigationRun["status"]>;
+
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
 
@@ -97,11 +104,22 @@ async function main(): Promise<void> {
   );
 
   const collected: InvestigationResult[] = [];
-  const flush = async () => {
+  const flush = async (status: RunStatus) => {
     const path = await writeRunArtifact(env.RUNS_DIR, {
       runId,
       startedAt,
       completedAt: new Date().toISOString(),
+      status,
+      // Written before the first alert so a reader can say how much of the sweep is left;
+      // `results` only ever holds finished alerts (PRD-3 §7, §11).
+      alertCount: alerts.length,
+      ...(env.INVESTIGATOR_TRACE ? { traceDir: env.INVESTIGATOR_TRACE_DIR } : {}),
+      config: {
+        thinkingLevel: env.INVESTIGATOR_THINKING_LEVEL,
+        resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
+        sentinelBaseUrl: env.SENTINEL_BASE_URL,
+        webSearchConfigured: env.BRAVE_API_KEY !== undefined,
+      },
       model: { provider: env.INVESTIGATOR_PROVIDER, id: env.INVESTIGATOR_MODEL },
       limits: { maxTurns: env.INVESTIGATOR_MAX_TURNS, timeoutMs: env.INVESTIGATOR_TIMEOUT_MS },
       results: collected,
@@ -109,14 +127,41 @@ async function main(): Promise<void> {
     return path;
   };
 
+  /**
+   * Serialise the flushes.
+   *
+   * `runAlerts` calls `onResult` synchronously while `flush` is async, so firing and forgetting
+   * would let two writes interleave and would let the SIGINT flush race one already in flight
+   * (PRD-3 §7). Chaining makes the last write win in call order.
+   *
+   * A failed flush is reported and swallowed rather than breaking the chain: losing one
+   * intermediate artifact write is survivable, losing the rest of the sweep to it is not.
+   */
+  let queue: Promise<string | undefined> = Promise.resolve(undefined);
+  const flushQueued = (status: RunStatus): Promise<string | undefined> => {
+    queue = queue.then(async () => {
+      try {
+        return await flush(status);
+      } catch (error) {
+        log(`[investigator] could not write the run artifact — ${describe(error)}`);
+        return undefined;
+      }
+    });
+    return queue;
+  };
+
+  // The artifact exists from the first moment, so an in-flight sweep is visible to a reader before
+  // its first alert finishes (PRD-3 §7).
+  await flushQueued("running");
+
   // An interrupted sweep should still leave usable data — these runs are not cheap to repeat.
   let interrupted = false;
   process.on("SIGINT", () => {
     if (interrupted) process.exit(130);
     interrupted = true;
     log("\n[investigator] interrupted — writing partial run artifact.");
-    void flush().then((path) => {
-      log(`[investigator] wrote ${path}`);
+    void flushQueued("interrupted").then((path) => {
+      if (path !== undefined) log(`[investigator] wrote ${path}`);
       process.exit(130);
     });
   });
@@ -129,7 +174,10 @@ async function main(): Promise<void> {
     harness,
     alerts,
     log,
-    onResult: (result) => collected.push(result),
+    onResult: (result) => {
+      collected.push(result);
+      void flushQueued("running");
+    },
     createEventSink: env.INVESTIGATOR_TRACE
       ? (alert) =>
           createTracer({
@@ -143,9 +191,12 @@ async function main(): Promise<void> {
       : undefined,
   });
 
-  const path = await flush();
+  const path = await flushQueued("completed");
   const completed = collected.filter((r) => r.status === "completed").length;
-  log(`[investigator] ${completed}/${collected.length} completed — wrote ${path}`);
+  log(
+    `[investigator] ${completed}/${collected.length} completed` +
+      (path === undefined ? "" : ` — wrote ${path}`),
+  );
 }
 
 if (import.meta.main) {
