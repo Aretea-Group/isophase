@@ -1,0 +1,33 @@
+{
+  "runId": "01a01960-0000-7000-0000-000000000009",
+  "startedAt": "2026-08-19T11:00:00.000Z",
+  "completedAt": "2026-08-19T11:00:45.000Z",
+  "status": "completed",
+  "alertCount": 1,
+  "model": { "provider": "openai", "id": "gpt-5.6-terra" },
+  "limits": { "maxTurns": 50, "timeoutMs": 600000 },
+  "results": [
+    {
+      "alertId": "cccccccc-0000-0000-0000-000000000009",
+      "alertTitle": "Brute force against SOC-FW-RDP",
+      "status": "completed",
+      "startedAt": "2026-08-19T11:00:00.000Z",
+      "completedAt": "2026-08-19T11:00:45.000Z",
+      "durationMs": 45000,
+      "alert": {
+        "severity": "Medium",
+        "startTimeUtc": "2021-10-23T05:26:19.626Z",
+        "endTimeUtc": "2021-10-23T06:25:57.674Z",
+        "timeGenerated": "2021-10-23T06:25:57.674Z",
+        "tactics": ["CredentialAccess"],
+        "techniques": ["T1110", "T1110.001"],
+        "compromisedEntity": "SOC-FW-RDP",
+        "alertType": "SOC-RULE-0001-RdpBruteForce"
+      },
+      "summary": {
+        "tpPercent": 94, "tpReason": "tp", "fpPercent": 6, "fpReason": "fp",
+        "whatHappened": "what", "impact": "none", "keyEvidence": ["e"], "researchDone": ["r"]
+      }
+    }
+  ]
+}

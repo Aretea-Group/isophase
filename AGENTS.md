@@ -43,7 +43,7 @@ Do not implement:
 - human-feedback retrieval;
 - generalized ingestion;
 - SOAR forwarding;
-- frontend;
+- web/product frontend — a local read-only analyst console is in scope from PRD-3 (ADR 006 §1);
 - RBAC/authentication;
 - threat intelligence;
 - alert grouping;
@@ -101,6 +101,7 @@ Avoid duplicate hand-written TypeScript interfaces when a schema already generat
 - Pi Agent Core + Pi AI
 - TypeBox (via `@earendil-works/pi-ai`)
 - `@t3-oss/env-core`
+- OpenTUI (`@opentui/core`) — analyst console renderer
 - Microsoft Kusto Emulator
 - Docker Compose
 - Oxlint
@@ -116,6 +117,7 @@ Do not introduce ESLint or Prettier.
 apps/
   mock-sentinel/
   investigator/
+  console/
 
 packages/
   sentinel-client/
@@ -292,6 +294,10 @@ trace store, deferred until evaluation shows a concrete need:
 - errors;
 - lifecycle timestamps.
 
+PRD-3 adds optional `status`, `traceDir` and `config` fields to that artifact and flushes it
+after each alert, so an in-flight run is observable (ADR 006 §4). It stays one JSON file of
+per-alert outcomes — it is not the trace store above.
+
 Do not store hidden chain-of-thought as a product requirement.
 
 ## 13. Structured Assessment
@@ -344,6 +350,15 @@ Acceptance:
 ### Phase 6
 Evaluation against the hidden scenario metadata, then BAML/trace persistence if
 demonstrated necessary (ADR 005 §1, §2).
+
+### Phase 7
+Analyst Console (PRD-3).
+
+Acceptance:
+- the console reads run artifacts and transcripts only, and never writes to `runs/`;
+- an in-flight run is visible while it runs, with its turns and tool calls;
+- a finished investigation's verdict, tool calls, exact KQL and web research are readable;
+- token and cost figures state how many runs they cover.
 
 ## 15. When to Stop and Ask for Architecture Input
 

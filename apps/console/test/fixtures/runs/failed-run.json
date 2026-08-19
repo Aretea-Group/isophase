@@ -1,0 +1,23 @@
+{
+  "runId": "01a0195f-0000-7000-0000-000000000001",
+  "startedAt": "2026-08-19T10:00:00.000Z",
+  "completedAt": "2026-08-19T10:02:00.000Z",
+  "status": "interrupted",
+  "alertCount": 3,
+  "model": { "provider": "openai", "id": "gpt-5.6-terra" },
+  "limits": { "maxTurns": 50, "timeoutMs": 600000 },
+  "results": [
+    {
+      "alertId": "aaaaaaaa-0000-0000-0000-000000000001",
+      "alertTitle": "Alert that failed",
+      "status": "failed",
+      "startedAt": "2026-08-19T10:00:00.000Z",
+      "completedAt": "2026-08-19T10:01:00.000Z",
+      "durationMs": 60000,
+      "error": {
+        "name": "InvestigationStepLimitError",
+        "message": "Investigation reached the 50-turn ceiling without a valid submission."
+      }
+    }
+  ]
+}
