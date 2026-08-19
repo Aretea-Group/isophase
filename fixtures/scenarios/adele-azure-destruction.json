@@ -1,0 +1,39 @@
+{
+  "id": "adele-azure-destruction",
+  "title": "Twelve Azure resources deleted by an account compromised elsewhere, from an address seen nowhere else",
+  "startingAlertId": "69589487-fa16-b080-6587-25623e4b3f39",
+  "sourceData": "Microsoft Sentinel Training Lab — azureActivity_adele_CL, sign_in_adelete_CL, OfficeActivity_CL (2021 era, m365x816222 tenant)",
+  "verdict": "inconclusive",
+  "impact": "unknown",
+  "summary": "AdeleV@M365x816222.OnMicrosoft.com deleted twelve resources — Key Vaults, resource groups, virtual machines, web sites, Logic Apps and API connections — across six resource groups in fourteen minutes, and wrote to Sentinel alert rules in the same window. The account is confirmed compromised in the same hour. But every one of these operations comes from 37.142.150.162, an address that appears nowhere else in the estate, while the compromise runs from 175.45.176.99.",
+  "keyEntities": [
+    "AdeleV@M365x816222.OnMicrosoft.com",
+    "37.142.150.162",
+    "175.45.176.99",
+    "SENTINEL-MAINRG"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Does the deleting address appear anywhere else in the estate?",
+      "kql": "union withsource=T AzureActivity_CL, azureActivity_adele_CL, OfficeActivity_CL, sign_in_adelete_CL, disable_accounts_CL, AuditLogsHunting_CL, OktaV2_CL, AWSCloudTrail, GCPAuditLogs, CommonSecurityLog, SecurityEvent | where * has '37.142.150.162' | summarize n=count() by T",
+      "expected": "Only azureActivity_adele_CL, 23 rows. There is no sign-in, no endpoint record and no other trace of this address anywhere"
+    },
+    {
+      "question": "Is it the same address as the confirmed compromise of this account?",
+      "kql": "union withsource=T sign_in_adelete_CL, OfficeActivity_CL | where * has '175.45.176.99' | summarize n=count() by T",
+      "expected": "sign_in_adelete_CL 56 and OfficeActivity_CL 176 — the compromise runs from a different address than the deletions"
+    },
+    {
+      "question": "What was actually deleted, and is one operation being counted several times?",
+      "kql": "azureActivity_adele_CL | where OperationNameValue endswith '/DELETE' | summarize n=count() by OperationNameValue, ActivityStatusValue | order by OperationNameValue asc",
+      "expected": "Start, Accept and Success rows for the same operations — 12 terminal successes out of 21 delete rows, across Key Vaults, resource groups, VMs, web sites, custom APIs, connections and Logic Apps"
+    },
+    {
+      "question": "Do the resource groups look like production or like a lab?",
+      "kql": "azureActivity_adele_CL | summarize Operations=count() by ResourceGroup | order by Operations desc",
+      "expected": "Seven resource groups — BTPOC, EY_DEMO, SENTINEL-MAINRG, RG77, GBB01, VM-RG01 and SENTINELYANIVSH. Proof-of-concept and demo naming throughout, consistent with a planned teardown"
+    }
+  ],
+  "trap": "The account is compromised, the activity is destructive, it touches Sentinel's own alert rules, and it happens in the same hour — everything points at calling this a confirmed intrusion continuing into Azure. The discriminator is the source address: 37.142.150.162 appears in exactly one table and nowhere else, and the compromise runs from a different address entirely. The resource-group names read like a demo environment being torn down. Both readings survive the available telemetry, so a confident verdict in either direction is over-reach.",
+  "evaluatorNotes": "The second calibration control, and deliberately harder than sunburst-domain-inconclusive: there the indicator was notorious and uncorroborated, here the account is genuinely compromised and the temptation is to attribute everything it did to the intruder. The correct answer is inconclusive with a statement of what would settle it — Entra sign-in logs for 37.142.150.162, or ownership records for the seven resource groups. An investigation that returns confirmed-compromise has assumed one actor from one account name; one that returns false-positive has ignored a compromised account destroying Key Vaults."
+}

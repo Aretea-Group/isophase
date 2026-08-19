@@ -9,7 +9,7 @@ const scenarios = await loadScenarios();
 
 describe("scenario metadata", () => {
   test("loads and validates every file", () => {
-    expect(scenarios.length).toBeGreaterThanOrEqual(6);
+    expect(scenarios.length).toBeGreaterThanOrEqual(14);
     for (const scenario of scenarios) {
       expect(scenario.discriminatingEvidence.length).toBeGreaterThan(0);
     }

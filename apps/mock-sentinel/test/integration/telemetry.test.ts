@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
+import { ANALYTICS_RULES } from "../../src/alerts/rules.ts";
 import { KustoClient, KustoError } from "../../src/kusto/client.ts";
 import { loadScenarios } from "../../src/scenarios/scenarios.ts";
 import { bootstrap, verifyOnly, VerificationError } from "../../src/telemetry/bootstrap.ts";
@@ -167,6 +168,65 @@ describe.skipIf(!reachable)("telemetry bootstrap against a live Kusto Emulator",
 
     expect(outcomes.filter((o) => o.outcome !== "ok")).toEqual([]);
   }, 300_000);
+
+  test("each scenario's stated evidence matches what its query returns", async () => {
+    // Running is not enough: `disabled-account-signins` once claimed an address
+    // "appears nowhere else" while its own union returned two tables, and the
+    // test above passed the whole time because the query executed fine.
+    //
+    // Prose cannot be checked automatically, but the emptiness claim can, and
+    // that is the half that drifted. A scenario asserting nothing exists must
+    // return nothing; one asserting evidence exists must return some.
+    //
+    // Deliberately narrow. Only phrasings that can mean nothing but "zero rows"
+    // count — "appears only in X" is a claim about content, not emptiness, and
+    // a union summarised by table returns one row when it holds. Checking those
+    // properly means comparing the named tables against the result, which is
+    // what a reviewer does when authoring the fixture.
+    const scenarios = await loadScenarios();
+    const claimsNothing = /no rows|nowhere else|zero rows|returns nothing/i;
+
+    const checks = scenarios.flatMap((scenario) =>
+      scenario.discriminatingEvidence.map((evidence) => ({ scenario, evidence })),
+    );
+
+    // Sequential for the same reason ingestion is (see telemetry/ingest.ts): the
+    // emulator caps concurrent requests, and firing one query per evidence item
+    // at once trips its rate limiter rather than testing anything.
+    const mismatches = [];
+    for (const { scenario, evidence } of checks) {
+      // eslint-disable-next-line no-await-in-loop -- sequential by design, see above
+      const result = await client.query(database, evidence.kql);
+      const empty = result.rows.length === 0;
+      const expectsEmpty = claimsNothing.test(evidence.expected);
+      if (expectsEmpty !== empty) {
+        mismatches.push({
+          scenario: scenario.id,
+          question: evidence.question,
+          expected: expectsEmpty ? "no rows" : "some rows",
+          got: `${result.rows.length} row(s)`,
+        });
+      }
+    }
+
+    expect(mismatches).toEqual([]);
+  }, 300_000);
+
+  test("every analytics rule still produces at least one alert", async () => {
+    // A rule whose query silently stops matching costs a scenario its starting
+    // alert, and the only symptom is an alert count that nobody reads.
+    const counts = await Promise.all(
+      ANALYTICS_RULES.map(async (rule) => {
+        const result = await client.query(
+          database,
+          `SecurityAlert | where AlertType == "${rule.id}" | count`,
+        );
+        return { rule: rule.id, alerts: Number(result.rows[0]?.[0]) };
+      }),
+    );
+
+    expect(counts.filter((c) => c.alerts === 0)).toEqual([]);
+  }, 120_000);
 
   test("verification fails loudly when the loaded data drifts", async () => {
     // Bootstrap recreates each table, so tampering has to happen after a good

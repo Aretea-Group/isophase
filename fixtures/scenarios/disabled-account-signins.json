@@ -1,24 +1,39 @@
 {
   "id": "disabled-account-signins",
-  "title": "Repeated sign-ins against a disabled account from a foreign address",
+  "title": "Failed sign-ins against a disabled account, by an address that succeeded elsewhere",
   "startingAlertId": "c4a8c80f-1c83-1842-31c6-e68352fdfb07",
-  "sourceData": "Microsoft Sentinel Training Lab — disable_accounts_CL",
+  "sourceData": "Microsoft Sentinel Training Lab — disable_accounts_CL, sign_in_adelete_CL, OfficeActivity_CL",
   "verdict": "true-positive",
-  "impact": "none",
-  "summary": "Someone holds credentials for a decommissioned account and is using them, but every attempt fails because the account is disabled. The preventive control worked.",
-  "keyEntities": ["johns@m365x816222.onmicrosoft.com", "175.45.176.99"],
+  "impact": "confirmed-compromise",
+  "summary": "Four sign-in attempts against johns@m365x816222.onmicrosoft.com from 175.45.176.99 all failed, because the account is disabled. The same address authenticated successfully 53 times as adelev@m365x816222.onmicrosoft.com in the same period, and that session created an anonymous sharing link on 'Contoso Purchasing Data - Q1.xlsx' before deleting a file. The control worked for this account and for no other.",
+  "keyEntities": [
+    "johns@m365x816222.onmicrosoft.com",
+    "175.45.176.99",
+    "adelev@m365x816222.onmicrosoft.com",
+    "Contoso Purchasing Data - Q1.xlsx"
+  ],
   "discriminatingEvidence": [
     {
-      "question": "Did any attempt succeed?",
+      "question": "Did any attempt against this account succeed?",
       "kql": "disable_accounts_CL | summarize n=count() by ResultType=tostring(ResultType), ResultDescription=tostring(ResultDescription)",
-      "expected": "All 4 attempts are ResultType 50057, 'User account is disabled' — zero successes"
+      "expected": "All 4 attempts are ResultType 50057, 'User account is disabled' — zero successes against johns@"
     },
     {
       "question": "Has that address succeeded against any other identity?",
-      "kql": "union withsource=T disable_accounts_CL, sign_in_adelete_CL, OktaV2_CL | where * has '175.45.176.99' | summarize by T",
-      "expected": "Only disable_accounts_CL — the address appears nowhere else"
+      "kql": "union withsource=T disable_accounts_CL, sign_in_adelete_CL, OktaV2_CL, OfficeActivity_CL, AzureActivity_CL | where * has '175.45.176.99' | summarize n=count() by T",
+      "expected": "Four tables: disable_accounts_CL 4, sign_in_adelete_CL 56, OfficeActivity_CL 176, AzureActivity_CL 1. The address is not confined to the failed attempts"
+    },
+    {
+      "question": "What did it achieve where it did succeed?",
+      "kql": "sign_in_adelete_CL | summarize SignIns=count(), Successful=countif(ResultType == 0) by UserPrincipalName, IPAddress",
+      "expected": "adelev@m365x816222.onmicrosoft.com, 56 sign-ins from 175.45.176.99 of which 53 succeeded"
+    },
+    {
+      "question": "Did that session do anything destructive?",
+      "kql": "OfficeActivity_CL | where ClientIP == '175.45.176.99' | where Operation in ('AnonymousLinkCreated','SharingSet','FileDeleted','PermissionLevelAdded') | project TimeGenerated, UserId, Operation, SourceFileName | order by TimeGenerated asc",
+      "expected": "Permission grants and sharing changes by both johns and adelev, an AnonymousLinkCreated on 'Contoso Purchasing Data - Q1.xlsx', and a FileDeleted"
     }
   ],
-  "trap": "The source address belongs to a range associated with a nation-state actor, which invites escalation on attribution alone. The credentials are real and the intent is hostile, but the account cannot authenticate. Severity should follow impact, not the reputation of the IP.",
-  "evaluatorNotes": "Tests whether the investigation checks outcome before escalating. Correct handling: confirm the activity, note the credentials are known to an attacker, recommend a tenant-wide check for that address, and close as no impact."
+  "trap": "Everything about the alert says close it: four attempts, all failed, against an account that is already disabled. The preventive control did work — for this identity. Scoping the assessment to the alerted account produces a defensible-sounding 'no impact' that misses a confirmed compromise of a second identity by the same address in the same window. The pivot from the account to the address is the entire investigation.",
+  "evaluatorNotes": "The most important thing this scenario tests is whether a low-severity, all-failed alert gets pivoted on rather than closed. The verdict is easy; the impact is where investigations fail. An assessment returning impact 'none' has answered the narrow question — the attempts failed — and stopped at the boundary of the alert. Note the country field disagrees between tables: disable_accounts_CL labels 175.45.176.99 as KP and sign_in_adelete_CL labels the same address IL, so attribution built on geolocation is reasoning from data the corpus contradicts. Related: adele-signin-compromise, adele-sharepoint-exfiltration."
 }

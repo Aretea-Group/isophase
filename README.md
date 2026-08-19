@@ -25,7 +25,7 @@ The full Sentinel surface is live:
 
 ```text
 GET  /health          operational only
-GET  /alerts          151 alerts, ARM-shaped
+GET  /alerts          154 alerts, ARM-shaped
 GET  /alerts/:id
 GET  /schema          22 tables, read from the engine
 POST /query           read-only KQL

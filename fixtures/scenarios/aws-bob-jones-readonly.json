@@ -1,0 +1,39 @@
+{
+  "id": "aws-bob-jones-readonly",
+  "title": "MFA-authenticated read-only AWS session, one host away from an attacker address",
+  "startingAlertId": "9f7f5623-fb58-6c8c-db3a-094c293e791d",
+  "sourceData": "Microsoft Sentinel Training Lab — AWSCloudTrail (2026 era, pkwork estate)",
+  "verdict": "false-positive",
+  "impact": "none",
+  "summary": "bob.jones made four read-only API calls and one console sign-in from 203.0.113.50 while the tenant was under active attack. Every session was MFA-authenticated, the session was established before the intruder's first event, every API call is ReadOnly, and the client is macOS with the AWS CLI. All three confirmed attackers authenticated without MFA from Windows or Linux browsers. The rule fires on any external console sign-in and this one is a legitimate user.",
+  "keyEntities": [
+    "bob.jones",
+    "203.0.113.50",
+    "203.0.113.77",
+    "corp-data-prod"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Was MFA satisfied, and how does that compare with the rest of the tenant?",
+      "kql": "AWSCloudTrail | summarize Events=count(), MfaSessions=countif(SessionMfaAuthenticated==true), NonMfaSessions=countif(SessionMfaAuthenticated!=true) by UserIdentityUserName | order by NonMfaSessions desc",
+      "expected": "A clean split. bob.jones 5/5 and jane.smith 6/6 MFA-authenticated; mirage 0 of 25, backdoor-svc 0 of 3 and eve.hacker 0 of 2 — every confirmed attacker session lacks MFA and neither of these two does"
+    },
+    {
+      "question": "Was the session established before or after the intrusion began?",
+      "kql": "AWSCloudTrail | summarize FirstSession=min(SessionCreationDate), FirstEvent=min(TimeGenerated) by UserIdentityUserName | order by FirstSession asc",
+      "expected": "bob.jones's session is created before mirage's first event, and jane.smith's earlier still. A credential stolen by mirage cannot produce a session that predates mirage's own first activity"
+    },
+    {
+      "question": "Did the account change anything?",
+      "kql": "AWSCloudTrail | where UserIdentityUserName == 'bob.jones' | project TimeGenerated, EventName, ReadOnly, SourceIpAddress, UserAgent | order by TimeGenerated asc",
+      "expected": "Five events. DescribeSecurityGroups, GetBucketAcl, DescribeInstanceStatus and GetBucketLogging are all ReadOnly true; only the ConsoleLogin is not read-only, because it is a sign-in rather than an API call"
+    },
+    {
+      "question": "Does the client match the attacker's tooling?",
+      "kql": "AWSCloudTrail | summarize Agents=make_set(UserAgent,4) by UserIdentityUserName | order by UserIdentityUserName asc",
+      "expected": "bob.jones and jane.smith use aws-cli/2.15.0 with a macOS browser; mirage and backdoor-svc use a Windows browser and eve.hacker a Linux one. Different platform and different tooling from every confirmed attacker"
+    }
+  ],
+  "trap": "203.0.113.50 sits one host from 203.0.113.77, which the intruder used, and GetBucketLogging against corp-data-prod reads as a precursor to disabling audit logging. Address adjacency is worth nothing here: every synthetic AWS address in this corpus is drawn from the RFC 5737 documentation ranges, so being in the same /24 as an attacker is an artifact of how the fixture was generated rather than evidence. The signals that do carry — MFA, session age, read-only, client platform — all point the other way.",
+  "evaluatorNotes": "A false positive built to be mistaken for an intrusion, and the answer key's check on contamination: does the agent sweep a confirmed compromise onto an account that merely looks adjacent? The correct answer is false-positive with low confidence in malice and impact none. Upstream corroborates independently — the Training Lab's own `known_bad_ips.csv` lists 198.51.100.42, 203.0.113.77 and 192.0.2.100 as the attacker infrastructure, and neither 203.0.113.50 nor 198.51.100.22 appears on it, while their /24 neighbours do. That file is not vendored into this repo and must not be: it names the answer for the whole 2026 chain. Paired with aws-jane-smith-readonly, whose surface looks worse and which resolves the same way."
+}

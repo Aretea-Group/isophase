@@ -1,0 +1,39 @@
+{
+  "id": "adele-signin-compromise",
+  "title": "Sustained successful authentication for one account from a single foreign address",
+  "startingAlertId": "0535bc09-6d6d-c8be-4c6d-42ad7194657c",
+  "sourceData": "Microsoft Sentinel Training Lab — sign_in_adelete_CL, OfficeActivity_CL, disable_accounts_CL (2021 era, m365x816222 tenant)",
+  "verdict": "true-positive",
+  "impact": "confirmed-compromise",
+  "summary": "adelev@m365x816222.onmicrosoft.com authenticated successfully 53 times from 175.45.176.99 over about seventy minutes, across seven applications. The same address made four failed attempts against a disabled account, and the session that follows creates an anonymous sharing link on a sensitive spreadsheet and deletes a file.",
+  "keyEntities": [
+    "adelev@m365x816222.onmicrosoft.com",
+    "175.45.176.99",
+    "johns@m365x816222.onmicrosoft.com",
+    "Contoso Purchasing Data - Q1.xlsx"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Where else does the source address appear?",
+      "kql": "union withsource=T disable_accounts_CL, sign_in_adelete_CL, OfficeActivity_CL, AzureActivity_CL | where * has '175.45.176.99' | summarize n=count() by T",
+      "expected": "Four tables: disable_accounts_CL 4, sign_in_adelete_CL 56, OfficeActivity_CL 176, AzureActivity_CL 1 — the address is not confined to this account"
+    },
+    {
+      "question": "Did the address succeed, or only try?",
+      "kql": "sign_in_adelete_CL | summarize n=count() by UserPrincipalName, IPAddress, ResultType | order by n desc",
+      "expected": "53 rows with ResultType 0 for adelev from 175.45.176.99 — successful, not attempted. Two 16000 and one 50058 make up the rest"
+    },
+    {
+      "question": "What did the account do once authenticated?",
+      "kql": "OfficeActivity_CL | where ClientIP == '175.45.176.99' | summarize n=count() by UserId, Operation | order by n desc",
+      "expected": "adelev and johns activity including PermissionLevelAdded, SharingSet, SharingInheritanceBroken, AnonymousLinkCreated and FileDeleted — not only reads"
+    },
+    {
+      "question": "Is the same address implicated in the alert that already exists for this tenant?",
+      "kql": "disable_accounts_CL | project UserPrincipalName, IPAddress, Location, AppDisplayName",
+      "expected": "Four failed attempts against johns@m365x816222.onmicrosoft.com from the same 175.45.176.99"
+    }
+  ],
+  "trap": "The alert says only 'successful sign-ins', and 53 successes for a real user reads like an ordinary working session — scripted clients and modern-auth token refreshes both produce high sign-in counts, so volume alone is weak. The investigation is decided by what the address did elsewhere: it failed against a decommissioned account, and the same session created an anonymous sharing link. An investigation that stops at the sign-in table sees a busy user and calls this a false positive.",
+  "evaluatorNotes": "The entry point to the cluster-3 attack, and the one scenario in that chain where the answer is unambiguous — the address is present in four tables, both failing and succeeding, and the follow-on activity is destructive. Note the country field disagrees between tables: sign_in_adelete_CL labels 175.45.176.99 as IL and disable_accounts_CL labels it KP. An assessment that rests on geolocation rather than on behaviour is reasoning from data the corpus contradicts. Impact is confirmed-compromise because the anonymous link was created and a file deleted, not merely because access succeeded."
+}

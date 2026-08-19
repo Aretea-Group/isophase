@@ -1,0 +1,34 @@
+{
+  "id": "model-evasion-attempts",
+  "title": "Adversarial inputs against a fraud-detection model that the model rejected",
+  "startingAlertId": "6203804c-88ac-f715-e303-a0a837133535",
+  "sourceData": "Microsoft Sentinel Training Lab — model_evasion_detection_CL (2021 era, contoso tenant)",
+  "verdict": "true-positive",
+  "impact": "none",
+  "summary": "Four inputs submitted by sarah@contoso.com against the fraud_detection model scored 0.9921 on the evasion detector. All four arrived from 79.23.11.201 against host creditCard--contoso-8o3b, one per week at almost exactly midnight on four consecutive Saturdays. Every one produced a model output of 0.07 and an output label of 0 — the evasion attempt was detected and the model was not fooled.",
+  "keyEntities": [
+    "sarah@contoso.com",
+    "79.23.11.201",
+    "creditCard--contoso-8o3b",
+    "fraud_detection"
+  ],
+  "discriminatingEvidence": [
+    {
+      "question": "Did the model actually produce the attacker's desired output?",
+      "kql": "model_evasion_detection_CL | project timestamp, account, client_ip, model_id, model_output, model_output_label, model_evasioncore",
+      "expected": "Four rows, every one model_output 0.07 and model_output_label 0 against an evasion score of 0.9921 — high-confidence evasion attempts that did not move the model"
+    },
+    {
+      "question": "What is the timing pattern?",
+      "kql": "model_evasion_detection_CL | project timestamp, account, host, client_ip | order by timestamp asc",
+      "expected": "Four submissions on consecutive Saturdays, each at almost exactly 12:00:03 AM GMT, from one account, host and address"
+    },
+    {
+      "question": "Does the account or address appear anywhere else?",
+      "kql": "union withsource=T OktaV2_CL, sign_in_adelete_CL, AWSCloudTrail, OfficeActivity_CL, SecurityEvent, CommonSecurityLog | where * has 'sarah@contoso.com' or * has '79.23.11.201' | summarize n=count() by T",
+      "expected": "No rows — neither the account nor the address appears in any other table"
+    }
+  ],
+  "trap": "An evasion score of 0.9921 invites the reading that the model was successfully evaded, and 'model evasion attempt detected' in the alert title reinforces it. The output columns say the opposite: label 0 and output 0.07 on all four attempts. The detection is correct that adversarial inputs were submitted, so this is a true positive — but nothing was achieved, which makes the impact none rather than a compromise.",
+  "evaluatorNotes": "The cleanest available separation of verdict from impact: the detection is entirely right and the outcome is entirely null. An investigation that answers confirmed-compromise has conflated a high detector score with a successful attack. The weekly midnight cadence is worth noticing and is genuinely ambiguous — it reads as automation, which could equally be an adversary probing on a schedule or an authorised red-team harness; the corpus does not say, and a good assessment flags it without resolving it."
+}
