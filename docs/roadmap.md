@@ -46,3 +46,21 @@ Potential capabilities:
 * Safe handling of malicious or adversarial web content
 * Maintain a constrained search interface without exposing arbitrary network access
 
+
+### 5. Evaluation at Scale
+
+Exercise the investigator beyond the six alerts that have ground truth, and close the verification
+gaps PRD-2 left open.
+
+Potential capabilities:
+
+* Run the full 151-alert sweep — aggregate failure rate, cost and step-limit behaviour at scale are
+  currently unknown, since every run to date has covered a single alert
+* Exercise the investigation timeout, which is implemented and wired but has never fired
+* Expand ground-truth coverage beyond six scenarios — with n=6, two impact judgements have already
+  been observed flipping in opposite directions between runs differing only in wording that does not
+  touch impact, so single-point score movements are variance rather than signal
+* Spot-check alerts that have no ground truth, to catch reasoning failures the six scenarios
+  structurally cannot see
+* Model-tier comparison as a product question: terra-class reasoning cleared the calibration control
+  that luna failed, at roughly ten times the token price

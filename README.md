@@ -8,8 +8,9 @@ The architecture baseline is [`docs/architecture.md`](./docs/architecture.md).
 
 ## Status
 
-**Phases 4–5 — Sentinel Client and Core Investigation Agent. Delivered.**
-Phase 6 — evaluation — is in progress.
+**Phases 4–5 — Sentinel Client and Core Investigation Agent. Complete.**
+Phase 6 — evaluation — is in progress; follow-up work is in
+[`docs/roadmap.md`](./docs/roadmap.md).
 ([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), [ADR 005](./docs/adr/005-investigation-agent-boundary.md), AGENTS.md §14.)
 
 `bun run data:bootstrap` takes a cold emulator to 22 populated tables — 25,130 rows

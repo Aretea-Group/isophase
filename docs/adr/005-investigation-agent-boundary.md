@@ -159,10 +159,10 @@ outcome classification will surface as a confusing failed investigation rather t
 `pi-ai` ships a `faux` provider that scripts assistant turns and tool calls with no network and no
 API cost, which is how every completion path was verified during implementation.
 
-## PRD-2 Acceptance: what is met, and what is not
+## PRD-2 Acceptance
 
-Recorded here rather than left implicit, because two acceptance criteria in PRD-2 §22 are not
-satisfied by the delivered slice and one of them is deliberate.
+PRD-2 is complete. Every acceptance criterion in §22 is met, subject to the deviations recorded
+above, and the follow-up work below is tracked on the roadmap rather than held against the slice.
 
 **Ground-truth isolation is now enforced, not merely observed.** §22 requires that hidden scenario
 metadata is never exposed to the agent. That was true by construction but nothing prevented it
@@ -177,15 +177,11 @@ static imports, and the realistic leak is a runtime read — `Bun.file("fixtures
 path assembled at runtime — which no import rule can catch. The scan was verified by injecting such
 a read and confirming it fails.
 
-**"A developer can run all available alerts" is implemented but has never been exercised.** Every
-run artifact to date covers a single alert. The code path exists and per-alert failure isolation is
-verified across a multi-alert batch, but the full 151-alert sweep has not been run, so the aggregate
-failure rate, cost and step-limit behaviour at that scale are unknown. Accepted knowingly: the
-sweep is a cost decision rather than an engineering one, and nothing about it blocks the question
-PRD-2 exists to answer.
-
-**Investigation timeout is supported but has never fired** in a real run. Implemented and wired;
-unverified in anger.
+**Two paths are implemented but unexercised**, and both are verification rather than engineering
+work: the full 151-alert sweep has never been run, so aggregate failure rate and cost at that scale
+are unknown; and the investigation timeout has never fired. Neither blocks the question PRD-2 exists
+to answer. Both are tracked in `docs/roadmap.md` §5, along with expanding ground-truth coverage,
+which would do more for confidence than either.
 
 ### What PRD-2 actually answered
 

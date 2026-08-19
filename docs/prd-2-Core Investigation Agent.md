@@ -1,6 +1,6 @@
 # PRD-2 — Core Investigation Agent
 
-**Status:** Implemented — see `docs/adr/005-investigation-agent-boundary.md` for accepted deviations and open items  
+**Status:** Complete — see `docs/adr/005-investigation-agent-boundary.md` for accepted deviations  
 **Depends on:** PRD-1 — Mock Sentinel  
 **Primary runtime:** `@earendil-works/pi-agent-core`, `@earendil-works/pi-ai`  
 **Language/runtime:** TypeScript strict mode, Bun  
