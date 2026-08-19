@@ -542,6 +542,9 @@ Do not implement in this architecture slice:
 
 These are separate capability PRDs.
 
+*Extended by ADR 006 §1 — "Nuxt frontend" stays out. A local, read-only analyst console over run
+artifacts is in scope from PRD-3.*
+
 ## 15. Planned Capability Roadmap
 
 The stable core should later allow:
@@ -580,6 +583,9 @@ Major roadmap PRDs:
 6. Forwarding / Automation
 7. UI / Operations
 8. Production Platform
+
+*Partly reordered by ADR 006 §1 — PRD-3 delivers a local, read-only analyst console ahead of item 7.
+Item 7 remains the networked UI / Operations surface behind an Investigation API.*
 
 ## 16. References
 

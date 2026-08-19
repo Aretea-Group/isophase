@@ -1,0 +1,14 @@
+{
+  "name": "@soc/console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.4",
+    "@t3-oss/env-core": "0.13.11",
+    "zod": "4.4.3"
+  }
+}

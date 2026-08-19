@@ -8,10 +8,12 @@ The architecture baseline is [`docs/architecture.md`](./docs/architecture.md).
 
 ## Status
 
-**Phases 4–5 — Sentinel Client and Core Investigation Agent. Complete.**
+**Phases 4–7 — Sentinel Client, Core Investigation Agent and Analyst Console. Complete.**
 Phase 6 — evaluation — is in progress; follow-up work is in
 [`docs/roadmap.md`](./docs/roadmap.md).
-([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), [ADR 005](./docs/adr/005-investigation-agent-boundary.md), AGENTS.md §14.)
+([PRD-2](./docs/prd-2-Core%20Investigation%20Agent.md), [PRD-3](./docs/prd-3-analyst-console.md),
+[ADR 005](./docs/adr/005-investigation-agent-boundary.md), [ADR 006](./docs/adr/006-analyst-console.md),
+AGENTS.md §14.)
 
 `bun run data:bootstrap` takes a cold emulator to 22 populated tables — 25,130 rows
 across 1,168 columns — in about two seconds, from telemetry vendored at a pinned
@@ -54,6 +56,40 @@ Runs are scored against the hidden scenario fixtures, outside the agent:
 bun run evaluate                  # scorecard vs ground truth, by model
 bun run evaluate --compare a b    # diff two runs
 ```
+
+## Reading the results
+
+The agent's output is otherwise spread across stdout that scrolls away, a JSON file holding
+only the verdict, and transcripts up to 23 MB. A terminal console reads those two files and
+nothing else:
+
+```bash
+bun run console                       # read runs/ and runs/traces/
+bun run console --runs <dir>          # somewhere else
+```
+
+It is read-only by construction: it never writes to `runs/`, never calls a model provider and
+never calls Mock Sentinel. A run in progress appears as it goes, with its turns and tool calls
+streaming when tracing is on.
+
+```text
+[1] Alerts     the alerts in the selected run
+[2] Runs       every run, newest first, live ones distinguished from stale
+[3] Case       the selected alert's own facts — entities, ATT&CK, asset, extended properties
+[4] Main       Verdict · Activity · Transcript · Stream
+```
+
+The verdict names its band as a word — `TRUE POSITIVE`, `INCONCLUSIVE` — using the same 30-70
+band `bun run evaluate` scores against, then the entities it concerns, what happened, and the
+case *for* and *against*. `researchDone` renders as `WHERE IT LOOKED` with equal weight to the
+evidence, because "checked X, found nothing" is a different claim from never having checked.
+
+Activity lists every tool call with the exact KQL readable in full and copyable with `y` —
+"queries used, for reproducibility" is already a required field in a human escalation write-up.
+Token and cost figures always state how many runs they cover, and a partly traced sweep's own
+total says so.
+
+([PRD-3](./docs/prd-3-analyst-console.md), [ADR 006](./docs/adr/006-analyst-console.md).)
 
 ### What it has answered so far
 
@@ -189,6 +225,10 @@ apps/investigator/      the autonomous agent
   src/harness.ts        the only file in the repo that imports Pi
   src/tools/            the five agent capabilities
   src/clients/          Brave search and guarded page fetch
+apps/console/           read-only analyst console (TUI)
+  src/data/             lenient readers for artifacts and transcripts
+  src/view/             pure view models — no terminal, no renderer import
+  src/ui/               the only code that knows OpenTUI exists
 packages/sentinel-client/  typed client for the REST boundary
 packages/contracts/     Zod contracts crossing the REST boundary
 fixtures/telemetry/     vendored Training Lab CSVs (MIT, pinned revision)

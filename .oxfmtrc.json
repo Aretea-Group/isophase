@@ -2,5 +2,11 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "printWidth": 100,
   "sortImports": true,
-  "ignorePatterns": ["**/*.md", "baml_client/", "fixtures/**", "**/*.generated.ts"]
+  "ignorePatterns": [
+    "**/*.md",
+    "baml_client/",
+    "fixtures/**",
+    "**/test/fixtures/**",
+    "**/*.generated.ts"
+  ]
 }

@@ -1,7 +1,7 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlertResource } from "@soc/contracts";
 
-import type { InvestigationResult } from "./contracts/run.ts";
+import type { AlertContext, InvestigationResult } from "./contracts/run.ts";
 import type { InvestigationHarness } from "./harness.ts";
 
 export interface RunAlertsOptions {
@@ -12,6 +12,29 @@ export interface RunAlertsOptions {
   onResult?: (result: InvestigationResult) => void;
   /** Build a per-alert Pi event observer, when tracing is enabled. */
   createEventSink?: (alert: SecurityAlertResource) => ((event: AgentEvent) => void) | undefined;
+}
+
+/**
+ * The alert's own triage facts, copied into the result (PRD-3 §6.1).
+ *
+ * Recorded for both outcomes: a failed investigation still needs to be placeable in time, and a
+ * run that failed on a High-severity alert is not the same finding as one that failed on an
+ * informational one.
+ */
+function alertContext(alert: SecurityAlertResource): AlertContext {
+  const properties = alert.properties;
+  return {
+    severity: properties.severity,
+    startTimeUtc: properties.startTimeUtc,
+    endTimeUtc: properties.endTimeUtc,
+    timeGenerated: properties.timeGenerated,
+    tactics: properties.tactics,
+    techniques: properties.techniques,
+    alertType: properties.alertType,
+    ...(properties.compromisedEntity === undefined
+      ? {}
+      : { compromisedEntity: properties.compromisedEntity }),
+  };
 }
 
 function describe(error: unknown): { name: string; message: string } {
@@ -47,6 +70,7 @@ export async function runAlerts(options: RunAlertsOptions): Promise<Investigatio
       result = {
         alertId,
         alertTitle: alert.properties.alertDisplayName,
+        alert: alertContext(alert),
         status: "completed",
         startedAt: started.toISOString(),
         completedAt: completed.toISOString(),
@@ -63,6 +87,7 @@ export async function runAlerts(options: RunAlertsOptions): Promise<Investigatio
       result = {
         alertId,
         alertTitle: alert.properties.alertDisplayName,
+        alert: alertContext(alert),
         status: "failed",
         startedAt: started.toISOString(),
         completedAt: completed.toISOString(),

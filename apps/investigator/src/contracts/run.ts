@@ -23,6 +23,37 @@ export const InvestigationSummaryRecord = z.object({
   nextAction: z.string().optional(),
 });
 
+/**
+ * The triage facts of the alert that was investigated (PRD-3 §6.1).
+ *
+ * The artifact previously recorded only `alertId` and `alertTitle`, so `startedAt`/`completedAt`
+ * described when the *agent* ran and nothing described when the *incident* happened. On this
+ * corpus those differ by five years — the telemetry is historical Training Lab data — which makes
+ * a verdict impossible to place in time and a list of runs impossible to order by anything an
+ * analyst cares about.
+ *
+ * Deliberately a small subset, not a mirror of `SecurityAlertResource`. Copying the whole alert
+ * would duplicate Mock Sentinel's contract into a durable artifact and make every future alert
+ * field a migration. These are the fields triage needs at a glance: when, how bad, what kind, and
+ * which asset. Everything else stays in the transcript, which carries the alert verbatim.
+ *
+ * Types are deliberately looser than `@soc/contracts` (plain strings rather than the `AlertSeverity`
+ * and `AttackTactic` enums): this is a persisted record read back by later tooling, and a new
+ * severity or tactic upstream should not make old artifacts unreadable.
+ */
+export const AlertContext = z.object({
+  severity: z.string().min(1).optional(),
+  /** When the activity happened — not when it was investigated. */
+  startTimeUtc: z.iso.datetime().optional(),
+  endTimeUtc: z.iso.datetime().optional(),
+  /** When the detection fired. */
+  timeGenerated: z.iso.datetime().optional(),
+  tactics: z.array(z.string()).optional(),
+  techniques: z.array(z.string()).optional(),
+  compromisedEntity: z.string().optional(),
+  alertType: z.string().optional(),
+});
+
 export const InvestigationResult = z.object({
   /** The alert's systemAlertId. Evaluation tooling joins on this, outside the agent (PRD-2 §20). */
   alertId: z.string().min(1),
@@ -31,14 +62,48 @@ export const InvestigationResult = z.object({
   startedAt: z.iso.datetime(),
   completedAt: z.iso.datetime(),
   durationMs: z.number().nonnegative(),
+  /** Triage facts about the alert itself. Absent on artifacts written before PRD-3. */
+  alert: AlertContext.optional(),
   summary: InvestigationSummaryRecord.optional(),
   error: z.object({ name: z.string(), message: z.string() }).optional(),
+});
+
+/**
+ * How a run was configured beyond model and limits (PRD-3 §7).
+ *
+ * Present for the same reason `model` is: two runs are not comparable without knowing how each was
+ * configured, and the console shows this beside the environment it is running in so drift between
+ * them is visible rather than mysterious.
+ */
+export const InvestigationRunConfig = z.object({
+  thinkingLevel: z.string().min(1),
+  resultMaxChars: z.number().int().positive(),
+  sentinelBaseUrl: z.string().min(1),
+  webSearchConfigured: z.boolean(),
 });
 
 export const InvestigationRun = z.object({
   runId: z.string().min(1),
   startedAt: z.iso.datetime(),
+  /**
+   * When the artifact was last written, not when the sweep ended. PRD-3 flushes after every alert,
+   * so this advances during a run and the console reads it as a liveness heartbeat (PRD-3 §10.2).
+   */
   completedAt: z.iso.datetime(),
+  /**
+   * Lifecycle of the sweep (PRD-3 §7). Deliberately a different axis from
+   * `InvestigationResult.status`, which is per alert and has its own `completed | failed` enum —
+   * `interrupted` describes a sweep, never an alert. Absent on artifacts written before PRD-3.
+   */
+  status: z.enum(["running", "completed", "interrupted"]).optional(),
+  /**
+   * How many alerts the sweep set out to investigate. `results` only ever holds finished ones, so
+   * without this a reader can show what completed but cannot say how much is left (PRD-3 §11).
+   */
+  alertCount: z.number().int().nonnegative().optional(),
+  /** Where this run's transcripts landed. Absent when tracing was off. */
+  traceDir: z.string().min(1).optional(),
+  config: InvestigationRunConfig.optional(),
   /** Which model produced these results. Without it two artifacts are not comparable. */
   model: z.object({ provider: z.string(), id: z.string() }),
   limits: z.object({
@@ -48,5 +113,7 @@ export const InvestigationRun = z.object({
   results: z.array(InvestigationResult),
 });
 
+export type AlertContext = z.infer<typeof AlertContext>;
+export type InvestigationRunConfig = z.infer<typeof InvestigationRunConfig>;
 export type InvestigationResult = z.infer<typeof InvestigationResult>;
 export type InvestigationRun = z.infer<typeof InvestigationRun>;

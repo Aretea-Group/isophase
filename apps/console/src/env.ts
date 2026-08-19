@@ -1,0 +1,39 @@
+import { createEnv } from "@t3-oss/env-core";
+import { z } from "zod";
+
+/**
+ * The console's configuration contract.
+ *
+ * Every key has a default and none is required, which is the whole point. The investigator's
+ * `env.ts` validates and throws at import so a missing provider key stops a sweep before it starts
+ * (ADR 005 §6); reusing it here would make the console refuse to open a two-week-old run because a
+ * key for a model it is never going to call is absent (ADR 006 §3, PRD-3 §6.3).
+ *
+ * The investigator settings below are read for display only, so the configuration view can show
+ * what this machine is set up to do beside what a given run actually did (PRD-3 §8.6).
+ */
+export const env = createEnv({
+  server: {
+    /** Where run artifacts live. Resolved against the working directory, as the investigator does. */
+    RUNS_DIR: z.string().min(1).default("runs"),
+    INVESTIGATOR_TRACE_DIR: z.string().min(1).default("runs/traces"),
+
+    // Display only. The console never acts on any of these.
+    SENTINEL_BASE_URL: z.string().min(1).default("http://localhost:8787"),
+    INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
+    INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
+    INVESTIGATOR_THINKING_LEVEL: z.string().min(1).default("medium"),
+    INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
+    INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+    INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
+    BRAVE_API_KEY: z.string().min(1).optional(),
+    INVESTIGATOR_TRACE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((value) => value === "true"),
+  },
+  runtimeEnv: process.env,
+  emptyStringAsUndefined: true,
+});
+
+export type ConsoleEnv = typeof env;
