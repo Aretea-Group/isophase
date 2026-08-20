@@ -28,6 +28,15 @@ describe("queue:reset — argument parsing", () => {
     expect(() => parseArgs(["--run", "r1", "--restore", "--purge"])).toThrow("mutually exclusive");
   });
 
+  test("--purge is guarded by --yes", () => {
+    // Archiving is reversible; purging destroys a measurement that cost real money and cannot be
+    // re-derived, because the model exposes no seed (PRD-6 §5.6, ADR 008 §8).
+    expect(() => parseArgs(["--run", "r1", "--purge"])).toThrow("--yes");
+    expect(parseArgs(["--run", "r1", "--purge", "--yes"]).purge).toBe(true);
+    // A dry run destroys nothing, so it needs no confirmation.
+    expect(parseArgs(["--run", "r1", "--purge", "--dry-run"]).purge).toBe(true);
+  });
+
   test("collects repeated selectors", () => {
     const args = parseArgs(["--alert", "a1", "--alert", "a2", "--run", "r1", "--include-feedback"]);
     expect(args.alertIds).toEqual(["a1", "a2"]);
