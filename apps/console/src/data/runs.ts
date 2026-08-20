@@ -58,7 +58,13 @@ const Artifact = z.object({
   startedAt: z.string().optional(),
   /** "Last written", not "finished" — the investigator flushes after every alert (PRD-3 §7). */
   completedAt: z.string().optional(),
-  /** The sweep's lifecycle: `running | completed | interrupted`. Absent before PRD-3. */
+  /**
+   * The sweep's lifecycle: `running | completed | interrupted | failed`. Absent before PRD-3.
+   *
+   * Deliberately `z.string()` rather than an enum — the console mirrors leniently so a newer
+   * investigator cannot make an artifact unreadable here. `classifyRun` decides what each value
+   * means, and an unrecognised one falls back rather than failing to parse.
+   */
   status: z.string().optional(),
   alertCount: z.number().optional(),
   /**
@@ -79,7 +85,13 @@ const Artifact = z.object({
       resultMaxChars: z.number().optional(),
       sentinelBaseUrl: z.string().optional(),
       webSearchConfigured: z.boolean().optional(),
+      /** Present when an analyst supplied a premise — a steered run (PRD-5 §9). */
+      analystContext: z.string().optional(),
     })
+    .optional(),
+  /** The run this one was derived from, when it was a re-run (PRD-5 §9). */
+  derivedFrom: z
+    .object({ runId: z.string().optional(), alertId: z.string().optional() })
     .optional(),
   model: z.object({ provider: z.string().optional(), id: z.string().optional() }).optional(),
   limits: z

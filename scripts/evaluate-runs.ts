@@ -48,6 +48,8 @@ interface RunFile {
   runId: string;
   startedAt: string;
   model?: { provider: string; id: string };
+  /** Present when an analyst supplied a premise — a steered run (PRD-5 §4.5). */
+  config?: { analystContext?: string };
   results: RunResult[];
 }
 
@@ -94,6 +96,17 @@ function score(runs: RunFile[], scenarios: Scenario[]): Scored[] {
   const scored: Scored[] = [];
 
   for (const run of runs) {
+    /**
+     * Skip steered runs (PRD-5 §4.5).
+     *
+     * Three lines, no flag, and deliberately not the design. `latestPerScenario` is last-wins on
+     * `${model}::${scenario}`, so without this the first re-run carrying "this host is a scanner"
+     * silently replaces the honest row for that scenario — corrupting the answer key PRD-4 exists
+     * to make trustworthy. Showing both rows side by side is the right answer and is roadmap §9,
+     * whose first task is to delete this skip and key on baseline-versus-steered instead.
+     */
+    if (run.config?.analystContext !== undefined && run.config.analystContext !== "") continue;
+
     for (const result of run.results) {
       const scenario = byAlert.get(result.alertId);
       // Alerts without ground truth are not failures, they are simply unscoreable — 140 of the

@@ -34,7 +34,7 @@ receive alert
 → perform public internet research when useful
 → consider malicious and benign explanations
 → submit a concise TP/FP assessment
-→ human analyst retains final disposition
+→ human analyst retains final classification
 ```
 
 The model owns the investigation strategy.
@@ -663,7 +663,7 @@ remediation plan
 
 Uncertainty is represented directly through TP and FP percentages.
 
-The human analyst retains final disposition.
+The human analyst retains final classification.
 
 ---
 

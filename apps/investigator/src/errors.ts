@@ -45,3 +45,30 @@ export class InvestigationIncompleteError extends InvestigationError {
     super("Agent stopped without calling submit_investigation.");
   }
 }
+
+/**
+ * The caller stopped this investigation (PRD-5 §6).
+ *
+ * Distinct from `InvestigationTimeoutError` because the cause is different and an operator needs to
+ * see which one happened. It is also the reason the harness tracks its own abort flag: `agent.abort()`
+ * populates `state.errorMessage`, so without this an analyst pressing a key would be recorded as a
+ * provider outage.
+ */
+export class InvestigationAbortedError extends InvestigationError {
+  override readonly name = "InvestigationAbortedError";
+
+  constructor() {
+    super("Investigation was cancelled by the caller.");
+  }
+}
+
+/** A detached async fault attributed to the sole active in-process investigation. */
+export class InvestigationSupervisorError extends InvestigationError {
+  override readonly name = "InvestigationSupervisorError";
+  readonly fault: { name: string; message: string };
+
+  constructor(fault: { name: string; message: string }) {
+    super(fault.message);
+    this.fault = fault;
+  }
+}

@@ -14,7 +14,19 @@ import { describe, expect, test } from "bun:test";
  * `Bun.file("fixtures/scenarios/…")` or a path assembled at runtime — which no import rule can see.
  * So this scans source text instead, which catches both.
  */
-const ROOTS = ["apps/investigator/src", "packages/sentinel-client/src"] as const;
+/**
+ * Agent-side source: every tree whose code shares a process with a running agent.
+ *
+ * `apps/console/src` joins the list under PRD-5. Before it the console was a separate read-only
+ * program and this was hygiene; PRD-5 §5.1 executes investigations *inside* the console process, so
+ * console source is agent-side source and this is load-bearing. It is also why the queue's scenario
+ * mapping arrives as a generated ids-only artifact rather than a read of the fixtures (PRD-5 §7).
+ */
+const ROOTS = [
+  "apps/investigator/src",
+  "packages/sentinel-client/src",
+  "apps/console/src",
+] as const;
 
 /** Anything naming the answer key, however it is reached. */
 const FORBIDDEN: string[] = [
@@ -30,6 +42,17 @@ function sourceFiles(): Promise<{ path: string; text: string }[]> {
   const glob = new Bun.Glob("**/*.ts");
   const paths = ROOTS.flatMap((root) => Array.from(glob.scanSync({ cwd: root, absolute: true })));
   return Promise.all(paths.map(async (path) => ({ path, text: await Bun.file(path).text() })));
+}
+
+/**
+ * Comment- and string-stripped text, so a call-shape scan cannot be tripped by prose.
+ *
+ * The needle scans above deliberately run against raw text — a forbidden name in a comment is still
+ * a leak of intent. A *call-shape* scan is the opposite: it must not fire on a sentence describing
+ * the pattern it forbids, or this file could not document itself.
+ */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
 const files = await sourceFiles();
@@ -49,6 +72,28 @@ describe("ground-truth isolation", () => {
     // Catches Bun.file / readFile / import() against a scenarios path, however it is spelled.
     const pattern = /(?:Bun\.file|readFile|readFileSync|import)\s*\(\s*[^)]*scenarios/i;
     const offenders = files.filter((f) => pattern.test(f.text)).map((f) => f.path);
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The needle scan above only fires when "scenarios" appears literally inside the call, so it
+   * cannot see `Bun.file(userSuppliedPath)`. Today no agent-side code reads a file by a path it was
+   * handed, and this keeps it that way: PRD-5 adds an analyst free-text field, and the obvious
+   * next request — "let me point it at a file" — would put an arbitrary read into the one tree
+   * whose entire security property is that it cannot reach the answer key (PRD-5 §9).
+   *
+   * Scoped to `apps/investigator/src`: see the comment in the body for why the console is exempt.
+   */
+  test("the investigator reads no file by a caller-supplied path", () => {
+    // Scoped to the investigator, not to every root. The console reads run artifacts and
+    // transcripts by paths it computes from its own configuration — that is its entire job, and
+    // those paths come from the console's env, never from a model or an operator. The investigator
+    // is the tree where a handed-in path would reach the agent, so it is the tree that is scanned.
+    const pattern = /(?:Bun\.file|readFileSync|readFile)\s*\(\s*(?!["'`)])/;
+    const offenders = files
+      .filter((f) => f.path.includes("/apps/investigator/src/"))
+      .filter((f) => pattern.test(stripComments(f.text)))
+      .map((f) => f.path);
     expect(offenders).toEqual([]);
   });
 });

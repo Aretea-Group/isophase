@@ -14,6 +14,7 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [`prd-2-Core Investigation Agent.md`](./prd-2-Core%20Investigation%20Agent.md) | **Complete** — the autonomous investigation agent |
 | [`prd-3-analyst-console.md`](./prd-3-analyst-console.md) | **Complete** — the read-only analyst console (TUI) |
 | [`prd-4-ground-truth-expansion.md`](./prd-4-ground-truth-expansion.md) | **Complete** — expanding the evaluation answer key |
+| [`prd-5-console-operator-surface.md`](./prd-5-console-operator-surface.md) | **Complete** — the alert queue and investigation operator surface |
 | [`research-console-write-path.md`](./research-console-write-path.md) | **Research** — roadmap §6, the console write path. Verdict: buildable in ~1k lines, no new dependency. Not a PRD; nothing in it is built |
 | [`roadmap.md`](./roadmap.md) | Forward-looking capabilities and follow-up work |
 | [`training-lab-data.md`](./training-lab-data.md) | Verified telemetry source reference (ADR 001 spike result) |

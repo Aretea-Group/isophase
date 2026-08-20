@@ -43,7 +43,8 @@ Do not implement:
 - human-feedback retrieval;
 - generalized ingestion;
 - SOAR forwarding;
-- web/product frontend — a local read-only analyst console is in scope from PRD-3 (ADR 006 §1);
+- web/product frontend — a local operator console is in scope from PRD-3 and PRD-5 (ADR 006 §1,
+  ADR 007);
 - RBAC/authentication;
 - threat intelligence;
 - alert grouping;
@@ -298,6 +299,10 @@ PRD-3 adds optional `status`, `traceDir` and `config` fields to that artifact an
 after each alert, so an in-flight run is observable (ADR 006 §4). It stays one JSON file of
 per-alert outcomes — it is not the trace store above.
 
+PRD-5 lets the local console drive the investigator through `InvestigationControl` while keeping
+the investigator as the sole writer of `runs/` (ADR 007). Analyst classifications live separately
+under `feedback/` and are recorded but never fed back to the agent.
+
 Do not store hidden chain-of-thought as a product requirement.
 
 ## 13. Structured Assessment
@@ -370,6 +375,15 @@ Acceptance:
 - analytics rules surface the cluster-3 attack, so its stages can start an investigation;
 - every scenario pins an alert that resolves against a bootstrapped database;
 - `disabled-account-signins` states evidence that matches what its query actually returns.
+
+### Phase 9
+Console Operator Surface (PRD-5).
+
+Acceptance:
+- the alert queue is derived from alerts and run artifacts rather than persisted separately;
+- the console starts, extends and cancels investigations only through `InvestigationControl`;
+- the investigator remains the sole writer of `runs/`;
+- analyst classifications are recorded outside `runs/` and never enter agent context.
 
 ## 15. When to Stop and Ask for Architecture Input
 

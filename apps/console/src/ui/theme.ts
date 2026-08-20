@@ -14,6 +14,13 @@ export const COLOR = {
   /** Field labels. Legible on a dark background, unlike `dim`, which is for asides only. */
   label: "#9e9e9e",
   dim: "#6c6c6c",
+  /**
+   * Section dividers in the verdict pane.
+   *
+   * Tinted rather than `border` grey because §9.8 constrains colour that stands in for a state,
+   * and a rule stands in for nothing — it separates blocks that already carry their own headings.
+   */
+  rule: "#afffaf",
   border: "#3a3a3a",
   borderFocused: "#00afd7",
   title: "#d7d7d7",
@@ -47,6 +54,8 @@ export function toneColor(tone: Tone | undefined): string {
       return COLOR.label;
     case "dim":
       return COLOR.dim;
+    case "rule":
+      return COLOR.rule;
     case "running":
       return COLOR.running;
     case "stale":

@@ -13,6 +13,8 @@ export type Tone =
   | "heading"
   | "label"
   | "dim"
+  /** A horizontal divider between sections. Decoration — it stands in for no state. */
+  | "rule"
   /** Run and call state. */
   | "running"
   | "stale"

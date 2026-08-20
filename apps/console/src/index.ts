@@ -1,21 +1,61 @@
 #!/usr/bin/env bun
+import { InProcessControl, type InvestigationControl } from "@soc/investigator/control";
+import { SentinelApiClient } from "@soc/sentinel-client";
+
 import { env } from "./env.ts";
 import { runApp } from "./ui/app.ts";
+
+/**
+ * Build the in-process control (PRD-5 §5.1).
+ *
+ * This is the line where the console stops being a reader. It executes investigations in its own
+ * process — which is what buys live agent events with no trace files, real cancellation from a
+ * keypress, and the model picker, and which costs the fault isolation a child process would have
+ * given. `InProcessControl`'s supervisor contains the ordinary faults; an OOM still takes the
+ * terminal, and the header says so.
+ */
+function buildControl(runsDir: string): InvestigationControl {
+  return new InProcessControl({
+    config: {
+      provider: env.INVESTIGATOR_PROVIDER,
+      modelId: env.INVESTIGATOR_MODEL,
+      maxTurns: env.INVESTIGATOR_MAX_TURNS,
+      timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
+      resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
+      sentinelBaseUrl: env.SENTINEL_BASE_URL,
+      webSearchConfigured: env.BRAVE_API_KEY !== undefined,
+      runsDir,
+      // Console-started runs always trace. Without it the Transcript and Stream tabs are empty for
+      // exactly the run the analyst just started and is watching (PRD-5 §18, question 2).
+      trace: true,
+      traceDir: env.INVESTIGATOR_TRACE_DIR,
+      traceStream: false,
+    },
+    deps: { sentinel: new SentinelApiClient({ baseUrl: env.SENTINEL_BASE_URL }) },
+    ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
+    maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
+  });
+}
 
 export interface CliArgs {
   runsDir?: string;
   tracesDir?: string;
   help?: boolean;
+  readOnly?: boolean;
+  fresh?: boolean;
 }
 
-export const USAGE = `bun run console [--runs <dir>] [--traces <dir>]
+export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] [--read-only]
 
   --runs <dir>     where run artifacts live (RUNS_DIR, currently "${env.RUNS_DIR}")
   --traces <dir>   where transcripts live (INVESTIGATOR_TRACE_DIR, currently "${env.INVESTIGATOR_TRACE_DIR}")
+  --fresh          hide runs that existed when the console opened; new runs appear normally
+  --read-only      open without a control: no queue, no starting runs (PRD-3 behaviour)
   --help           this message
 
-The console is read-only. It never writes to runs/, never calls a model provider, and never
-calls Mock Sentinel.`;
+The console reads Mock Sentinel for the alert queue and can start investigations in this process.
+It never writes to runs/ — the investigator remains the sole writer of run artifacts and
+transcripts. Analyst classifications are written under "${env.FEEDBACK_DIR}/".`;
 
 /**
  * Hand-rolled, matching `apps/investigator/src/index.ts` rather than adding a CLI dependency
@@ -51,6 +91,10 @@ export function parseArgs(argv: string[]): CliArgs {
     } else if (flag === "--traces") {
       args.tracesDir = valueOf(flag, inline, argv[index + 1]);
       if (inline === undefined) index += 1;
+    } else if (flag === "--read-only") {
+      args.readOnly = true;
+    } else if (flag === "--fresh") {
+      args.fresh = true;
     } else if (flag === "--help" || flag === "-h") {
       args.help = true;
     } else if (flag.startsWith("--")) {
@@ -67,10 +111,15 @@ async function main(): Promise<void> {
     console.log(USAGE);
     return;
   }
+  if (args.fresh === true && args.readOnly === true) {
+    throw new Error("--fresh requires the alert queue and cannot be combined with --read-only.");
+  }
   const app = await runApp({
     runsDir: args.runsDir ?? env.RUNS_DIR,
     tracesDir: args.tracesDir ?? env.INVESTIGATOR_TRACE_DIR,
     env,
+    fresh: args.fresh === true,
+    ...(args.readOnly === true ? {} : { control: buildControl(args.runsDir ?? env.RUNS_DIR) }),
   });
   await app.ready;
 }
