@@ -1,253 +1,545 @@
 #!/usr/bin/env bun
 /**
- * Scores investigation runs against the hidden scenario ground truth.
+ * Scores investigation runs against the hidden scenario ground truth (PRD-6).
  *
  * This is evaluation tooling, and it lives in `scripts/` for a reason: it reads
  * `fixtures/scenarios/`, which PRD-2 §20 keeps strictly out of the agent's reach. Nothing under
  * `apps/investigator/**` may import this file, and the oxlint boundary rule already exempts
  * `scripts/**` from the Mock Sentinel import restriction so the join can happen here.
  *
- * PRD-2 §23 defers formal regression infrastructure and asks only that run artifacts make later
- * comparison straightforward. This is the smallest thing that cashes that in — the alternative,
- * which we used once, is scoring by hand and calling the result an improvement.
+ * **No scored artifact is ever written** (PRD-6 §5.5, ADR 008 §2). Given `p` — the agent's own
+ * `tpPercent`, already on the artifact — and a score, `t = p ± √score`, and with `t` drawn from
+ * `{0, 0.5, 1}` that recovers the verdict exactly. A scored file is the answer key in a new coat,
+ * and neither ground-truth guard would catch a runtime read of one. This command prints.
  *
- *   bun run evaluate                 # score every run
- *   bun run evaluate --run <id>      # score one run
- *   bun run evaluate --compare a b   # diff two runs
+ *   bun run evaluate                       # every condition
+ *   bun run evaluate --run <id>            # one run
+ *   bun run evaluate --compare a b         # two runs, or two condition ids
+ *   bun run evaluate --gaps [--json]       # what is missing before the corpus can answer anything
+ *   bun run evaluate --runs <dir>          # score a different set (implies <dir>/.archive)
+ *   bun run evaluate --exclude-archive     # score only what the console would see
  */
+import { join } from "node:path";
+
+import { InvestigationRun } from "../apps/investigator/src/contracts/run.ts";
 import { loadScenarios, type Scenario } from "../apps/mock-sentinel/src/scenarios/scenarios.ts";
+import { fieldDiff, labelsFor } from "./evaluate/condition.ts";
+import {
+  buildReport,
+  type BuiltReport,
+  type Cell,
+  type ConditionReport,
+  gapsFor,
+  READY_AT,
+  runSetFingerprint,
+} from "./evaluate/report.ts";
+import {
+  BANDS,
+  baseRate,
+  bestBlindConstant,
+  blindConstant,
+  LEGACY_BANDS,
+  noiseFloor,
+  referenceBrier,
+  signTest,
+  skill,
+  type Verdict,
+} from "./evaluate/scoring.ts";
+
+const ARCHIVE_DIR = ".archive";
+/** The constant printed in the baseline row. Held fixed so the row is comparable release to release. */
+const BLIND_EXEMPLAR = 65;
+
+interface LoadedRuns {
+  runs: InvestigationRun[];
+  skipped: { file: string; reason: string }[];
+  duplicates: string[];
+  directories: string[];
+}
 
 /**
- * Bands for calling a TP percentage "the right direction".
+ * Read every run that has ever been recorded (PRD-6 §6.9, ADR 008 §8).
  *
- * Deliberately generous. PRD-2 §23 says the trajectory must not be graded and different valid
- * investigations reach different numbers; what is being measured is whether the agent leaned the
- * correct way, not whether it hit a target. The inconclusive band is the interesting one — it is
- * the only case where a *confident* answer in either direction is wrong.
+ * **The archive is scored.** `queue:reset` renames an artifact into `runs/.archive/` to take its
+ * alert out of the *queue*, and it works precisely because both readers glob non-recursively — so a
+ * console operation silently deleted a measurement from the benchmark. Three passes of PRD-6 read
+ * three different terra-versus-luna answers from the same two models because of it. The console
+ * side of that archive is correct and unchanged; this side was never decided.
+ *
+ * Validated rather than cast (**D9**): a JSON-valid artifact of the wrong shape used to throw out
+ * of the sort or the scoring loop and take every valid run with it.
  */
-const TRUE_POSITIVE_MIN = 60;
-const FALSE_POSITIVE_MAX = 40;
-const INCONCLUSIVE_BAND: readonly [number, number] = [30, 70];
-
-interface RunResult {
-  alertId: string;
-  alertTitle?: string;
-  status: "completed" | "failed";
-  durationMs?: number;
-  summary?: {
-    tpPercent: number;
-    fpPercent: number;
-    /** Absent on runs written before the impact field was added. */
-    impact?: string;
-    researchDone?: string[];
-  };
-  error?: { name: string; message: string };
-}
-
-interface RunFile {
-  runId: string;
-  startedAt: string;
-  model?: { provider: string; id: string };
-  /** Present when an analyst supplied a premise — a steered run (PRD-5 §4.5). */
-  config?: { analystContext?: string };
-  results: RunResult[];
-}
-
-interface Scored {
-  scenario: string;
-  runId: string;
-  model: string;
-  verdict: Scenario["verdict"];
-  expectedImpact: Scenario["impact"];
-  tpPercent: number;
-  actualImpact?: string;
-  directionOk: boolean;
-  /** Undefined when the run predates the impact field — unscored, not wrong. */
-  impactOk?: boolean;
-  durationMs: number;
-}
-
-function directionCorrect(verdict: Scenario["verdict"], tpPercent: number): boolean {
-  switch (verdict) {
-    case "true-positive":
-      return tpPercent >= TRUE_POSITIVE_MIN;
-    case "false-positive":
-      return tpPercent <= FALSE_POSITIVE_MAX;
-    case "inconclusive":
-      return tpPercent >= INCONCLUSIVE_BAND[0] && tpPercent <= INCONCLUSIVE_BAND[1];
-  }
-}
-
-async function loadRuns(dir: string): Promise<RunFile[]> {
+async function loadRuns(runsDir: string, includeArchive: boolean): Promise<LoadedRuns> {
+  const directories = includeArchive ? [runsDir, join(runsDir, ARCHIVE_DIR)] : [runsDir];
+  const byId = new Map<string, InvestigationRun>();
+  const skipped: { file: string; reason: string }[] = [];
+  const duplicates: string[] = [];
   const glob = new Bun.Glob("*.json");
-  const runs: RunFile[] = [];
-  for await (const file of glob.scan({ cwd: dir, absolute: true })) {
+
+  for (const directory of directories) {
+    // A run set with nothing archived is the normal case on a fresh clone, and `scan` throws on a
+    // missing directory rather than yielding nothing. Reading the archive must never be able to
+    // stop the live runs being scored.
+    let files: string[];
     try {
-      runs.push((await Bun.file(file).json()) as RunFile);
+      // eslint-disable-next-line no-await-in-loop -- two directories, read in a defined order
+      files = await Array.fromAsync(glob.scan({ cwd: directory, absolute: true }));
     } catch {
-      console.warn(`[evaluate] skipping unreadable run file: ${file}`);
+      continue;
+    }
+
+    for (const file of files) {
+      let raw: unknown;
+      try {
+        // eslint-disable-next-line no-await-in-loop -- one file at a time is the whole loop
+        raw = await Bun.file(file).json();
+      } catch {
+        skipped.push({ file, reason: "unreadable or not JSON" });
+        continue;
+      }
+      const parsed = InvestigationRun.safeParse(raw);
+      if (!parsed.success) {
+        skipped.push({
+          file,
+          reason: parsed.error.issues[0]?.message ?? "does not match the schema",
+        });
+        continue;
+      }
+      // Live wins: a `--restore` that copied rather than moved must not double-count a draw.
+      if (byId.has(parsed.data.runId)) {
+        duplicates.push(parsed.data.runId);
+        continue;
+      }
+      byId.set(parsed.data.runId, parsed.data);
     }
   }
-  return runs.toSorted((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+  return {
+    runs: [...byId.values()].toSorted((a, b) => a.startedAt.localeCompare(b.startedAt)),
+    skipped,
+    duplicates,
+    directories,
+  };
 }
 
-function score(runs: RunFile[], scenarios: Scenario[]): Scored[] {
-  const byAlert = new Map(scenarios.map((s) => [s.startingAlertId, s]));
-  const scored: Scored[] = [];
+function isVerdict(value: string): value is Verdict {
+  return value === "true-positive" || value === "false-positive" || value === "inconclusive";
+}
 
-  for (const run of runs) {
-    /**
-     * Skip steered runs (PRD-5 §4.5).
-     *
-     * Three lines, no flag, and deliberately not the design. `latestPerScenario` is last-wins on
-     * `${model}::${scenario}`, so without this the first re-run carrying "this host is a scanner"
-     * silently replaces the honest row for that scenario — corrupting the answer key PRD-4 exists
-     * to make trustworthy. Showing both rows side by side is the right answer and is roadmap §9,
-     * whose first task is to delete this skip and key on baseline-versus-steered instead.
-     */
-    if (run.config?.analystContext !== undefined && run.config.analystContext !== "") continue;
+function pad(text: string, width: number): string {
+  return text.length >= width ? text : text + " ".repeat(width - text.length);
+}
 
-    for (const result of run.results) {
-      const scenario = byAlert.get(result.alertId);
-      // Alerts without ground truth are not failures, they are simply unscoreable — 140 of the
-      // 154 alerts are in that position.
-      if (!scenario || result.status !== "completed" || !result.summary) continue;
+function signed(value: number, digits = 3): string {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
 
-      const actualImpact = result.summary.impact;
-      scored.push({
-        scenario: scenario.id,
-        runId: run.runId,
-        model: run.model?.id ?? "unknown",
-        verdict: scenario.verdict,
-        expectedImpact: scenario.impact,
-        tpPercent: result.summary.tpPercent,
-        ...(actualImpact === undefined ? {} : { actualImpact }),
-        directionOk: directionCorrect(scenario.verdict, result.summary.tpPercent),
-        ...(actualImpact === undefined ? {} : { impactOk: actualImpact === scenario.impact }),
-        durationMs: result.durationMs ?? 0,
-      });
-    }
+function drawList(cell: Cell): string {
+  return cell.draws
+    .map((draw) => (draw.status === "failed" ? "✗" : String(draw.tpPercent ?? "?")))
+    .join(", ");
+}
+
+function printHeader(loaded: LoadedRuns, scenarios: Scenario[], scoredRunIds: string[]): void {
+  const counts = loaded.directories.map((directory) => directory).join(", ");
+  console.info(
+    `RUN SET  ${loaded.runs.length} artifacts (${counts})  ` +
+      `fingerprint ${runSetFingerprint(scoredRunIds)}  ·  ${scenarios.length} scenarios`,
+  );
+  console.info(
+    `BANDS    partition: FP <= ${BANDS.falsePositiveMax} · inconclusive ` +
+      `${BANDS.inconclusiveMin}-${BANDS.inconclusiveMax} · TP >= ${BANDS.truePositiveMin}` +
+      `      (legacy bands shown as band⁰)`,
+  );
+  for (const duplicate of new Set(loaded.duplicates)) {
+    console.warn(`[evaluate] run ${duplicate} appears in more than one directory — counted once`);
   }
-  return scored;
+  for (const skip of loaded.skipped) {
+    console.warn(`[evaluate] skipping ${skip.file} — ${skip.reason}`);
+  }
 }
 
-/** Keep only the most recent scoring of each scenario, per model. */
-function latestPerScenario(scored: Scored[]): Scored[] {
-  const seen = new Map<string, Scored>();
-  for (const row of scored) seen.set(`${row.model}::${row.scenario}`, row);
-  return [...seen.values()].toSorted(
-    (a, b) => a.model.localeCompare(b.model) || a.scenario.localeCompare(b.scenario),
+function printConditions(report: BuiltReport, labels: Map<string, string>, total: number): void {
+  console.info("\nCONDITIONS");
+  for (const condition of report.conditions) {
+    const ready = condition.cells.filter((cell) => cell.draws.length >= READY_AT).length;
+    const failures =
+      condition.runLevelFailures.length === 0
+        ? ""
+        : `  no draws (${condition.runLevelFailures.length} run(s) failed: ` +
+          `${[...new Set(condition.runLevelFailures.map((failure) => failure.errorName))].join(", ")})`;
+    console.info(
+      `  ${condition.condition.id}  ${pad(labels.get(condition.condition.id) ?? "", 70)} ` +
+        `covered ${String(condition.covered).padStart(2)}/${total}  ` +
+        `n>=${READY_AT} ${ready}/${condition.covered}${failures}`,
+    );
+  }
+}
+
+function printCondition(condition: ConditionReport, label: string, total: number): void {
+  console.info(`\n${condition.condition.id}  ${label}`);
+  console.info(
+    `${pad("scenario", 31)}${pad("truth", 15)}${pad("n", 3)}${pad("draws", 16)}` +
+      `${pad("med", 5)}${pad("spread", 8)}${pad("band", 6)}${pad("band⁰", 7)}` +
+      `${pad("score", 7)}${pad("bias²+var", 14)}${pad("impact", 8)}${pad("turns", 7)}` +
+      `${pad("$", 8)}s`,
+  );
+  console.info("-".repeat(140));
+
+  for (const cell of condition.cells) {
+    const turns = cell.draws.filter((draw) => draw.turns !== undefined);
+    const costs = cell.draws.filter((draw) => draw.costUsd !== undefined);
+    const meanDuration =
+      cell.draws.reduce((sum, draw) => sum + draw.durationMs, 0) / cell.draws.length;
+    console.info(
+      pad(cell.scenarioId, 31) +
+        pad(cell.verdict, 15) +
+        pad(String(cell.draws.length), 3) +
+        pad(drawList(cell), 16) +
+        pad(cell.score.median.toFixed(0), 5) +
+        pad(cell.score.spread === 0 ? "—" : String(cell.score.spread), 8) +
+        pad(cell.bandPass ? "PASS" : "FAIL", 6) +
+        pad(cell.legacyBandPass ? "PASS" : "FAIL", 7) +
+        pad(cell.score.score.toFixed(3), 7) +
+        pad(`${cell.score.bias2.toFixed(3)}+${cell.score.variance.toFixed(3)}`, 14) +
+        pad(cell.impactScored === 0 ? "—" : `${cell.impactOk}/${cell.impactScored}`, 8) +
+        pad(
+          turns.length === 0
+            ? "—"
+            : (turns.reduce((sum, draw) => sum + (draw.turns ?? 0), 0) / turns.length).toFixed(0),
+          7,
+        ) +
+        pad(
+          costs.length === 0
+            ? "—"
+            : costs.reduce((sum, draw) => sum + (draw.costUsd ?? 0), 0).toFixed(2),
+          8,
+        ) +
+        (meanDuration / 1000).toFixed(1),
+    );
+  }
+
+  console.info("-".repeat(140));
+  const floor = noiseFloor(condition.cells.map((cell) => cell.score));
+  console.info(
+    `skill ${signed(condition.skill)} (ref over ${condition.covered} covered) · ` +
+      `covered ${condition.covered}/${total} · draws ${condition.draws} · ` +
+      `failed ${condition.failedDraws} · band-dir ${condition.bandDirection}/${condition.covered} · ` +
+      `band⁰-dir ${condition.legacyBandDirection}/${condition.covered} · ` +
+      `mean ${(condition.meanDurationMs / 1000).toFixed(1)}s` +
+      (condition.totalCostUsd === undefined ? "" : ` · $${condition.totalCostUsd.toFixed(2)}`) +
+      (floor === undefined ? "" : ` · noise floor ${floor.toFixed(3)}`),
+  );
+
+  const short = condition.cells.filter((cell) => cell.draws.length < READY_AT).length;
+  if (short > 0) {
+    console.info(`insufficient data: ${short} of ${condition.cells.length} cells at n<${READY_AT}`);
+  }
+  for (const failure of condition.runLevelFailures) {
+    console.info(`run-level failure: ${failure.runId} — ${failure.errorName}`);
+  }
+}
+
+/**
+ * The baseline row, printed under every report (PRD-6 §6.10).
+ *
+ * A stub answering one constant to every alert and issuing no query scored 12/14 under the old
+ * overlapping bands — beating both measured models. It cannot beat the partition, and it can never
+ * show positive skill: the skill-optimal constant *is* the base rate, where skill is exactly zero
+ * by construction. That is what makes this a floor rather than a target.
+ */
+function printBlindConstant(verdicts: Verdict[], rate: number): void {
+  const reference = referenceBrier(verdicts, rate);
+  const p = BLIND_EXEMPLAR / 100;
+  const brier =
+    verdicts.reduce((sum, verdict) => {
+      const t = verdict === "true-positive" ? 1 : verdict === "false-positive" ? 0 : 0.5;
+      return sum + (p - t) ** 2;
+    }, 0) / verdicts.length;
+  const best = bestBlindConstant(verdicts, BANDS);
+  console.info(
+    `blind constant tp=${BLIND_EXEMPLAR}: band ${blindConstant(verdicts, BLIND_EXEMPLAR, BANDS)}/${verdicts.length}` +
+      ` · band⁰ ${blindConstant(verdicts, BLIND_EXEMPLAR, LEGACY_BANDS)}/${verdicts.length}` +
+      ` · skill ${signed(skill(brier, reference))}` +
+      `   (best constant under the partition: tp=${best.percent} → ${best.passed}/${verdicts.length})`,
   );
 }
 
-function report(rows: Scored[]): void {
-  if (rows.length === 0) {
-    console.info("[evaluate] no scored results — run an investigation against a scenario alert.");
-    return;
+/**
+ * Compare two runs or two conditions on the scenarios they share (PRD-6 §6.5, **D8**).
+ *
+ * The old version filtered on `runId` and never read the model, so comparing terra against luna
+ * printed `FIXED`/`REGRESSED` as though one had improved on the other — and labelled its columns
+ * with 8-char id prefixes, of which 16 of 40 runs shared one with another run.
+ */
+function compare(
+  report: BuiltReport,
+  labels: Map<string, string>,
+  a: string,
+  b: string,
+  rate: number,
+): void {
+  const resolve = (
+    id: string,
+  ): { title: string; conditionId?: string; cells: Map<string, Cell> } | undefined => {
+    const condition = report.conditions.find((entry) => entry.condition.id === id);
+    if (condition) {
+      return {
+        title: `${id}  ${labels.get(id) ?? ""}`,
+        conditionId: id,
+        cells: new Map(condition.cells.map((cell) => [cell.scenarioId, cell])),
+      };
+    }
+    const draws = report.drawsByRun.get(id);
+    if (draws === undefined || draws.length === 0) return undefined;
+    const owner = report.conditions.find((entry) => entry.condition.id === draws[0]?.conditionId);
+    const cells = new Map<string, Cell>();
+    for (const cell of owner?.cells ?? []) {
+      const mine = cell.draws.filter((draw) => draw.runId === id);
+      if (mine.length > 0) cells.set(cell.scenarioId, { ...cell, draws: mine });
+    }
+    return {
+      title: `${id}  ${labels.get(owner?.condition.id ?? "") ?? ""}`,
+      ...(owner === undefined ? {} : { conditionId: owner.condition.id }),
+      cells,
+    };
+  };
+
+  const left = resolve(a);
+  const right = resolve(b);
+  if (!left || !right) {
+    console.error(`[evaluate] ${!left ? a : b} is not a run id or a condition id in this set.`);
+    process.exit(1);
   }
 
-  const byModel = new Map<string, Scored[]>();
-  for (const row of rows) byModel.set(row.model, [...(byModel.get(row.model) ?? []), row]);
+  console.info(`\nA  ${left.title}`);
+  console.info(`B  ${right.title}`);
 
-  for (const [model, modelRows] of byModel) {
-    console.info(`\n${model}`);
-    console.info("=".repeat(96));
-    console.info(
-      `${"scenario".padEnd(30)}${"truth".padEnd(15)}${"TP".padStart(5)}  ${"dir".padEnd(6)}${"impact (expected → actual)".padEnd(34)}time`,
-    );
-    console.info("-".repeat(96));
-
-    for (const row of modelRows) {
-      const impact =
-        row.actualImpact === undefined
-          ? "— not reported"
-          : `${row.expectedImpact} → ${row.actualImpact} ${row.impactOk === true ? "✓" : "✗"}`;
+  if (left.conditionId !== undefined && right.conditionId !== undefined) {
+    const first = report.conditionsById.get(left.conditionId);
+    const second = report.conditionsById.get(right.conditionId);
+    if (first && second) {
+      const diff = fieldDiff(first, second);
       console.info(
-        `${row.scenario.padEnd(30)}${row.verdict.padEnd(15)}${`${row.tpPercent}%`.padStart(5)}  ` +
-          `${(row.directionOk ? "PASS" : "FAIL").padEnd(6)}${impact.padEnd(34)}` +
-          `${(row.durationMs / 1000).toFixed(1)}s`,
+        diff.length === 0
+          ? "\nsame condition — this is a repeat, not a comparison"
+          : `\nwhat differs: ${diff.map((entry) => `${entry.field} ${entry.a} → ${entry.b}`).join(", ")}`,
       );
     }
-
-    const dir = modelRows.filter((r) => r.directionOk).length;
-    const impactScored = modelRows.filter((r) => r.impactOk !== undefined);
-    const impactOk = impactScored.filter((r) => r.impactOk === true).length;
-    const meanMs = modelRows.reduce((sum, r) => sum + r.durationMs, 0) / modelRows.length;
-
-    console.info("-".repeat(96));
-    console.info(
-      `direction ${dir}/${modelRows.length}` +
-        (impactScored.length === 0
-          ? "   impact not reported by this run"
-          : `   impact ${impactOk}/${impactScored.length}`) +
-        `   mean ${(meanMs / 1000).toFixed(1)}s`,
-    );
   }
-  console.info("");
-}
 
-function cell(row: Scored | undefined): string {
-  return row === undefined
-    ? "—".padEnd(14)
-    : `${row.tpPercent}% ${row.directionOk ? "PASS" : "FAIL"}`.padEnd(14);
-}
-
-function compare(scored: Scored[], runA: string, runB: string): void {
-  const pick = (id: string) =>
-    new Map(scored.filter((r) => r.runId === id).map((r) => [r.scenario, r]));
-  const a = pick(runA);
-  const b = pick(runB);
-  const scenarios = [...new Set([...a.keys(), ...b.keys()])].toSorted();
-
-  if (scenarios.length === 0) {
-    console.info(`[evaluate] neither ${runA} nor ${runB} scored any scenario.`);
+  // Shared scenarios only. Comparing over the union rewards whichever side happened to run more.
+  const shared = [...left.cells.keys()].filter((id) => right.cells.has(id)).toSorted();
+  if (shared.length === 0) {
+    console.info("\nno shared scenarios — nothing to compare.");
     return;
   }
 
   console.info(
-    `\n${"scenario".padEnd(30)}${runA.slice(0, 8).padEnd(14)}${runB.slice(0, 8).padEnd(14)}change`,
+    `\n${pad("scenario", 31)}${pad("truth", 15)}${pad("A draws", 16)}${pad("score", 8)}` +
+      `${pad("B draws", 16)}${pad("score", 8)}winner`,
   );
-  console.info("-".repeat(80));
-  for (const id of scenarios) {
-    const left = a.get(id);
-    const right = b.get(id);
-    let change = "";
-    if (left && right && left.directionOk !== right.directionOk) {
-      change = right.directionOk ? "FIXED" : "REGRESSED";
-    }
-    console.info(`${id.padEnd(30)}${cell(left)}${cell(right)}${change}`);
+  console.info("-".repeat(100));
+
+  let up = 0;
+  let down = 0;
+  let ties = 0;
+  let brierA = 0;
+  let brierB = 0;
+  let reference = 0;
+
+  for (const id of shared) {
+    const cellA = left.cells.get(id);
+    const cellB = right.cells.get(id);
+    if (!cellA || !cellB) continue;
+    brierA += cellA.score.score;
+    brierB += cellB.score.score;
+    reference += (rate - cellA.target) ** 2;
+    const winner =
+      Math.abs(cellA.score.score - cellB.score.score) < 1e-9
+        ? ((ties += 1), "tie")
+        : cellA.score.score < cellB.score.score
+          ? ((up += 1), "A")
+          : ((down += 1), "B");
+    console.info(
+      pad(id, 31) +
+        pad(cellA.verdict, 15) +
+        pad(drawList(cellA), 16) +
+        pad(cellA.score.score.toFixed(3), 8) +
+        pad(drawList(cellB), 16) +
+        pad(cellB.score.score.toFixed(3), 8) +
+        winner,
+    );
   }
+
+  brierA /= shared.length;
+  brierB /= shared.length;
+  reference /= shared.length;
+  const skillA = skill(brierA, reference);
+  const skillB = skill(brierB, reference);
+  const floor = noiseFloor(
+    [...left.cells.values(), ...right.cells.values()].map((cell) => cell.score),
+  );
+  const delta = Math.abs(skillA - skillB);
+
+  console.info("-".repeat(100));
+  console.info(
+    `A skill ${signed(skillA)} · B skill ${signed(skillB)} · ` +
+      `wins A ${up}, B ${down}, ties ${ties} · ` +
+      `exact two-sided sign test p = ${signTest(up, down).toFixed(3)}`,
+  );
+  console.info(
+    floor !== undefined && delta < floor
+      ? `no measurable difference — Δskill ${delta.toFixed(3)} is inside this pair's noise floor ${floor.toFixed(3)}`
+      : floor === undefined
+        ? `Δskill ${delta.toFixed(3)}, and neither side has a repeat, so there is no measured noise floor to judge it against`
+        : `Δskill ${delta.toFixed(3)} against a noise floor of ${floor.toFixed(3)}`,
+  );
   console.info("");
 }
 
-const argv = Bun.argv.slice(2);
-const runsDir = Bun.env["RUNS_DIR"] ?? "runs";
-const [scenarios, runs] = await Promise.all([loadScenarios(), loadRuns(runsDir)]);
+/**
+ * One run, on its own (PRD-6 §6.5).
+ *
+ * Rendered as its condition's table narrowed to this run's draws, and labelled with the condition
+ * it belongs to — a run id alone says nothing about what produced it, which is the whole reason the
+ * old `--run` output could not be compared with anything.
+ */
+function printRun(
+  report: BuiltReport,
+  labels: Map<string, string>,
+  runId: string,
+  total: number,
+): void {
+  const draws = report.drawsByRun.get(runId);
+  if (draws === undefined || draws.length === 0) {
+    const failure = report.conditions
+      .flatMap((condition) => condition.runLevelFailures)
+      .find((entry) => entry.runId === runId);
+    console.error(
+      failure === undefined
+        ? `[evaluate] ${runId} produced no scoreable draw — it may not exist, or its alerts have no ground truth.`
+        : `[evaluate] ${runId} failed before investigating anything — ${failure.errorName}.`,
+    );
+    process.exit(1);
+  }
 
-if (runs.length === 0) {
-  console.error(`[evaluate] no run artifacts in ${runsDir}/`);
+  const conditionId = draws[0]?.conditionId ?? "";
+  const owner = report.conditions.find((entry) => entry.condition.id === conditionId);
+  if (owner === undefined) return;
+
+  const cells = owner.cells
+    .map((cell) => ({ ...cell, draws: cell.draws.filter((draw) => draw.runId === runId) }))
+    .filter((cell) => cell.draws.length > 0);
+
+  printCondition(
+    { ...owner, cells, covered: cells.length, draws: draws.length },
+    `${labels.get(conditionId) ?? ""}   (run ${runId})`,
+    total,
+  );
+  console.info("");
+}
+
+function printGaps(
+  report: BuiltReport,
+  scenarios: Scenario[],
+  labels: Map<string, string>,
+  asJson: boolean,
+): void {
+  const gaps = gapsFor(report, scenarios, labels);
+  if (asJson) {
+    console.info(JSON.stringify({ readyAt: READY_AT, gaps }, null, 2));
+    return;
+  }
+  if (gaps.length === 0) {
+    console.info(`[evaluate] every condition has ${READY_AT} draws in every scenario.`);
+    return;
+  }
+  const byCondition = new Map<string, typeof gaps>();
+  for (const gap of gaps) {
+    byCondition.set(gap.conditionId, [...(byCondition.get(gap.conditionId) ?? []), gap]);
+  }
+  console.info(`\nGAPS to n=${READY_AT}`);
+  for (const [conditionId, entries] of byCondition) {
+    const need = entries.reduce((sum, gap) => sum + gap.need, 0);
+    console.info(`\n  ${conditionId}  ${labels.get(conditionId) ?? ""}   ${need} investigation(s)`);
+    for (const gap of entries) {
+      console.info(`    ${pad(gap.scenarioId, 34)}have ${gap.have}  need ${gap.need}`);
+    }
+  }
+  console.info(
+    `\ntotal: ${gaps.reduce((sum, gap) => sum + gap.need, 0)} investigation(s) across ` +
+      `${byCondition.size} condition(s)\n`,
+  );
+}
+
+const argv = Bun.argv.slice(2);
+const flag = (name: string): string | undefined => {
+  const index = argv.indexOf(name);
+  return index === -1 ? undefined : argv[index + 1];
+};
+
+const runsDir = flag("--runs") ?? Bun.env["RUNS_DIR"] ?? "runs";
+const includeArchive = !argv.includes("--exclude-archive");
+const [scenarios, loaded] = await Promise.all([loadScenarios(), loadRuns(runsDir, includeArchive)]);
+
+if (loaded.runs.length === 0) {
+  console.error(`[evaluate] no run artifacts in ${loaded.directories.join(" or ")}`);
   process.exit(1);
 }
 
-const scored = score(runs, scenarios);
-const compareIndex = argv.indexOf("--compare");
-const runIndex = argv.indexOf("--run");
+const verdicts = scenarios.map((scenario) => scenario.verdict).filter(isVerdict);
+const rate = baseRate(verdicts);
+const report = buildReport({ runs: loaded.runs, scenarios, baseRate: rate });
+const labels = labelsFor([...report.conditionsById.values()]);
+const scoredRunIds = report.conditions.flatMap((condition) => condition.runIds);
 
-if (compareIndex !== -1) {
-  const a = argv[compareIndex + 1];
-  const b = argv[compareIndex + 2];
-  if (a === undefined || b === undefined) {
-    console.error("[evaluate] --compare needs two run ids");
-    process.exit(1);
-  }
-  compare(scored, a, b);
-} else if (runIndex !== -1) {
-  const id = argv[runIndex + 1];
-  if (id === undefined) {
-    console.error("[evaluate] --run needs a run id");
-    process.exit(1);
-  }
-  report(scored.filter((r) => r.runId === id));
+/**
+ * The one exit-code gate (PRD-6 §6.5, **D7**).
+ *
+ * A corpus change that orphans every run used to be indistinguishable from a typo'd run id: both
+ * printed `no scored results` and exited 0. There is deliberately no gate on the *score* — at n=1
+ * the smallest credible skill delta is large, and a benchmark that cries wolf gets disabled.
+ */
+if (report.buckets.scored === 0 && report.buckets.failed === 0) {
+  console.error(
+    `[evaluate] ${loaded.runs.length} run(s) read and none joined to a scenario.\n` +
+      `           Unjoined alert ids: ${report.unjoinedAlertIds.slice(0, 10).join(", ")}` +
+      `${report.unjoinedAlertIds.length > 10 ? ` (+${report.unjoinedAlertIds.length - 10} more)` : ""}\n` +
+      `           A rule edit re-pins a scenario's content-addressed alert id (ADR 004), which orphans every run for it.`,
+  );
+  process.exit(1);
+}
+
+if (argv.includes("--gaps")) {
+  printGaps(report, scenarios, labels, argv.includes("--json"));
 } else {
-  report(latestPerScenario(scored));
+  const compareIndex = argv.indexOf("--compare");
+  const runId = flag("--run");
+
+  printHeader(loaded, scenarios, scoredRunIds);
+
+  if (compareIndex !== -1) {
+    const a = argv[compareIndex + 1];
+    const b = argv[compareIndex + 2];
+    if (a === undefined || b === undefined) {
+      console.error("[evaluate] --compare needs two run or condition ids");
+      process.exit(1);
+    }
+    compare(report, labels, a, b, rate);
+  } else if (runId !== undefined) {
+    printRun(report, labels, runId, scenarios.length);
+  } else {
+    printConditions(report, labels, scenarios.length);
+    for (const condition of report.conditions) {
+      if (condition.cells.length === 0) continue;
+      printCondition(condition, labels.get(condition.condition.id) ?? "", scenarios.length);
+    }
+    console.info("");
+    printBlindConstant(verdicts, rate);
+    console.info(
+      `buckets: scored ${report.buckets.scored} · failed ${report.buckets.failed} · ` +
+        `no-summary ${report.buckets.noSummary} · no-ground-truth ${report.buckets.noGroundTruth}\n`,
+    );
+  }
 }

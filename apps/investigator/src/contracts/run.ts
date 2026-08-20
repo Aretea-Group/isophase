@@ -66,6 +66,32 @@ export const InvestigationResult = z.object({
   alert: AlertContext.optional(),
   summary: InvestigationSummaryRecord.optional(),
   error: z.object({ name: z.string(), message: z.string() }).optional(),
+  /**
+   * What this investigation cost, in effort and in money (PRD-6 §6.7, ADR 008 §1).
+   *
+   * Fixed-size and bounded by construction: a count of turns, a tally over the five closed tool
+   * names, and one usage object. **Nothing here may grow with the length of an investigation** —
+   * no per-event records, no tool arguments, no KQL, no results. A count of `query_security_data`
+   * calls is a number; the queries themselves are a trace, and traces stay in `runs/traces/`,
+   * optional and off by default.
+   *
+   * Recorded for failed investigations too. A run that burned its whole budget and timed out is the
+   * most expensive kind there is, and it was previously the one kind that recorded nothing.
+   */
+  turns: z.number().int().nonnegative().optional(),
+  /** Keyed by tool name, never by table: naming tables is the first step to grading the path. */
+  toolCalls: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  usage: z
+    .object({
+      input: z.number().int().nonnegative(),
+      output: z.number().int().nonnegative(),
+      cacheRead: z.number().int().nonnegative(),
+      cacheWrite: z.number().int().nonnegative(),
+      totalTokens: z.number().int().nonnegative(),
+      costUsd: z.number().nonnegative(),
+    })
+    /** `reasoning` is deliberately excluded — pi-ai documents it as a subset of `output`. */
+    .optional(),
 });
 
 /**
@@ -89,6 +115,40 @@ export const InvestigationRunConfig = z.object({
    * from a clean one, which is the whole basis of PRD-5 §4.5.
    */
   analystContext: z.string().optional(),
+});
+
+/**
+ * What produced this run, beyond the model name (PRD-6 §6.6, ADR 008 §1).
+ *
+ * `model.id` is a moving alias and `config` says nothing about the prompt, so two artifacts can
+ * agree on every recorded field and still have been produced by different software. Without this
+ * the prompt axis is not merely unrecorded, it is *unrecordable* — and steering and case memory are
+ * both prompt changes, so it blocks the three axes evaluation exists to compare.
+ *
+ * Optional, so every artifact written before it keeps parsing. Absent renders `?` in a report and
+ * never merges with a recorded value (PRD-6 §5.2).
+ */
+export const RunCorpusIdentity = z.object({
+  /** Recorded beside the hash, never inside it: it moves on every bootstrap (ADR 001). */
+  anchorUtc: z.iso.datetime(),
+  offsetMs: z.number().int(),
+  telemetryRevision: z.string().min(1),
+  /** Over the sorted alert ids the corpus generated. This is what catches a broken join. */
+  alertSetHash: z.string().min(1),
+  queryMaxRows: z.number().int().positive(),
+});
+
+export const RunProvenance = z.object({
+  /** Over the instructions, the five tools' name/description/parameters, and the context template. */
+  promptHash: z.string().min(1),
+  /** Separate from `promptHash`: the submission schema is what actually split this corpus. */
+  submissionHash: z.string().min(1),
+  piVersion: z.string().min(1),
+  /** Human-readable companion to `promptHash`. The hash is the truth. */
+  instructionsLabel: z.string().min(1).optional(),
+  /** What the provider actually served, when it reports one. `model.id` is only an alias. */
+  servedModelId: z.string().min(1).optional(),
+  corpus: RunCorpusIdentity.optional(),
 });
 
 export const InvestigationRun = z.object({
@@ -147,6 +207,7 @@ export const InvestigationRun = z.object({
    */
   derivedFrom: z.object({ runId: z.string().min(1), alertId: z.string().min(1) }).optional(),
   config: InvestigationRunConfig.optional(),
+  provenance: RunProvenance.optional(),
   /** Which model produced these results. Without it two artifacts are not comparable. */
   model: z.object({ provider: z.string(), id: z.string() }),
   limits: z.object({
@@ -157,6 +218,8 @@ export const InvestigationRun = z.object({
 });
 
 export type AlertContext = z.infer<typeof AlertContext>;
+export type RunCorpusIdentity = z.infer<typeof RunCorpusIdentity>;
+export type RunProvenance = z.infer<typeof RunProvenance>;
 export type InvestigationRunConfig = z.infer<typeof InvestigationRunConfig>;
 export type InvestigationResult = z.infer<typeof InvestigationResult>;
 export type InvestigationRun = z.infer<typeof InvestigationRun>;
