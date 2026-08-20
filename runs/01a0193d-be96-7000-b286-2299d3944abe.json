@@ -1,0 +1,37 @@
+{
+  "runId": "01a0193d-be96-7000-b286-2299d3944abe",
+  "startedAt": "2026-08-19T08:57:52.022Z",
+  "completedAt": "2026-08-19T08:58:38.427Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "d52663c4-9e5d-c225-9489-780322169846",
+      "alertTitle": "Known malicious domain avsvmcloud.com resolved",
+      "status": "completed",
+      "startedAt": "2026-08-19T08:57:52.022Z",
+      "completedAt": "2026-08-19T08:58:38.427Z",
+      "durationMs": 46405,
+      "summary": {
+        "tpPercent": 80,
+        "tpReason": "Umbrella DNS telemetry records an allowed, successful A-record lookup of avsvmcloud.com, a well-established SUNBURST/SolarWinds C2 coordinator, from 17.81.146.1. This is an exact high-confidence C2 indicator; the query was not blocked.",
+        "fpPercent": 20,
+        "fpReason": "Only one DNS event exists in the available telemetry, and it is for the parent domain rather than a distinctive SUNBURST-generated subdomain. A manual/security-research lookup or IOC validation remains plausible. The source is identified only as HOSTNAME, so the responsible workload/process cannot be determined.",
+        "whatHappened": "At 2020-03-19 22:33:58.219 UTC, Umbrella recorded host identity HOSTNAME using internal IP 17.81.146.1 to make an allowed A-record query for avsvmcloud.com. It returned NOERROR; the log records ExternalIp 15.230.137.45. This is the sole event in the available Umbrella table (whose entire retained dataset consists of this one record), the only avsvmcloud.com event, and the only alert involving this IP. No CommonSecurityLog connection records, endpoint SecurityEvent records, or AWS CloudTrail events tied to 17.81.146.1 were available. Thus DNS contact occurred, but a follow-on HTTP/C2 session, execution, or compromise cannot be established from this data.",
+        "keyEvidence": [
+          "Umbrella custom telemetry: 2020-03-19 22:33:58.219Z; InternalIp '17.81.146.1', identity HOSTNAME; Domain avsvmcloud.com; QueryType A; ResponseCode NOERROR; Action Allowed; ExternalIp 15.230.137.45.",
+          "The only matching avsvmcloud.com DNS event and only telemetry record available was this event; no generated subdomain or repeated beaconing was observed.",
+          "No matching records were found in CommonSecurityLog around the event, SecurityEvent for HOSTNAME/IP, AWSCloudTrail for source 17.81.146.1, or other SecurityAlert records in 12–27 March.",
+          "Mandiant/Google Cloud identifies avsvmcloud.com as the authoritative DNS C2 coordinator for SUNBURST: https://cloud.google.com/blog/topics/threat-intelligence/sunburst-additional-technical-details"
+        ],
+        "nextAction": "Identify the AWS account, instance, owner, and private IP for 17.81.146.1; isolate or restrict its egress if active. Obtain endpoint, DNS-cache, proxy, and firewall telemetry; check SolarWinds Orion/Orion.Core.BusinessLayer versions, processes, and persistence. Hunt retained DNS/proxy logs enterprise-wide for avsvmcloud.com and subdomains. Rotate credentials and initiate SolarWinds IR if endpoint evidence confirms SUNBURST."
+      }
+    }
+  ]
+}

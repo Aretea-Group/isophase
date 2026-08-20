@@ -1,0 +1,39 @@
+{
+  "runId": "01a0191f-4ebe-7000-8439-afe742117d8b",
+  "startedAt": "2026-08-19T08:24:37.310Z",
+  "completedAt": "2026-08-19T08:25:06.281Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "6f8c3424-40a6-de72-b641-fdb86a159625",
+      "alertTitle": "Privilege escalation after sign-in for mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T08:24:37.310Z",
+      "completedAt": "2026-08-19T08:25:06.281Z",
+      "durationMs": 28971,
+      "summary": {
+        "tpPercent": 100,
+        "tpReason": "Telemetry directly confirms successful Okta privilege grant and API-token creation, followed by successful MFA changes, then AWS console/API activity from the same source IP. The sequence includes persistence, data access, logging suppression, public exposure, and compute launch, which is not consistent with benign administration.",
+        "fpPercent": 0,
+        "fpReason": "No credible benign explanation is supported. All relevant Okta and AWS operations succeeded, used the same Russian-geolocated source address, and included attacker-named backdoors and destructive/evasive actions.",
+        "whatHappened": "On 2026-08-18, mirage@pkwork.onmicrosoft.com successfully signed in to Okta at 13:17:52 UTC from 198.51.100.42 (telemetry country RU). At 13:18:52 the account granted itself the Okta super-admin role; at 13:19:52 it created an API token named “Backdoor API Token.” It then disabled Priya Sharma’s SMS factor, reset all MFA for ceo@pkwork.onmicrosoft.com, and enrolled a new TOTP factor for mirage at 13:20:52–13:21:52. The same IP and AWS IAM user mirage accessed AWS account 123456789012 beginning 13:34:09, created user backdoor-svc, created an active access key, attached AdministratorAccess, opened a security group to 0.0.0.0/0, launched five p3.16xlarge instances, retrieved finance, HR, and production API-key objects, stopped/deleted the CloudTrail trail, injected curl-based user data, and successfully logged in as backdoor-svc at 14:04:12 UTC.",
+        "keyEvidence": [
+          "OktaV2_CL: successful user.session.start for mirage@pkwork.onmicrosoft.com at 13:17:52 UTC from 198.51.100.42, country RU, followed by successful user.account.privilege.grant (super admin) at 13:18:52 and system.api_token.create (“Backdoor API Token”) at 13:19:52.",
+          "OktaV2_CL: successful MFA actions from the same IP: deactivate Priya Sharma’s SMS factor at 13:20:52, reset CEO PKWork MFA at 13:21:22, and enroll a new TOTP for mirage at 13:21:52.",
+          "AWSCloudTrail: mirage using access key AKIAIOSFODNN7EXAMPLE from 198.51.100.42 successfully created backdoor-svc and active key AKIAI99ATTACKKEY, attached AdministratorAccess, and launched five instances; events occurred 13:38:27–13:45:27 UTC.",
+          "AWSCloudTrail: the same identity retrieved corp-data-prod finance/2026-budget-final.xlsx, hr/employee-records-full.csv, and secrets/api-keys-production.json at 13:48:07–13:48:59 UTC, then stopped and deleted management-events-trail at 13:50:17–13:55:27 UTC.",
+          "AWSCloudTrail: user-data on instance i-0a1b2c3d4e5f00001 was set to fetch and execute https://185.220.101.55/shell.sh at 14:00:27; backdoor-svc subsequently logged in successfully at 14:04:12 from the same IP.",
+          "MailGuard365_Threats_CL: phishing messages were delivered (Action Allow) to mirage at 13:39:11 and 13:45:07 UTC, with verdict Phishing and confidence 92/90, providing a plausible related intrusion vector but not proof of click or credential submission."
+        ],
+        "nextAction": "Declare an active compromise. Disable mirage and backdoor-svc; revoke the Okta token and both AWS keys; remove rogue roles/MFA changes; isolate and terminate the five instances; remove the public security-group rule and malicious user data; restore CloudTrail; rotate exposed S3 secrets; block 198.51.100.42 and 185.220.101.55; quarantine the phishing emails; preserve evidence and escalate to IR."
+      }
+    }
+  ]
+}

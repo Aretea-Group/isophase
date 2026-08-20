@@ -1,0 +1,79 @@
+{
+  "runId": "01a0200a-c192-7000-bf16-1160d733e088",
+  "startedAt": "2026-08-20T16:39:30.965Z",
+  "completedAt": "2026-08-20T16:39:52.440Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true,
+    "analystContext": "Google IoCs for this"
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-20T16:39:31.051Z",
+      "completedAt": "2026-08-20T16:39:52.438Z",
+      "durationMs": 21387,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T17:49:10.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1136",
+          "T1098",
+          "T1136.003"
+        ],
+        "compromisedEntity": "mirage@pkwork.onmicrosoft.com",
+        "alertType": "SOC-RULE-0023-GcpServiceAccountAbuse"
+      },
+      "summary": {
+        "tpPercent": 100,
+        "tpReason": "GCP audit logs directly corroborate successful creation of a service account and RSA key, granting it project Owner, opening a 0.0.0.0/0 firewall, launching GPU crypto-miner instances, accessing confidential/PII/API-key objects, and disabling logging. The naming and sequence are strongly hostile persistence and privilege abuse.",
+        "fpPercent": 0,
+        "fpReason": "No credible benign explanation is supported. The activity used explicit backdoor/crypto-miner names, an external-looking source IP, destructive logging changes, sensitive-object access, and a token-creator grant.",
+        "whatHappened": "On 2026-08-19 from 17:49:10 to 18:01:05 UTC, mirage@pkwork.onmicrosoft.com operated in GCP project pocaas-prod-01 from 198.51.100.42 using a browser user agent. The account created backdoor-svc-gcp@pocaas-prod-01.iam.gserviceaccount.com and key abc123def456, granted that account roles/owner, opened allow-all-ingress (0.0.0.0/0), created crypto-miner-01 and crypto-miner-02 (a2-highgpu-8g), read financial-report-2026.xlsx, employee-pii-export.csv, and api-keys-production.json, deleted export-all-logs and disabled the _Default sink. At 18:01:05 it granted itself TokenCreator on deploy-pipeline@pocaas-prod-01.iam.gserviceaccount.com. The new service account then created crypto-miner-03 at 17:59:05.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "GCPAuditLogs: 17:49:10 successful CreateServiceAccount for backdoor-svc-gcp with display name “Backdoor Service Account”; 17:50:25 successful CreateServiceAccountKey, key abc123def456.",
+          "GCPAuditLogs: 17:51:50 SetIamPolicy granted roles/owner to the backdoor service account; 18:01:05 granted mirage TokenCreator on deploy-pipeline.",
+          "GCPAuditLogs: 17:52:35 and 17:53:20/17:53:50 created allow-all-ingress and two a2-highgpu-8g crypto-miner instances; backdoor account created crypto-miner-03 at 17:59:05.",
+          "GCPAuditLogs: 17:54:35-17:55:40 listed and successfully read financial-report-2026.xlsx and employee-pii-export.csv; 18:00:50 read api-keys-production.json.",
+          "GCPAuditLogs: 17:56:55 deleted export-all-logs and 17:57:35 disabled the _Default logging sink.",
+          "GCPAuditLogs: external eve.hacker attempts at 17:58:05/17:58:20 were denied, but this does not mitigate the successful mirage activity."
+        ],
+        "researchDone": [
+          "Queried GCPAuditLogs for project pocaas-prod-01 and the alert window, including all principals and methods.",
+          "Validated request/response and status details for service-account creation, key creation, IAM changes, compute, storage, and logging operations.",
+          "Searched the broader 17:30-19:00 UTC GCP window for mirage activity; found 13 events, all from 198.51.100.42.",
+          "Checked Entra sign-in telemetry for mirage@pkwork.onmicrosoft.com from 16:30-19:00 UTC; no matching sign-in rows were returned.",
+          "Checked nearby project activity and identified benign pipeline/Jane/Bob events and denied eve.hacker attempts, separating them from successful mirage actions."
+        ]
+      }
+    }
+  ]
+}

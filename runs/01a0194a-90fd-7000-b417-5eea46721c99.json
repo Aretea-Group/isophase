@@ -1,0 +1,45 @@
+{
+  "runId": "01a0194a-90fd-7000-b417-5eea46721c99",
+  "startedAt": "2026-08-19T09:11:52.317Z",
+  "completedAt": "2026-08-19T09:12:21.311Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "cc6430ca-0fc5-b704-c048-1d5f3d8a2524",
+      "alertTitle": "Multiple failed logon attempts against SOC-FW-RDP",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:11:52.317Z",
+      "completedAt": "2026-08-19T09:12:21.311Z",
+      "durationMs": 28994,
+      "summary": {
+        "tpPercent": 94,
+        "tpReason": "Telemetry independently confirms a concentrated password-spray/brute-force pattern: 11,970 NTLM 4625 failures in exactly one hour against 257 names, dominated by generic privileged/service names (9,997 for ADMINISTRATOR). The rate, breadth, and name list are not consistent with an ordinary user mistyping a credential.",
+        "fpPercent": 6,
+        "fpReason": "No client IP, logon type, failure status, or firewall session telemetry was retained in the available records, so the originating system and whether this was an authorized test cannot be established. However, the observed volume and enumeration pattern make an innocuous explanation unlikely.",
+        "whatHappened": "SOC-FW-RDP recorded 11,970 failed NTLM logons from 2021-10-23 05:26:19Z through 06:25:57Z. The activity targeted 257 accounts; most attempts were for \\ADMINISTRATOR (9,997), followed by \\ADMIN (503), \\USER (269), \\TEST (263), and \\SERVER (240), with other scanner-like names including SYMANTEC, VEEAM, BACKUP, ADMINISTRADOR, and AZUREADMIN. During the alert hour, all 10 recorded 4624 successes were NT AUTHORITY\\SYSTEM/Negotiate, not any targeted account. No 4625 activity occurred on this host in the surrounding 20–26 October query window outside these two alert-hour bins.",
+        "impact": "none",
+        "keyEvidence": [
+          "SecurityEvent on SOC-FW-RDP: 11,970 Event ID 4625 records, all AuthenticationPackageName=NTLM, from 05:26:19Z to 06:25:57Z; 257 distinct Account values.",
+          "Account distribution supports broad credential guessing: \\ADMINISTRATOR 9,997 failures; \\ADMIN 503; \\USER 269; \\TEST 263; \\SERVER 240, plus generic backup/security/vendor account names.",
+          "SecurityEvent Event ID 4624 on SOC-FW-RDP during 05:00–06:59Z recorded only NT AUTHORITY\\SYSTEM using Negotiate (10 events); none of the spray targets successfully authenticated.",
+          "Six-day host review (20–26 Oct) found Event ID 4625 only in the 05:00 and 06:00 UTC bins on 23 Oct, corresponding to this event."
+        ],
+        "researchDone": [
+          "Reviewed SecurityEvent volume by EventID on SOC-FW-RDP around the alert; 4625 accounted for 11,970 events, with 10 4624 successes and normal-looking system/process auditing events.",
+          "Enumerated failed-logon accounts and authentication package for the exact alert window; all failures used NTLM and displayed broad generic-account targeting.",
+          "Reviewed all 4624 success events on SOC-FW-RDP from 20–26 Oct; no targeted account logged on successfully in available Windows telemetry.",
+          "Queried CommonSecurityLog for SOC-FW-RDP and TCP/3389 during 05:00–07:00Z; no matching firewall records were available, so source address and network policy could not be validated.",
+          "Reviewed SecurityAlert records for SOC-FW-RDP on 23 Oct; only this brute-force alert was present.",
+          "Checked nearby 4688 process-creation events; available fields identify only the SOC-FW-RDP machine account and contain no process command/path data to link them to the logon attempts."
+        ]
+      }
+    }
+  ]
+}

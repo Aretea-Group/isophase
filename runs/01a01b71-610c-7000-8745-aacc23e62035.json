@@ -1,0 +1,79 @@
+{
+  "runId": "01a01b71-610c-7000-8745-aacc23e62035",
+  "startedAt": "2026-08-19T19:13:30.380Z",
+  "completedAt": "2026-08-19T19:13:56.128Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T19:13:30.381Z",
+      "completedAt": "2026-08-19T19:13:56.126Z",
+      "durationMs": 25745,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T17:49:10.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1136",
+          "T1098",
+          "T1136.003"
+        ],
+        "compromisedEntity": "mirage@pkwork.onmicrosoft.com",
+        "alertType": "SOC-RULE-0023-GcpServiceAccountAbuse"
+      },
+      "summary": {
+        "tpPercent": 100,
+        "tpReason": "Telemetry shows a coordinated, successful intrusion: the same Russian source IP used successful Okta privilege/MFA tampering and AWS abuse, followed by GCP creation of a named backdoor service account, key issuance, owner-level IAM grants, resource abuse, sensitive-object reads, and logging suppression. These are not benign deployment indicators.",
+        "fpPercent": 0,
+        "fpReason": "No credible benign explanation is supported. All relevant GCP operations succeeded, used attacker-named resources (backdoor-svc-gcp, crypto-miner instances, allow-all-ingress), and were corroborated by matching Okta/AWS activity from the same source IP.",
+        "whatHappened": "On 2026-08-19, mirage@pkwork.onmicrosoft.com logged into Okta at 16:33 UTC from 198.51.100.42 (Moscow/RU), granted super-admin, created an API token, and altered MFA including enrolling an attacker-controlled TOTP. The account then abused AWS and GCP. In GCP project pocaas-prod-01 from 17:49:10-18:01:05 UTC, it created backdoor-svc-gcp, created key abc123def456, granted it roles/owner, opened allow-all-ingress, created crypto-miner-01/02, read financial-report-2026.xlsx, employee-pii-export.csv, and api-keys-production.json, disabled/deleted logging sinks, and granted itself Token Creator on deploy-pipeline. The backdoor service account created crypto-miner-03 at 17:59:05 UTC.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "GCPAuditLogs: 17:49:10-18:01:05 UTC, 13 successful operations by mirage from caller IP 198.51.100.42; zero failures. Created backdoor-svc-gcp and key abc123def456, then granted roles/owner.",
+          "GCPAuditLogs: mirage successfully read sensitive objects financial-report-2026.xlsx, employee-pii-export.csv, and api-keys-production.json at 17:55:15, 17:55:40, and 18:00:50 UTC.",
+          "GCPAuditLogs: mirage opened 0.0.0.0/0 all-protocol ingress and created crypto-miner-01/02; backdoor-svc-gcp created crypto-miner-03 at 17:59:05 UTC.",
+          "GCPAuditLogs: mirage deleted export-all-logs and disabled the _Default sink at 17:56:55-17:57:35 UTC, evidencing defense evasion.",
+          "OktaV2_CL: successful 16:33-16:37 UTC login and privilege/MFA tampering from 198.51.100.42 in Moscow/RU; MFA was enrolled for an attacker-controlled device.",
+          "AWSCloudTrail: same IP/account performed CreateUser, CreateAccessKey, AdministratorAccess attachment, unrestricted ingress, five GPU instances, sensitive S3 reads, and StopLogging from 16:49:17-17:05:25 UTC."
+        ],
+        "researchDone": [
+          "Reviewed GCPAuditLogs for the alert window and surrounding period, including request/response, authorization, caller IP, resource, and status; all mirage GCP operations succeeded.",
+          "Searched GCP after 18:01:05 UTC through 00:00 UTC for mirage, backdoor-svc-gcp, and key abc123def456; found no additional matching activity beyond the final IAM grant.",
+          "Reviewed OktaV2_CL for mirage from 15:30-17:00 UTC; found successful session, super-admin grant, API token creation, and MFA tampering from RU.",
+          "Reviewed AWSCloudTrail from 16:40-17:10 UTC; found successful persistence, data access, compute abuse, unrestricted ingress, and StopLogging from the same IP.",
+          "Checked GCP activity for failures and external corroboration; eve.hacker@external-domain.com had two denied operations, while mirage had 13 successes.",
+          "Checked sign_in_adelete_CL for mirage in the alert window; no matching records were present, so this source does not corroborate or refute the cloud activity."
+        ]
+      }
+    }
+  ]
+}

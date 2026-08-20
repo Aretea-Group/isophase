@@ -1,0 +1,79 @@
+{
+  "runId": "01a01fbd-8cfe-7000-bc98-73c64d6a9270",
+  "startedAt": "2026-08-20T15:15:11.233Z",
+  "completedAt": "2026-08-20T15:15:40.960Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true,
+    "analystContext": "pls do some web research about this"
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.4-mini"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-20T15:15:11.263Z",
+      "completedAt": "2026-08-20T15:15:40.957Z",
+      "durationMs": 29694,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T17:49:10.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1136",
+          "T1098",
+          "T1136.003"
+        ],
+        "compromisedEntity": "mirage@pkwork.onmicrosoft.com",
+        "alertType": "SOC-RULE-0023-GcpServiceAccountAbuse"
+      },
+      "summary": {
+        "tpPercent": 98,
+        "tpReason": "GCP logs show mirage created a service account, minted a key, granted it owner on pocaas-prod-01, then granted itself serviceAccountTokenCreator on a deploy SA. That is deliberate persistence/privilege escalation, and the same IP later disabled logging and accessed confidential data, so this is highly likely malicious.",
+        "fpPercent": 2,
+        "fpReason": "A narrow benign admin/deployment scenario could explain some infra changes, but it does not fit the backdoor naming, log suppression, public IP, and access to sensitive objects.",
+        "whatHappened": "From 2026-08-19T17:49:10Z to 18:01:05Z, mirage@pkwork.onmicrosoft.com (caller IP 198.51.100.42) modified GCP project pocaas-prod-01. Actions included creating backdoor-svc-gcp@pocaas-prod-01.iam.gserviceaccount.com, creating a key for it, granting it roles/owner, opening an allow-all firewall, creating crypto-miner-01/02/03, reading confidential bucket objects financial-report-2026.xlsx, employee-pii-export.csv, and api-keys-production.json, deleting export-all-logs, disabling the _Default log sink, and granting itself roles/iam.serviceAccountTokenCreator on deploy-pipeline@pocaas-prod-01.iam.gserviceaccount.com.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "Audit log sequence ties mirage@pkwork.onmicrosoft.com from 198.51.100.42 to service account creation, key creation, owner grant, and token-creator grant in pocaas-prod-01.",
+          "The new account name backdoor-svc-gcp and the created RSA key are persistent credential material.",
+          "Confidential objects were read from pocaas-confidential-data, showing real project access beyond setup.",
+          "Logging was tampered with by deleting export-all-logs and disabling _Default.",
+          "Web sources note GCP service account keys are persistent credentials and IAM policy/impersonation grants are used for cloud persistence (Google Cloud docs; Datadog Security Labs)."
+        ],
+        "researchDone": [
+          "Checked SecurityAlert details and correlated with GCPAuditLogs for the alert window.",
+          "Queried all mirage activity in project pocaas-prod-01.",
+          "Checked for follow-on use of backdoor-svc-gcp and other principals.",
+          "Summarized touched buckets and instances.",
+          "Searched for benign corroboration such as routine deployment activity; nothing fit the full sequence.",
+          "Researched GCP service account key persistence and IAM abuse in Google Cloud documentation and Datadog Security Labs."
+        ]
+      }
+    }
+  ]
+}

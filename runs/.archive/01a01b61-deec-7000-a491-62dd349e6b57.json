@@ -1,0 +1,70 @@
+{
+  "runId": "01a01b61-deec-7000-a491-62dd349e6b57",
+  "startedAt": "2026-08-19T18:56:34.028Z",
+  "completedAt": "2026-08-19T18:57:25.713Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "8dff45f5-e145-5576-5328-765837705a72",
+      "alertTitle": "Application credentials added by VadimJ@buildseccxpninja.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:56:34.030Z",
+      "completedAt": "2026-08-19T18:57:25.712Z",
+      "durationMs": 51682,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T18:01:05.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1098",
+          "T1098.001"
+        ],
+        "compromisedEntity": "VadimJ@buildseccxpninja.onmicrosoft.com",
+        "alertType": "SOC-RULE-0013-AppCredentialAdded"
+      },
+      "summary": {
+        "tpPercent": 60,
+        "tpReason": "Four successful password credentials were added to four separate applications by VadimJ. Three were created through Azure CLI/Python SDK in a batch-like pattern, and no approval, source IP, or corresponding VadimJ sign-in is available to establish this as authorized provisioning. This creates application-authentication persistence if VadimJ was unauthorized.",
+        "fpPercent": 40,
+        "fpReason": "The telemetry contains no direct compromise indicator: audit source IPs are blank, no VadimJ sign-ins or related Office events were retained, and there are no corroborating alerts. The application names are generic and the Azure CLI/Python SDK plus a Purview-labelled secret are compatible with administrator/developer provisioning; authorization cannot be determined from the data.",
+        "whatHappened": "At 2026-08-19 18:01:05Z, the scheduled rule alerted that VadimJ@buildseccxpninja.onmicrosoft.com added credentials to EntApp01-EntApp04. Directory audit records confirm four successful 'Update application – Certificates and secrets management' events: EntApp01 received password credential PurviewAppAccess (ID 1714a3cf-c8dc-40e6-bc2a-fdfaf55baf42) via Edge; EntApp02 received Key 3 (8c123b9d-31e6-4f50-a21f-88eabc8857e5), EntApp03 Secret (bd3aa4f4-0737-42be-8506-1d2378a2ff0b), and EntApp04 Secret (a9d6190a-ee00-45ba-9975-4fa0b00bd4f4), all via Python 3.8/Azure CLI 2.27.0. Audit records report no initiating IP. No evidence shows subsequent use of these credentials.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "Directory audit confirms all four credential-add operations succeeded; each changed KeyDescription from [] to a Password/Verify credential on EntApp01-EntApp04.",
+          "EntApp02-04 were modified with the same Python 3.8 / azure-graphrbac / Azure CLI 2.27.0 user agent, consistent with scripted or command-line batch activity.",
+          "EntApp01 was modified through Edge and named PurviewAppAccess, whereas the other three added generic/blank-labelled secrets; this mixed activity requires owner validation.",
+          "The only other app-credential alert at the same alert-generation time involved a different actor (Victim) and purview-spn-user099; it does not corroborate compromise of VadimJ."
+        ],
+        "researchDone": [
+          "Queried Directory audit records for VadimJ and the four named applications; found exactly the four successful credential additions and extracted credential IDs, user agents, and targets.",
+          "Checked all audit events for EntApp01-04 and their application IDs; no additional changes or later events were returned.",
+          "Checked VadimJ and the four applications in sign_in_adelete_CL from 2026-08-01 through 2026-08-25; no sign-ins were returned.",
+          "Checked OfficeActivity for VadimJ around the alert; no events were returned.",
+          "Checked SecurityAlert for related VadimJ/application alerts; only this alert was found. A tenant-wide search identified a simultaneous but separate credential-add alert for Victim/purview-spn-user099.",
+          "Searched public web for the exact buildseccxpninja.onmicrosoft.com tenant string; no results were returned."
+        ]
+      }
+    }
+  ]
+}

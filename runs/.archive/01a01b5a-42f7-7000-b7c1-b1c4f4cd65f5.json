@@ -1,0 +1,69 @@
+{
+  "runId": "01a01b5a-42f7-7000-b7c1-b1c4f4cd65f5",
+  "startedAt": "2026-08-19T18:48:15.351Z",
+  "completedAt": "2026-08-19T18:48:48.697Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "8dff45f5-e145-5576-5328-765837705a72",
+      "alertTitle": "Application credentials added by VadimJ@buildseccxpninja.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:48:15.352Z",
+      "completedAt": "2026-08-19T18:48:48.696Z",
+      "durationMs": 33344,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T18:01:05.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1098",
+          "T1098.001"
+        ],
+        "compromisedEntity": "VadimJ@buildseccxpninja.onmicrosoft.com",
+        "alertType": "SOC-RULE-0013-AppCredentialAdded"
+      },
+      "summary": {
+        "tpPercent": 90,
+        "tpReason": "Four successful application credential additions were recorded for one account across four applications in a single alert window. The bulk change and Azure SDK/CLI MSI user agent are consistent with automated persistence, while no telemetry identifies an authorized change or approved owner.",
+        "fpPercent": 10,
+        "fpReason": "The available data does not establish whether VadimJ is an authorized application administrator or whether this was a planned automation task. Source IP and sign-in context are absent, so legitimate administrative activity cannot be fully excluded.",
+        "whatHappened": "At 2026-08-19 18:01:05Z, VadimJ@buildseccxpninja.onmicrosoft.com successfully performed four 'Update application – Certificates and secrets management' operations. New Password/Verify credentials were added to EntApp01 (PurviewAppAccess, key ID 1714a3cf-c8dc-40e6-bc2a-fdfaf55baf42), EntApp02 (Key 3, 8c123b9d-31e6-4f50-a21f-88eabc8857e5), EntApp03 (Secret, bd3aa4f4-0737-42be-8506-1d2378a2ff0b), and EntApp04 (Secret, a9d6190a-ee00-45ba-9975-4fa0b00bd4f4). EntApp01 used an old Edge/Chrome browser UA; the other three used Python 3.8.9 msrest azure-graphrbac/AZURECLI 2.27.0 (MSI). All results were success. No source IP was recorded.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "AuditLogsHunting_CL contains four successful certificate/secret-management updates by VadimJ targeting EntApp01–EntApp04; each changed KeyDescription from [] to a new Password/Verify credential.",
+          "The four audit records expose distinct new credential IDs and display names PurviewAppAccess, Key 3, and Secret, confirming persistence was actually established rather than merely attempted.",
+          "Three of four changes used the automated Python Azure SDK/AZURECLI MSI user agent, and the changes spanned four applications in the same alert window.",
+          "SecurityAlert confirms the event at 2026-08-19T18:01:05.057Z and lists the same four targets and keys."
+        ],
+        "researchDone": [
+          "Queried AuditLogsHunting_CL for VadimJ and all four target applications; found exactly four successful credential additions and no failures, IP addresses, or authorization rationale.",
+          "Queried sign_in_adelete_CL for VadimJ from 2026-07-20 through 2026-08-20 and for post-event app sign-ins; returned no matching rows.",
+          "Queried AzureActivity_CL for VadimJ or the four application names from 2026-08-19 17:00Z through 2026-08-20 18:00Z; returned no rows.",
+          "Queried OfficeActivity_CL for VadimJ in the same period; returned no rows.",
+          "Queried SecurityAlert for corroborating alerts involving VadimJ; only the presented credential-addition alert was returned."
+        ]
+      }
+    }
+  ]
+}

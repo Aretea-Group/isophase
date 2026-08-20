@@ -1,0 +1,38 @@
+{
+  "runId": "01a0191e-6037-7000-9456-45bfdaa125d3",
+  "startedAt": "2026-08-19T08:23:36.247Z",
+  "completedAt": "2026-08-19T08:24:07.249Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "00f7a521-47ec-8c47-9667-1a84bc21e203",
+      "alertTitle": "Ransomware Behavior on srv-dc01",
+      "status": "completed",
+      "startedAt": "2026-08-19T08:23:36.247Z",
+      "completedAt": "2026-08-19T08:24:07.249Z",
+      "durationMs": 31002,
+      "summary": {
+        "tpPercent": 15,
+        "tpReason": "CrowdStrike recorded a real vssadmin.exe shadow-copy deletion attempt by jliu on srv-dc01, but its detection verdict is false_positive and the action was explicitly Blocked and Killed with files quarantined. No additional detections or corroborating Windows/Azure activity were found.",
+        "fpPercent": 85,
+        "fpReason": "The only srv-dc01 detection is marked false_positive by CrowdStrike; the process was prevented, the host remained normal/not contained, and there is no telemetry showing encryption, follow-on execution, lateral movement, or data impact. The Sentinel alert was dismissed.",
+        "whatHappened": "At 2026-08-14 20:30:21.594 UTC, CrowdStrike detected C:\\Windows\\System32\\vssadmin.exe running `vssadmin.exe delete shadows /all /quiet` on Windows Server 2022 host srv-dc01 (10.0.0.10; external IP 188.21.237.101; domain PKWORK) under user jliu (jliu@pkwork.onmicrosoft.com). The parent was cmd.exe with command line `C:\\Windows\\System32\\svchost.exe -k netsvcs`, grandparent explorer.exe. Falcon marked the detection false_positive, disposition Blocked and Killed, and Quarantined=true. No other CrowdStrike detection exists for this host in the available data. The Sentinel High alert was dismissed.",
+        "keyEvidence": [
+          "CrowdStrikeDetections at 2026-08-14 20:30:21.594Z: T1486/Ransomware Behavior, user jliu, command `vssadmin.exe delete shadows /all /quiet`, status false_positive, confidence 72, PatternDispositionDescription `Blocked and Killed`, Quarantined=true.",
+          "CrowdStrikeAlerts for agent cs-aid-srvdc01-0006 contains the same single alert and status false_positive; no other alerts were returned for that agent.",
+          "CrowdStrikeHosts at 21:17Z reports srv-dc01 status=normal and FilesystemContainmentStatus=normal, with last user jliu.",
+          "SecurityAlert shows both matching Sentinel records as High/Dismissed. SecurityEvent, sign-in, and Azure Activity searches produced no corroborating records in the examined window.",
+          "The detected file hash was SHA-256 0a6620bc604c744a713afb84b2b7427be93afb2d444fb3de4596646."
+        ],
+        "nextAction": "Ask the server owner whether jliu or an approved backup/maintenance task ran VSS deletion at 20:30Z. Review the Falcon process tree/quarantine result and confirm no shadow copies were deleted. If unauthorized, investigate jliu credentials and adjacent hosts and escalate as a blocked ransomware precursor."
+      }
+    }
+  ]
+}

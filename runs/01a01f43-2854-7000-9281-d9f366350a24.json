@@ -1,0 +1,77 @@
+{
+  "runId": "01a01f43-2854-7000-9281-d9f366350a24",
+  "startedAt": "2026-08-20T13:01:30.069Z",
+  "completedAt": "2026-08-20T13:01:44.764Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "862d4591-586b-3adf-03a8-6fd2e5bcd0dd",
+      "alertTitle": "GCP identity persistence by mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-20T13:01:30.088Z",
+      "completedAt": "2026-08-20T13:01:44.761Z",
+      "durationMs": 14673,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T17:49:10.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1136",
+          "T1098",
+          "T1136.003"
+        ],
+        "compromisedEntity": "mirage@pkwork.onmicrosoft.com",
+        "alertType": "SOC-RULE-0023-GcpServiceAccountAbuse"
+      },
+      "summary": {
+        "tpPercent": 100,
+        "tpReason": "Telemetry confirms successful IAM persistence and follow-on abuse from the alerted identity: a backdoor service account and key were created, granted project Owner, logging was disabled, sensitive objects were read, and GPU miner instances/firewall access were created.",
+        "fpPercent": 0,
+        "fpReason": "No credible benign or deployment explanation is present. The names, sequence, external source IP, destructive logging changes, sensitive-data access, and cryptocurrency-mining resources are directly inconsistent with routine administration.",
+        "whatHappened": "On 2026-08-19 from 17:49:10 to 18:01:05 UTC in GCP project pocaas-prod-01, mirage@pkwork.onmicrosoft.com, from 198.51.100.42 using a browser user agent, created service account backdoor-svc-gcp@pocaas-prod-01.iam.gserviceaccount.com and key abc123def456, then granted it project roles/owner. The same identity opened allow-all-ingress (0.0.0.0/0), created crypto-miner-01 and crypto-miner-02, read financial-report-2026.xlsx, employee-pii-export.csv, and api-keys-production.json, deleted export-all-logs and disabled the _Default sink, and granted itself Token Creator on deploy-pipeline. The backdoor service account subsequently created crypto-miner-03 at 17:59:05 UTC. Separate eve.hacker attempts from 91.219.236.100 at 17:58:05/20 UTC were denied.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "GCPAuditLogs: successful CreateServiceAccount at 17:49:10 and CreateServiceAccountKey at 17:50:25 for backdoor-svc-gcp, both by mirage@pkwork.onmicrosoft.com from 198.51.100.42.",
+          "GCPAuditLogs: successful project SetIamPolicy at 17:51:50 granting the new service account roles/owner; successful Token Creator policy for mirage on deploy-pipeline at 18:01:05.",
+          "GCPAuditLogs: successful sensitive-object reads at 17:55:15, 17:55:40, and 18:00:50, including employee PII and production API keys.",
+          "GCPAuditLogs: successful deletion/disabling of logging sinks at 17:56:55 and 17:57:35, plus allow-all ingress and three a2-highgpu-8g crypto-miner instances.",
+          "GCPAuditLogs: backdoor-svc-gcp successfully created crypto-miner-03 at 17:59:05; all relevant authorization entries show granted=true."
+        ],
+        "researchDone": [
+          "Queried GCPAuditLogs for project pocaas-prod-01 and mirage during 17:30–18:30 UTC; found 25 events, no truncation.",
+          "Reviewed the full alert window and correlated principal, source IP, methods, requests, responses, authorization results, and resource names.",
+          "Checked activity by all principals in the project around the window; deploy-pipeline and named users showed separate internal/admin activity, while mirage uniquely performed the persistence and destructive sequence.",
+          "Checked IAM persistence operations specifically; mirage successes were confirmed, while eve.hacker's two analogous attempts were explicitly Permission denied.",
+          "No public-web research was needed; the decisive evidence is first-party GCP audit telemetry."
+        ]
+      }
+    }
+  ]
+}

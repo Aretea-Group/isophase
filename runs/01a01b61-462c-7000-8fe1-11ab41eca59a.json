@@ -1,0 +1,67 @@
+{
+  "runId": "01a01b61-462c-7000-8fe1-11ab41eca59a",
+  "startedAt": "2026-08-19T18:55:54.924Z",
+  "completedAt": "2026-08-19T18:56:33.870Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "69589487-fa16-b080-6587-25623e4b3f39",
+      "alertTitle": "12 Azure resources deleted by AdeleV@M365x816222.OnMicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:55:54.926Z",
+      "completedAt": "2026-08-19T18:56:33.868Z",
+      "durationMs": 38942,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2021-11-04T20:20:45.390Z",
+        "endTimeUtc": "2021-11-04T20:34:00.672Z",
+        "timeGenerated": "2021-11-04T20:34:00.672Z",
+        "tactics": [
+          "Impact"
+        ],
+        "techniques": [
+          "T1485"
+        ],
+        "compromisedEntity": "AdeleV@M365x816222.OnMicrosoft.com",
+        "alertType": "SOC-RULE-0026-CloudResourceDestruction"
+      },
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "The Azure control-plane records show AdeleV successfully deleting a web app, VM, two Key Vaults, Logic App, web connections/custom API, and BTPOC resource group across the alert window; these are completed destructive actions, not merely attempts. Simultaneous suspicious account use from 175.45.176.99 (mass successful sign-ins, mailbox rule, anonymous sharing link, file activity) strongly supports account compromise rather than planned administration.",
+        "fpPercent": 1,
+        "fpReason": "There is no change-ticket/owner-confirmation telemetry and the Azure caller IP (37.142.150.162) differs from the concurrent Entra/Office IP (175.45.176.99). However, the breadth, speed, and successful deletion of operational and security-related resources make authorized cleanup implausible.",
+        "whatHappened": "From 20:20:35–20:34:00Z on 2021-11-04, AdeleV@M365x816222.OnMicrosoft.com issued Azure deletes from 37.142.150.162. Successful deletes include App Service Okta-new (Sentinel-MainRG), VM Linux01 (VM-RG01), Key Vaults MessageTraceRG77 (RG77) and OneLoginLogs1234 (GBB01), BTPOC custom API Resilent and connection azuresentinel-Create-ReslientIncident, EY_DEMO connection azureloganalyticsdatacollector and Logic App Sentinel-Ingest-AAD-SignInLog, plus BTPOC resource group. AdeleV also successfully created/updated Sentinel alert rule 017c0f30-87ea-4ab0-802a-51def37b0721 at 20:24:05Z. Separately, 175.45.176.99 made 53 successful AdeleV sign-ins 19:57:50–21:08:13Z, created an Exchange rule named junk matching subject 'legal' at 20:22:19Z, and triggered an anonymous-link alert for Contoso Purchasing Data - Q1.xlsx.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "AzureActivity: 13 success records (some duplicate provider completion events) establish completed deletes, including Linux01 VM, two Key Vaults, Azure/Sentinel-related Logic App and connections, and BTPOC resource group, all by AdeleV from 37.142.150.162 between 20:20:45–20:34:00Z.",
+          "AzureActivity: AdeleV successfully wrote Microsoft.SecurityInsights/alertRules/017c0f30-87ea-4ab0-802a-51def37b0721 in workspace centricdemo at 20:24:05Z, amid the deletion sequence.",
+          "sign_in_adelete_CL: AdeleV had 53 successful interactive browser sign-ins from only 175.45.176.99 between 19:57:50–21:08:13Z, including Azure Portal; no successful sign-in from the Azure activity caller IP was present in available sign-in telemetry.",
+          "OfficeActivity_CL: at 20:22:19Z AdeleV from 175.45.176.99 created inbox rule 'junk' with SubjectContainsWords=legal and StopProcessingRules=True; the same account performed broad SharePoint/OneDrive access and the correlated Sentinel alert records an anonymous link for Contoso Purchasing Data - Q1.xlsx."
+        ],
+        "researchDone": [
+          "Reviewed all Azure activity for AdeleV/37.142.150.162 during 20:00–20:45Z and success activity through 2021-11-05; confirmed completed deletes and Sentinel alert-rule write, with no later restoration activity in this table.",
+          "Reviewed AdeleV sign-ins from 2021-10-01 through 2021-11-06: telemetry contains activity only on 2021-11-04, 56 events/53 successes from 175.45.176.99; no sign-in event from 37.142.150.162.",
+          "Reviewed SecurityAlert records from 18:00Z Nov 4 through 06:00Z Nov 5; found correlated anonymous-sharing, destruction, and unusual-successful-sign-in alerts.",
+          "Reviewed OfficeActivity for AdeleV and both IPs around the event and over the available date range; found inbox-rule creation, extensive SharePoint/OneDrive activity, and the anonymous-link-related file; no evidence of a benign change approval.",
+          "Searched public web for 37.142.150.162; no usable reputation results returned, so IP reputation was not used in the assessment."
+        ]
+      }
+    }
+  ]
+}

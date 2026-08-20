@@ -1,0 +1,46 @@
+{
+  "runId": "01a0194e-05a6-7000-a2f7-e5eaf4b5dd4d",
+  "startedAt": "2026-08-19T09:15:38.790Z",
+  "completedAt": "2026-08-19T09:16:20.678Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "d52663c4-9e5d-c225-9489-780322169846",
+      "alertTitle": "Known malicious domain avsvmcloud.com resolved",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:15:38.791Z",
+      "completedAt": "2026-08-19T09:16:20.678Z",
+      "durationMs": 41887,
+      "summary": {
+        "tpPercent": 15,
+        "tpReason": "The DNS event is genuine and allowed, and avsvmcloud.com is associated with SUNBURST/SolarWinds infrastructure. However, this was a one-off lookup of the apex only—not the DGA-formatted avsvmcloud subdomain used by SUNBURST—and no follow-on DNS, network, endpoint, or cloud activity corroborates compromise.",
+        "fpPercent": 85,
+        "fpReason": "The query was for avsvmcloud.com itself at 2020-03-20 16:52:16Z, whereas reported SUNBURST telemetry uses generated subdomains and Cloudflare first observed that pattern in April 2020. The source generated only this one DNS event in the available Mar 1–Apr 15 data. This is more consistent with an intelligence/test/benign lookup or overly broad domain IOC match than an active beacon.",
+        "whatHappened": "At 2020-03-20 16:52:16.153Z, DNS telemetry recorded an allowed A-record query with NOERROR response for avsvmcloud.com. The reported resolver/client field was \" 17.81.146.1\" (leading space retained in source telemetry); the DNS service external IP was 15.230.137.45. Identity was only HOSTNAME—no actual hostname, user, or process was provided. There was no observed subdomain, repeat query, subsequent C2 destination, or associated alert.",
+        "impact": "unknown",
+        "keyEvidence": [
+          "solarigate_beacon_umbrella_CL records exactly one allowed A/NOERROR query for avsvmcloud.com from 17.81.146.1 at 2020-03-20 16:52:16.153Z; it was categorized Software/Technology and Business Services.",
+          "Across 2020-03-01 through 2020-04-15, 17.81.146.1 generated only that one available DNS event and one distinct domain; no repeat or follow-on DNS behavior was present.",
+          "Across all available avsvmcloud.com DNS telemetry, this was the sole query and sole source; the queried name was the apex, not a generated subdomain.",
+          "Cloudflare, “Trend data on the SolarWinds Orion compromise” (https://blog.cloudflare.com/solarwinds-orion-compromise-trend-data/) documents SUNBURST resolving DGA-generated subdomains under appsync-api.*.avsvmcloud.com and reports its observed activity beginning in April 2020—not an apex lookup in March.",
+          "CommonSecurityLog contained no matching domain/IP network records in the 24-hour context window, so there is no evidence here that a C2 connection followed the successful resolution."
+        ],
+        "researchDone": [
+          "Retrieved schemas for DNS/proxy (solarigate_beacon_umbrella_CL, CommonSecurityLog), Windows events, alerts, CrowdStrike, AWS CloudTrail, and audit telemetry.",
+          "Reviewed all DNS events for trimmed source IP 17.81.146.1 from Mar 1–Apr 15: only the alerted query was present.",
+          "Reviewed all avsvmcloud.com DNS events: one event total, with no subdomains, additional source, retry, or block action.",
+          "Checked a two-hour DNS context window around the event for both 17.81.146.1 and resolver 15.230.137.45; no other event was returned.",
+          "Searched CommonSecurityLog, SecurityEvent, SecurityAlert, CrowdStrike hosts/detections, and AWSCloudTrail around the event/IP; no corroborating record was found. Endpoint identity and process attribution remain unavailable.",
+          "Researched the domain against Cloudflare’s SolarWinds analysis; used its documented DGA subdomain pattern and observed-April start as context, not as proof of local compromise."
+        ]
+      }
+    }
+  ]
+}

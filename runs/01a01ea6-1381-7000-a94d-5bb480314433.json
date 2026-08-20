@@ -1,0 +1,78 @@
+{
+  "runId": "01a01ea6-1381-7000-a94d-5bb480314433",
+  "startedAt": "2026-08-20T10:09:55.587Z",
+  "completedAt": "2026-08-20T10:10:29.850Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "8dff45f5-e145-5576-5328-765837705a72",
+      "alertTitle": "Application credentials added by VadimJ@buildseccxpninja.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": false
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "8dff45f5-e145-5576-5328-765837705a72",
+      "alertTitle": "Application credentials added by VadimJ@buildseccxpninja.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-20T10:09:55.613Z",
+      "completedAt": "2026-08-20T10:10:29.848Z",
+      "durationMs": 34235,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T18:01:05.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1098",
+          "T1098.001"
+        ],
+        "compromisedEntity": "VadimJ@buildseccxpninja.onmicrosoft.com",
+        "alertType": "SOC-RULE-0013-AppCredentialAdded"
+      },
+      "summary": {
+        "tpPercent": 82,
+        "tpReason": "Telemetry confirms four successful application credential additions by VadimJ across four separate enterprise applications. The broad persistence change, mixed browser/Azure CLI automation user agents, and absence of an authorization/maintenance context make hostile account use more likely than benign administration, though source IP and owner context are unavailable.",
+        "fpPercent": 18,
+        "fpReason": "The audit records do not prove the changes were unauthorized: no initiating IP is populated, and adding credentials can be legitimate deployment activity. The available sign-in and Azure Activity telemetry contains no corroborating risky sign-in or downstream use.",
+        "whatHappened": "At the alert time, 2026-08-19 18:01:05.057 UTC, VadimJ@buildseccxpninja.onmicrosoft.com successfully performed four “Update application – Certificates and secrets management” operations. New Password/Verify credentials were added to EntApp01 (app ID a05db9f5-91e6-4bba-860e-cf38984e89fc; PurviewAppAccess; key 1714a3cf-c8dc-40e6-bc2a-fdfaf55baf42), EntApp02 (a9929be8-b429-4918-ab41-0604fc9356b4; Key 3; key 8c123b9d-31e6-4f50-a21f-88eabc8857e5), EntApp03 (20bdf178-f471-41bd-936f-2d4e0970b66c; Secret; key bd3aa4f4-0737-42be-8506-1d2378a2ff0b), and EntApp04 (b89ea4f7-3fb2-4731-b1cf-a4ee5d5624b9; Secret; key a9d6190a-ee00-45ba-9975-4fa0b00bd4f4). EntApp01 used Edge 92; the other three used Azure CLI/SDK Python 3.8.9 with MSI. All results were success. No source IP or event-level timestamp is present in AuditLogsHunting_CL.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "AuditLogsHunting_CL contains exactly four successful credential-management updates by VadimJ, one each for EntApp01–EntApp04.",
+          "The four new credential identifiers are 1714a3cf-c8dc-40e6-bc2a-fdfaf55baf42, 8c123b9d-31e6-4f50-a21f-88eabc8857e5, bd3aa4f4-0737-42be-8506-1d2378a2ff0b, and a9d6190a-ee00-45ba-9975-4fa0b00bd4f4; each has Result=success.",
+          "The alert at 2026-08-19T18:01:05.057Z independently reports four credentials added to the same four applications and remains High/New.",
+          "Three events used Azure CLI/SDK with an MSI user agent, while one used an old Edge browser; this is unusual for a single ordinary interactive administration session.",
+          "No application sign-ins for EntApp01–EntApp04 were returned from sign_in_adelete_CL, so downstream credential use is not demonstrated."
+        ],
+        "researchDone": [
+          "Queried AuditLogsHunting_CL for VadimJ and all four target applications; found four successful additions and one unrelated credential addition by Victim.",
+          "Reviewed key names, key IDs, app IDs, result fields, user agents, correlation IDs, and target resources for the four events.",
+          "Checked sign_in_adelete_CL for VadimJ/buildseccxpninja sign-ins and for sign-ins to the four applications; returned no rows.",
+          "Checked azureActivity_adele_CL and AzureActivity_CL around 17:00–19:00 UTC for VadimJ or the target applications; returned no corroborating rows.",
+          "Checked OfficeActivity_CL around the alert time for VadimJ, the applications, or credential/secret operations; returned no rows.",
+          "Checked SecurityAlert for related VadimJ or EntApp alerts; found only this alert.",
+          "AuditLogsHunting_CL has no exposed TimeGenerated or initiating IP populated, limiting timeline and origin analysis."
+        ]
+      }
+    }
+  ]
+}

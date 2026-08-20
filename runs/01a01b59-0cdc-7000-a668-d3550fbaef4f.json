@@ -1,0 +1,74 @@
+{
+  "runId": "01a01b59-0cdc-7000-a668-d3550fbaef4f",
+  "startedAt": "2026-08-19T18:46:55.964Z",
+  "completedAt": "2026-08-19T18:47:40.699Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "fcf15f79-09ce-f459-2a1f-26c97d28a253",
+      "alertTitle": "Anonymous sharing link created by adelev@m365x816222.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:46:55.965Z",
+      "completedAt": "2026-08-19T18:47:40.696Z",
+      "durationMs": 44731,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2021-11-04T20:33:21.057Z",
+        "endTimeUtc": "2021-11-04T20:33:21.057Z",
+        "timeGenerated": "2021-11-04T20:33:21.057Z",
+        "tactics": [
+          "Exfiltration",
+          "Collection"
+        ],
+        "techniques": [
+          "T1567",
+          "T1213",
+          "T1213.002"
+        ],
+        "compromisedEntity": "adelev@m365x816222.onmicrosoft.com",
+        "alertType": "SOC-RULE-0042-AnonymousSharingLinkCreated"
+      },
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "The alert is corroborated by a matching OfficeActivity_CL AnonymousLinkCreated event at 2021-11-04 20:33:21Z for the named file, account, IP, and OneDrive URL. The same session shows SharingSet with Contribute/Edit permissions, a successful sign-in burst, and additional suspicious account activity.",
+        "fpPercent": 1,
+        "fpReason": "There is no benign business justification in the available telemetry, and the account/IP/session correlation is strong. The only residual uncertainty is that the telemetry does not identify who used the anonymous link or prove a subsequent download.",
+        "whatHappened": "On 2021-11-04, adelev@m365x816222.onmicrosoft.com used Microsoft 365 from 175.45.176.99 (geolocated IL in sign-in telemetry) with a Chrome/Edge browser. At 20:33:20–20:33:21Z, the account broke sharing inheritance and granted Contribute/System.LimitedEdit permissions, then created an anonymous Edit link for OneDrive file Contoso Purchasing Data - Q1.xlsx. The account had 53 successful and 3 failed sign-ins from that IP during the day, across multiple Microsoft applications. Between 20:17:06 and 20:43:42Z, OfficeActivity also records file downloads, uploads, sends, a new inbox rule, deletions, and other sharing activity. A separate correlated Sentinel alert reports 12 Azure resources deleted by the same account at 20:34Z from 37.142.150.162.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "OfficeActivity_CL: AnonymousLinkCreated at 2021-11-04 20:33:21.057Z for the exact file, by adelev@m365x816222.onmicrosoft.com from 175.45.176.99; Event_Data specifies Type=Edit.",
+          "OfficeActivity_CL: SharingSet and SharingInheritanceBroken at 20:33:20.057Z for the same file; permissions included Contribute and System.LimitedEdit, and the link group was an AnonymousEdit link.",
+          "sign_in_adelete_CL: 56 sign-ins on 2021-11-04 for the account, 53 successful/3 failed, all from 175.45.176.99 across Azure Portal and numerous Microsoft 365 applications; location IL and browser user agent are consistent.",
+          "SecurityAlert: 12 Azure resources deleted by AdeleV@M365x816222.OnMicrosoft.com from 37.142.150.162 at 2021-11-04 20:34:00.672Z.",
+          "OfficeActivity_CL: 151 account events from 20:17:06–20:43:42Z, including FileDownloaded, New-InboxRule, FileDeleted, Send, FileUploaded, and additional sharing operations.",
+          "Historical exact-file search found only the creation/sharing events and no FileDownloaded or FileAccessed event attributable to an anonymous recipient; this limits proof of actual retrieval, not proof that the public edit link was created."
+        ],
+        "researchDone": [
+          "Validated the alert against OfficeActivity_CL using the exact account, IP, timestamp, operation, filename, and URL.",
+          "Inspected the sharing sequence and permissions around 20:33Z, including SharingInheritanceBroken, SharingSet, GroupAdded, and AnonymousLinkCreated.",
+          "Reviewed sign_in_adelete_CL for 2021-11-04: successful/failed counts, applications, IP, location, user agent, and risk fields.",
+          "Reviewed OfficeActivity_CL for the account from 20:17:06–20:43:42Z for downloads, uploads, mailbox activity, inbox rules, deletions, sends, and other sharing.",
+          "Searched all available OfficeActivity_CL history for the exact file; no recipient access/download was found.",
+          "Reviewed SecurityAlert for same-day correlated detections; found the 12-resource deletion alert and 53-successful-sign-ins alert.",
+          "Queried AzureActivity_CL around the reported deletion time, but no underlying deletion rows were present; the SecurityAlert record remains the source for that detail."
+        ]
+      }
+    }
+  ]
+}

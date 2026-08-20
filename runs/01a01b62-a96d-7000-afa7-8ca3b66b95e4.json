@@ -1,0 +1,67 @@
+{
+  "runId": "01a01b62-a96d-7000-afa7-8ca3b66b95e4",
+  "startedAt": "2026-08-19T18:57:25.869Z",
+  "completedAt": "2026-08-19T18:58:02.704Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "6203804c-88ac-f715-e303-a0a837133535",
+      "alertTitle": "Model evasion attempts by sarah@contoso.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:57:25.870Z",
+      "completedAt": "2026-08-19T18:58:02.703Z",
+      "durationMs": 36833,
+      "alert": {
+        "severity": "Medium",
+        "startTimeUtc": "2026-08-19T18:01:05.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1027"
+        ],
+        "compromisedEntity": "sarah@contoso.com",
+        "alertType": "SOC-RULE-0041-ModelEvasionAttempt"
+      },
+      "summary": {
+        "tpPercent": 8,
+        "tpReason": "The model table does contain four records attributed to sarah@contoso.com and 79.23.11.201, but it contains no attack name, label, state, textual prompt, transformed input, response, or other evidence that the inputs were evasion payloads. The available values are synthetic-looking numeric vectors with identical 0.9921 score and 0.07 output.",
+        "fpPercent": 92,
+        "fpReason": "The alert was generated 2026-08-19, while the four underlying records' timestamp strings are 2021-04-10, 2021-04-17, 2021-04-24, and 2021-05-01. This strong time mismatch, plus empty detection fields and no identity/activity corroboration, indicates a stale/test-data or overly broad scheduled-rule alert rather than current malicious use.",
+        "whatHappened": "At 2026-08-19 18:01:05Z, scheduled rule SOC-RULE-0041 raised a Medium alert claiming four model-evasion attempts by sarah@contoso.com from 79.23.11.201 against creditCard--contoso-8o3b. The only four matching model_evasion_detection_CL rows are actually dated (in their timestamp field) 2021-04-10 through 2021-05-01. Each has blank attack metadata and prompt/response fields, a 16-value numeric model_input vector, model_evasioncore 0.9921, model_output [0.07], and model_output_label 0. No evidence shows a meaningful model evasion or a successful outcome.",
+        "impact": "none",
+        "keyEvidence": [
+          "model_evasion_detection_CL has exactly four Sarah records on creditCard--contoso-8o3b from 79.23.11.201; their timestamps are 2021-04-10, 04-17, 04-24, and 05-01, not the 2026 alert time.",
+          "All four model records have blank attack_name, attack_id, label, state, input_repr, transformed input, response, and output; only numeric input vectors and output [0.07]/label 0 are present.",
+          "The rule's only matching SecurityAlert is the supplied 2026-08-19 alert; no other alerts involving Sarah, the IP, or host were found.",
+          "No Azure sign-in, Entra audit, or Office activity records were found for sarah@contoso.com or 79.23.11.201 in the queried telemetry."
+        ],
+        "researchDone": [
+          "Retrieved schemas for model_evasion_detection_CL, sign_in_adelete_CL, AuditLogsHunting_CL, OfficeActivity_CL, and SecurityAlert.",
+          "Pulled all model_evasion_detection_CL records for sarah@contoso.com and examined timestamps, host/IP, classifier fields, raw prompt/response-related fields, input, and output.",
+          "Queried sign_in_adelete_CL for Sarah and 79.23.11.201 across all available matching records and a window around the alert; returned no records.",
+          "Queried AuditLogsHunting_CL and OfficeActivity_CL for Sarah/IP; returned no records.",
+          "Queried SecurityAlert for Sarah, 79.23.11.201, and creditCard--contoso-8o3b; only the supplied alert was present."
+        ]
+      }
+    }
+  ]
+}

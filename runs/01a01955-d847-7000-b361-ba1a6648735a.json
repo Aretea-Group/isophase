@@ -1,0 +1,45 @@
+{
+  "runId": "01a01955-d847-7000-b361-ba1a6648735a",
+  "startedAt": "2026-08-19T09:24:11.463Z",
+  "completedAt": "2026-08-19T09:24:57.727Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "c4a8c80f-1c83-1842-31c6-e68352fdfb07",
+      "alertTitle": "Sign-in attempts against disabled account johns@m365x816222.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:24:11.463Z",
+      "completedAt": "2026-08-19T09:24:57.727Z",
+      "durationMs": 46264,
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "This is hostile activity, not a benign disabled-account login: four password authentications for JohnS were rejected with Entra error 50057 (account disabled) from Pyongyang/KP IP 175.45.176.99. The same IP subsequently made 53 successful interactive sign-ins as adelev and performed unauthorized-looking SharePoint/OneDrive sharing, upload, modification, and deletion activity.",
+        "fpPercent": 1,
+        "fpReason": "A legitimate owner could theoretically use the same source address and perform document sharing, but this does not explain repeated password attempts against a disabled account, the North Korea geolocation, or the tightly associated anomalous access and permission/link changes. No benign administrative/audit explanation was found.",
+        "whatHappened": "The alert is timestamped 2026-08-19, but its supporting disabled-account records are dated 2021-04-19 12:13:19–12:16:34 UTC: 175.45.176.99 (Pyongyang, KP) made four interactive Azure Portal password attempts as johns@m365x816222.onmicrosoft.com (JohnS), all blocked because the account was disabled (50057). The same IP later successfully accessed adelev@m365x816222.onmicrosoft.com from 11:01–12:11 UTC on 2021-11-04 (53 successful sign-ins). It then accessed/modified SharePoint and OneDrive content, created sharing/permission changes and an anonymous link for AdeleV's \"Contoso Purchasing Data - Q1.xlsx\" at 11:36:30–11:36:31, and deleted \"Timesheet_AdeleV.xlsx\" at 11:37:41. Office telemetry also attributes activity as JohnS from this IP, including upload of Document.docx and company-link/sharing changes on 2021-11-04 11:12–11:16 UTC.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "disable_accounts_CL has exactly four JohnS attempts from 175.45.176.99 at 2021-04-19 12:13:19–12:16:34 UTC; each used a cloud password and failed with ResultType 50057: \"User account is disabled.\" Location is Pyongyang, North Korea.",
+          "sign_in_adelete_CL records 56 sign-ins from 175.45.176.99 on 2021-11-04; 53 succeeded (ResultType 0), all for adelev@m365x816222.onmicrosoft.com, beginning with an Azure Portal interactive login at 11:01:00 UTC.",
+          "OfficeActivity_CL shows 129 actions by adelev from the IP during 11:20–11:42 UTC, including an AnonymousLinkCreated and sharing/permission changes for Contoso Purchasing Data - Q1.xlsx, plus deletion of Timesheet_AdeleV.xlsx.",
+          "OfficeActivity_CL attributes 35 JohnS SharePoint actions from the IP at 11:12–11:16 UTC, including Document.docx upload, permission-level additions, sharing changes, and CompanyLinkCreated."
+        ],
+        "researchDone": [
+          "Reviewed alert record in SecurityAlert; it is the only matching alert and is timestamped 2026-08-19, while correlated source telemetry is dated 2021. This timestamp discrepancy should be validated as ingestion/lab-date behavior.",
+          "Queried disable_accounts_CL directly and confirmed all four failed disabled-account password attempts, their error reason, IP, user agent, and KP geolocation.",
+          "Queried sign_in_adelete_CL for JohnS and source-IP activity. No JohnS rows were present in that table, but the source IP had 56 records for adelev, 53 successful.",
+          "Reviewed OfficeActivity_CL for the source IP and both named accounts; found file/permission/link actions described above, including data-sharing and deletion.",
+          "Queried AuditLogsHunting_CL for source-IP and relevant target activity; no matching directory audit records were returned.",
+          "Checked Office activity for the alert period itself (2026-08-19); no matching entries were returned; available corroborating activity is historical 2021 telemetry."
+        ]
+      }
+    }
+  ]
+}

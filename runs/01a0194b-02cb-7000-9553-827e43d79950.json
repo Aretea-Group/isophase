@@ -1,0 +1,45 @@
+{
+  "runId": "01a0194b-02cb-7000-9553-827e43d79950",
+  "startedAt": "2026-08-19T09:12:21.451Z",
+  "completedAt": "2026-08-19T09:13:04.387Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "c4a8c80f-1c83-1842-31c6-e68352fdfb07",
+      "alertTitle": "Sign-in attempts against disabled account johns@m365x816222.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:12:21.451Z",
+      "completedAt": "2026-08-19T09:13:04.386Z",
+      "durationMs": 42935,
+      "summary": {
+        "tpPercent": 92,
+        "tpReason": "Four interactive Azure Portal attempts from 175.45.176.99, geolocated as Pyongyang/KP, targeted one account and all received Entra error 50057 because it is administratively disabled. This is strongly consistent with attempted use of credentials against a known account, not a successful legitimate sign-in.",
+        "fpPercent": 8,
+        "fpReason": "The account name, password source, and user intent are not available. A legitimate user could attempt an account after it was disabled, although the KP source and repeated attempts make that explanation unlikely.",
+        "whatHappened": "At alert time 2026-08-19 09:04:15Z, 175.45.176.99 made four interactive browser sign-in attempts to Azure Portal as johns@m365x816222.onmicrosoft.com. All four were denied with ResultType 50057: “User account is disabled. The account has been disabled by an administrator”; Conditional Access was not applied and no risk events were recorded. The log geolocates the IP to Pyongyang, KP. The IP had 56 historical sign-in records for a different account, adelev@m365x816222.onmicrosoft.com, on 2021-11-04 (53 successful); these are temporally separate and do not evidence success for johns or this alert.",
+        "impact": "none",
+        "keyEvidence": [
+          "disable_accounts_CL contains exactly four records for johns@m365x816222.onmicrosoft.com from 175.45.176.99; each is interactive Azure Portal/Browser activity and ResultType 50057 states the account was disabled.",
+          "The same source-address query in disable_accounts_CL found one targeted user (johns), four attempts, and zero successful results.",
+          "Event location metadata identifies 175.45.176.99 as Pyongyang, North Korea. Public allocation information independently places 175.45.176.0/22 in the STAR-KP North Korean range (NK Net Observer, https://nknetobserver.github.io/).",
+          "No sign-in telemetry for johns was present in sign_in_adelete_CL, while the disabled-account source contains the complete four denials; this limits corroboration but does not alter the explicit failure outcome."
+        ],
+        "researchDone": [
+          "Retrieved schemas for the sign-in, disabled-account, audit, and alert tables.",
+          "Queried disabled-account telemetry for the account and IP; confirmed all four attempts failed with error 50057 and found no other targeted account from the IP in that table.",
+          "Queried sign_in_adelete_CL for the alert window/account/IP: no current matching records. Queried all available history for the IP and found only 2021 activity for adelev, not johns.",
+          "Searched AuditLogsHunting_CL for the exact johns UPN/target fields; no account-management or other matching audit records were returned.",
+          "Searched SecurityAlert for the account/IP around 2026-08-19 and found only this alert; no related alert was returned.",
+          "Researched the IP allocation; public source corroborates the KP network attribution, while the event’s own location metadata already identifies KP."
+        ]
+      }
+    }
+  ]
+}

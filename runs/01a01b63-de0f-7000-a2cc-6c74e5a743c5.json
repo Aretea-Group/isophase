@@ -1,0 +1,68 @@
+{
+  "runId": "01a01b63-de0f-7000-a2cc-6c74e5a743c5",
+  "startedAt": "2026-08-19T18:58:44.879Z",
+  "completedAt": "2026-08-19T18:59:20.731Z",
+  "status": "completed",
+  "alertCount": 1,
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "9f7f5623-fb58-6c8c-db3a-094c293e791d",
+      "alertTitle": "AWS console sign-in by bob.jones from an external address",
+      "status": "completed",
+      "startedAt": "2026-08-19T18:58:44.881Z",
+      "completedAt": "2026-08-19T18:59:20.730Z",
+      "durationMs": 35849,
+      "alert": {
+        "severity": "Medium",
+        "startTimeUtc": "2026-08-19T17:22:50.057Z",
+        "endTimeUtc": "2026-08-19T17:22:50.057Z",
+        "timeGenerated": "2026-08-19T17:22:50.057Z",
+        "tactics": [
+          "InitialAccess"
+        ],
+        "techniques": [
+          "T1078",
+          "T1078.004"
+        ],
+        "compromisedEntity": "bob.jones",
+        "alertType": "SOC-RULE-0022-AwsConsoleLogin"
+      },
+      "summary": {
+        "tpPercent": 2,
+        "tpReason": "CloudTrail records a successful IAM-user ConsoleLogin for bob.jones at 17:22:50Z with MFA, so an authentication event exists in the ingested data. However, its purported client IP is a non-routable documentation address, strongly indicating synthetic/test telemetry rather than a real hostile external login.",
+        "fpPercent": 98,
+        "fpReason": "203.0.113.50 is within TEST-NET-3, reserved for documentation and not meant to appear on the public Internet (IETF RFC 5737). The surrounding AWS records also use TEST-NET addresses (198.51.100.x) and a lab-style account number, consistent with an injected SentinelLab scenario. The rule labeled this reserved address as external without excluding documentation ranges.",
+        "whatHappened": "AWSCloudTrail records IAM user arn:aws:iam::123456789012:user/bob.jones from 203.0.113.50. At 2026-08-19 17:22:50.057Z it logged a successful ConsoleLogin to https://console.aws.amazon.com from a macOS browser; MFAUsed=Yes and SessionMfaAuthenticated=true. The same synthetic source/user made four successful read-only CLI calls before the login (DescribeSecurityGroups 17:01:10Z, GetBucketAcl for corp-data-prod 17:02:05Z, DescribeInstanceStatus 17:11:05Z, GetBucketLogging for corp-data-prod 17:17:35Z). No subsequent Bob/source events exist. This is almost certainly lab/example data, not a real externally sourced AWS session.",
+        "impact": "none",
+        "keyEvidence": [
+          "CloudTrail ConsoleLogin at 2026-08-19T17:22:50.057Z for bob.jones from 203.0.113.50 returned ConsoleLogin=Success; AdditionalEventData reports MFAUsed=Yes and the session MFA field is true.",
+          "203.0.113.50 belongs to 203.0.113.0/24 (TEST-NET-3). RFC 5737 states this block is for documentation and SHOULD NOT appear on the public Internet: https://datatracker.ietf.org/doc/html/rfc5737",
+          "The same Bob/source pair had only four preceding successful read-only AWS CLI discovery calls; no CloudTrail event for either identity or source was found after the console login.",
+          "The 16:45–17:25Z AWS activity contains several other TEST-NET-2/3 sources (198.51.100.x and 203.0.113.x), supporting a synthetic exercise dataset rather than a real external-address pattern."
+        ],
+        "researchDone": [
+          "Retrieved AWSCloudTrail, SecurityAlert, and AuditLogsHunting_CL schemas; AWSCloudTrail was the relevant source for this AWS alert.",
+          "Queried all Bob/source CloudTrail events from 2026-08-18 through 2026-08-21 and reviewed identity, result, MFA, agent, request, and resource fields.",
+          "Queried 31 days of Bob history: only five events were present, all on 2026-08-19 from 203.0.113.50; no historical legitimate baseline IP was available.",
+          "Queried events after 2026-08-19T17:22:50.057Z for Bob's username/ARN and 203.0.113.50; none returned.",
+          "Reviewed co-timed AWS activity and related alerts; multiple accounts used documentation IP ranges. Consulted IETF RFC 5737 for the reserved-address classification."
+        ]
+      }
+    }
+  ]
+}

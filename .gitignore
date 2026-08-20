@@ -24,12 +24,17 @@ baml_client/
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Investigation run artifacts (PRD-2 §19). The durable output of a run, but local
-# to a developer's experiments — regenerate with `bun run investigate`.
+# Investigation transcripts (PRD-3 §12). Optional, off by default, and 0.16–23 MB apiece.
 #
-# Anchored to the repository root. Unanchored, this pattern matches any directory named `runs`
-# at any depth, which silently excluded the console's committed test fixtures (PRD-3 §12).
-/runs/
+# The run artifacts beside them are deliberately *not* ignored (PRD-6 §6.9, ADR 008 §8): a run costs
+# real money against a non-deterministic model with no seed, so it is a measurement that cannot be
+# re-derived, and a benchmark that cannot be reproduced from a fresh clone is not a benchmark.
+# `runs/*.json` and `runs/.archive/*.json` are committed; only the transcripts stay local.
+#
+# Anchored to the repository root. Unanchored, this pattern matches any directory named `traces`
+# at any depth — the same trap `/runs/` hit when it silently excluded the console's committed test
+# fixtures (PRD-3 §12).
+/runs/traces/
 
 # Analyst classifications recorded by the console. Local operational data, not source.
 /feedback/

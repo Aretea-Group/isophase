@@ -6,6 +6,7 @@
     "**/*.md",
     "baml_client/",
     "fixtures/**",
+    "runs/",
     "**/test/fixtures/**",
     "**/*.generated.ts"
   ]

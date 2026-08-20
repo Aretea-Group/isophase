@@ -1,0 +1,47 @@
+{
+  "runId": "01a01956-8d9a-7000-83cf-3432cc0e8f3f",
+  "startedAt": "2026-08-19T09:24:57.882Z",
+  "completedAt": "2026-08-19T09:25:42.256Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "56ff4829-ac5a-4f2c-602c-66c288685080",
+      "alertTitle": "Phish email delivered to admin@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:24:57.882Z",
+      "completedAt": "2026-08-19T09:25:42.256Z",
+      "durationMs": 44374,
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "MailGuard recorded the exact message as inbound Phish (92 confidence) after Sandbox analysis; the macro-enabled attachment and SPF/DKIM/DMARC failures support a genuine hostile lure. The same sender infrastructure delivered a second malicious message to mirage shortly before confirmed identity and AWS abuse from the shared source IP.",
+        "fpPercent": 1,
+        "fpReason": "The admin-targeted message itself was quarantined, and no endpoint, Office activity, or Entra sign-in evidence shows that admin opened it or was compromised. The small residual uncertainty is limited to whether all activity from the shared sender/IP is one causally linked campaign.",
+        "whatHappened": "At 2026-08-19 06:54:26Z, noreply@malicious-infra.xyz (198.51.100.42) sent admin@pkwork.onmicrosoft.com the subject “RE: Meeting Notes — Please Review Attachment” with meeting-notes.docm (SHA-256 a1b2…a1b2). MailGuard Sandbox classified it Phish (92) and quarantined it; all SPF, DKIM and DMARC checks failed. The same IP/domain sent an allowed phishing email with report.exe to mirage@pkwork.onmicrosoft.com at 06:50:37Z. At 07:36Z, mirage authenticated to Okta from 198.51.100.42/RU and then granted super-admin, created “Backdoor API Token,” reset/deactivated MFA factors, and enrolled attacker TOTP. From 07:52Z, the same IP successfully used AWS user mirage: it created/admin-enabled backdoor-svc, exposed a security group, started five p3.16xlarge instances, retrieved finance/HR/API-key S3 objects, and stopped/deleted CloudTrail. backdoor-svc subsequently logged in from 198.51.100.42 and 203.0.113.77.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "MailGuard365_Threats_CL: exact admin message at 06:54:26Z was inbound, Action=Quarantine, ThreatVerdict=Phish, ThreatConfidence=92, ScanEngine=MailGuard Sandbox; meeting-notes.docm was a .docm and SPF/DKIM/DMARC all failed.",
+          "MailGuard365_Threats_CL found two messages from malicious-infra.xyz / 198.51.100.42: the admin mail was quarantined, but a report.exe lure was allowed to mirage at 06:50:37Z.",
+          "OktaV2_CL: mirage@pkwork.onmicrosoft.com logged in successfully from 198.51.100.42 (Moscow, RU) at 07:36Z, then successfully granted super admin, created Backdoor API Token, modified MFA factors, and enrolled attacker-controlled TOTP.",
+          "AWSCloudTrail: mirage successfully created backdoor-svc, created an active access key, attached AdministratorAccess, and created a console profile; no AWS errors were recorded for those requests.",
+          "AWSCloudTrail: the same session retrieved corp-data-prod finance/2026-budget-final.xlsx, hr/employee-records-full.csv, and secrets/api-keys-production.json; it also stopped and deleted management-events-trail, exposed 0.0.0.0/0 ingress, and launched five p3.16xlarge instances.",
+          "AWSCloudTrail: backdoor-svc subsequently completed console logins from 198.51.100.42 and 203.0.113.77, demonstrating persistence beyond the mirage session."
+        ],
+        "researchDone": [
+          "Queried MailGuard365_Threats_CL and SEG_MailGuard_CL for the exact message ID, sender/domain, recipient, and 18–20 Aug window. MailGuard supplied the two-message campaign; SEG had no matching duplicate records.",
+          "Queried SecurityAlert for related sender/IP, recipient, URL, and hash indicators through 21 Aug. This exposed correlated Okta/AWS alerts involving mirage and the shared IP.",
+          "Queried OktaV2_CL for mirage and 198.51.100.42, confirming successful authentication and privileged/MFA/API-token actions with timestamps and targets.",
+          "Queried AWSCloudTrail for mirage, backdoor-svc, and 198.51.100.42, confirming successful persistence, resource changes, S3 object access, and logging disruption.",
+          "Checked admin sign_in_adelete_CL and OfficeActivity_CL for 18 Aug 06:54Z–20 Aug 12:00Z: no admin sign-ins, mailbox activity, attachment access, or rule changes were returned.",
+          "Checked mirage OfficeActivity_CL and CrowdStrikeDetections for post-delivery corroboration; neither returned activity/detections. CrowdStrikeHosts only associates mirage with win11a, last seen 2026-08-15, so endpoint execution is not established."
+        ]
+      }
+    }
+  ]
+}

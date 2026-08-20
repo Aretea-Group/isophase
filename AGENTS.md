@@ -142,10 +142,19 @@ docs/
   prd-mock-sentinel.md
   adr/
 
+runs/          committed run artifacts; runs/traces/ is not (PRD-6 §6.9)
+
 AGENTS.md
 ```
 
 Do not create empty future-capability packages.
+
+`runs/` is a committed root, and the only one that grows by running the software rather than by
+someone writing a file. ADR 008 §8 records why: a run artifact is a measurement bought with real
+money against a model that exposes no seed, so it cannot be re-derived, and `scripts/evaluate-runs.ts`
+must be able to score the same corpus from a fresh clone. Nothing may remove one from the scored set
+as a side effect — `runs/.archive/` takes an alert out of the *queue* and is still scored. Transcripts
+under `runs/traces/` are the opposite: optional, off by default, megabytes apiece, and ignored.
 
 `agent-runtime` is deliberately absent: `apps/investigator/src/harness.ts` is the single
 Pi boundary ADR 002 asks for, and wrapping one class in a package would be the generic

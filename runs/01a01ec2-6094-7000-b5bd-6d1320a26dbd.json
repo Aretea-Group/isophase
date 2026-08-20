@@ -1,0 +1,76 @@
+{
+  "runId": "01a01ec2-6094-7000-b5bd-6d1320a26dbd",
+  "startedAt": "2026-08-20T10:40:50.326Z",
+  "completedAt": "2026-08-20T10:41:06.074Z",
+  "status": "completed",
+  "alertCount": 1,
+  "plannedAlerts": [
+    {
+      "alertId": "bd32fb0b-6492-8fb2-cd53-6d0b77127669",
+      "alertTitle": "Application credentials added by Victim@buildseccxpninja.onmicrosoft.com"
+    }
+  ],
+  "traceDir": "runs/traces",
+  "config": {
+    "thinkingLevel": "medium",
+    "resultMaxChars": 40000,
+    "sentinelBaseUrl": "http://localhost:8787",
+    "webSearchConfigured": true
+  },
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "bd32fb0b-6492-8fb2-cd53-6d0b77127669",
+      "alertTitle": "Application credentials added by Victim@buildseccxpninja.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-20T10:40:50.344Z",
+      "completedAt": "2026-08-20T10:41:06.073Z",
+      "durationMs": 15729,
+      "alert": {
+        "severity": "High",
+        "startTimeUtc": "2026-08-19T18:01:05.057Z",
+        "endTimeUtc": "2026-08-19T18:01:05.057Z",
+        "timeGenerated": "2026-08-19T18:01:05.057Z",
+        "tactics": [
+          "Persistence",
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1098",
+          "T1098.001"
+        ],
+        "compromisedEntity": "Victim@buildseccxpninja.onmicrosoft.com",
+        "alertType": "SOC-RULE-0013-AppCredentialAdded"
+      },
+      "summary": {
+        "tpPercent": 90,
+        "tpReason": "Audit telemetry confirms a successful application certificate/secret management update by Victim@buildseccxpninja.onmicrosoft.com, adding key 2 to purview-spn-user099. This is a real persistence-relevant change, though authorization and intent are not established.",
+        "fpPercent": 10,
+        "fpReason": "The initiating IP and event timestamp are absent, no corresponding sign-in telemetry was found, and the account/application ownership context is unavailable; an authorized administrator or automation could have performed the change.",
+        "whatHappened": "At the alert time, 2026-08-19 18:01:05 UTC, Victim@buildseccxpninja.onmicrosoft.com successfully updated application purview-spn-user099 (application ID 020c2630-81fb-4469-9a9c-ce9984a45458). The change added password credential key 2, key identifier 11ca002d-d846-4692-8e1f-501db99f485a, while retaining the existing purview-api credential. Audit logging shows correlation ID 9cee9603-bca7-4e62-9634-f1bfdc39ca2f and an Edge 92 Windows user agent; source IP was blank.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "AuditLogsHunting_CL records Result=success for 'Update application – Certificates and secrets management' by Victim@buildseccxpninja.onmicrosoft.com against purview-spn-user099.",
+          "The modified KeyDescription changes from one credential to two and adds key 2 with identifier 11ca002d-d846-4692-8e1f-501db99f485a.",
+          "The action targets an application/service principal and creates a usable password credential, which can enable subsequent app authentication and persistence.",
+          "The related Sentinel alert is High severity and maps to ATT&CK T1098/T1098.001.",
+          "No source IP or sign-in record was available to validate the actor or authorization."
+        ],
+        "researchDone": [
+          "Queried AuditLogsHunting_CL for the target application and initiating account; found one successful credential-management update.",
+          "Reviewed the detailed modified properties, credential identifier, user agent, target application ID, and correlation ID.",
+          "Queried sign_in_adelete_CL for the account across the surrounding investigation window; returned no records.",
+          "Queried AuditLogsHunting_CL for other activity by the initiating account; found only this target/action, with blank IP and no event timestamp populated.",
+          "Reviewed SecurityAlert records in the same alert batch for related detections; no directly corroborating alert involving Victim or purview-spn-user099 was present."
+        ]
+      }
+    }
+  ]
+}

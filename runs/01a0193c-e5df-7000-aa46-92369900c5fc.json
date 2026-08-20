@@ -1,0 +1,38 @@
+{
+  "runId": "01a0193c-e5df-7000-aa46-92369900c5fc",
+  "startedAt": "2026-08-19T08:56:56.543Z",
+  "completedAt": "2026-08-19T08:57:51.878Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "00f7a521-47ec-8c47-9667-1a84bc21e203",
+      "alertTitle": "Ransomware Behavior on srv-dc01",
+      "status": "completed",
+      "startedAt": "2026-08-19T08:56:56.543Z",
+      "completedAt": "2026-08-19T08:57:51.878Z",
+      "durationMs": 55335,
+      "summary": {
+        "tpPercent": 92,
+        "tpReason": "srv-dc01 executed the highly suspicious recovery-inhibition command `vssadmin.exe delete shadows /all /quiet` as jliu, and Falcon classified it as known malware/ransomware behavior at critical severity. It coincided with credential dumping, PowerShell, staging, C2, and lateral-movement detections across the environment involving jliu. Falcon prevention blocked/killed and quarantined the triggering activity, so the destructive attempt did not complete.",
+        "fpPercent": 8,
+        "fpReason": "Falcon's final detection status is `false_positive` and Sentinel shows the alert dismissed, but there is no analyst rationale or benign administrative/change context. The exact command, campaign-level corroboration, and prevention action outweigh that disposition label; it may reflect an incorrect/automated closure rather than a benign command.",
+        "whatHappened": "At 2026-08-14 20:30:21Z on PKWORK domain controller srv-dc01 (10.0.0.10; Falcon agent cs-aid-srvdc01-0006), user jliu (jliu@pkwork.onmicrosoft.com) launched `vssadmin.exe delete shadows /all /quiet` from cmd.exe. Falcon recorded the parent chain as explorer.exe > svchost.exe -k netsvcs > cmd.exe > vssadmin.exe, identified it as ransomware/Impact behavior, and reports `Blocked and Killed` with Quarantined=true. The host remained online and normal at 21:17Z; no later srv-dc01 detections or SecurityEvent corroboration of encryption was found. The activity is part of a broader 20:18–20:39Z jliu-associated sequence: LSASS dumping on srv-file01 and malicious PowerShell/file staging/LSASS dumping on it-ws01. No evidence shows files were encrypted on srv-dc01, but the attempted shadow-copy deletion is real hostile behavior and requires incident scoping.",
+        "keyEvidence": [
+          "CrowdStrikeDetection ldt:cs-aid-srvdc01-0006:874255475204292408: at 20:30:21Z, jliu ran `vssadmin.exe delete shadows /all /quiet` on srv-dc01; severity Critical/confidence 72; scenario `known_malware`; disposition `Blocked and Killed`; Quarantined=true.",
+          "CrowdStrike host record at 21:17:09Z identifies srv-dc01 as Windows Server 2022 in PKWORK, IP 10.0.0.10, with prevention policy applied and normal containment/status, indicating Falcon remained healthy after blocking.",
+          "Broader Falcon telemetry links jliu to critical LSASS credential dumping on srv-file01 at 20:18:21Z and repeated PowerShell, file staging, and LSASS-dumping alerts on it-ws01 from 20:19:33Z onward.",
+          "No additional detections for srv-dc01 were returned over 13–15 Aug, and no SecurityEvent records were available for srv-dc01/jliu in the 19:30–22:30Z window. This is absence of corroboration, not proof that no change occurred.",
+          "The Falcon alert/detection is marked false_positive and Sentinel dismissed it, but neither CrowdStrike alert nor case data provides a reason or benign owner/change record for that disposition."
+        ],
+        "nextAction": "Treat as contained but credible ransomware-stage activity. Isolate srv-dc01 pending validation; verify shadow-copy state, encryption indicators, and backup availability. Collect Falcon process/remote-session telemetry for jliu; disable/reset jliu pending review; scope srv-file01, it-ws01, and win11a. Reopen the dismissal unless authorized VSS maintenance is documented."
+      }
+    }
+  ]
+}

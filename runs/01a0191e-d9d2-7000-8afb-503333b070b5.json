@@ -1,0 +1,39 @@
+{
+  "runId": "01a0191e-d9d2-7000-8afb-503333b070b5",
+  "startedAt": "2026-08-19T08:24:07.378Z",
+  "completedAt": "2026-08-19T08:24:37.166Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-luna"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "56ff4829-ac5a-4f2c-602c-66c288685080",
+      "alertTitle": "Phish email delivered to admin@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T08:24:07.379Z",
+      "completedAt": "2026-08-19T08:24:37.166Z",
+      "durationMs": 29787,
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "MailGuard telemetry independently records a high-confidence Phish from noreply@malicious-infra.xyz at 12:36:08Z, with DOCM attachment, all SPF/DKIM/DMARC failures, and Action=Quarantine. This is a genuine malicious phishing attempt even though the message was blocked.",
+        "fpPercent": 1,
+        "fpReason": "The alert title says delivered, but the underlying gateway record says Quarantine/Blocked; this may be a wording or detection-label defect. No strong evidence suggests the detection itself is false.",
+        "whatHappened": "At 2026-08-18 12:36:08Z, noreply@malicious-infra.xyz (198.51.100.42) sent the inbound message \"RE: Meeting Notes — Please Review Attachment\" to admin@pkwork.onmicrosoft.com. MailGuard classified it Phish with confidence 92 and quarantined it; the attachment was meeting-notes.docm (SHA256 a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2) and SPF, DKIM, and DMARC all failed. No matching Office mailbox activity, sign-in activity, inbox-rule activity, or attachment access was found in the queried telemetry. A related phish from the same sender IP/domain reached mirage@pkwork.onmicrosoft.com at 12:32:19Z and was logged as Allow, involving report.exe.",
+        "keyEvidence": [
+          "MailGuard365_Threats_CL: exact InternetMessageId <fd544077-82ff-483f-a257-3d74ee849ac5@malicious-infra.xyz> recorded at 12:36:08Z with Action=Quarantine, ThreatVerdict=Phish, confidence 92.",
+          "MailGuard365_Threats_CL: recipient admin@pkwork.onmicrosoft.com, sender noreply@malicious-infra.xyz, sender IP 198.51.100.42, attachment meeting-notes.docm, and UrlCount=0.",
+          "MailGuard365_Threats_CL: SPFResult=Fail, DKIMResult=Fail, and DMARCResult=Fail for the admin-targeted message.",
+          "MailGuard365_Threats_CL: related message from finance-dept@malicious-infra.xyz to mirage@pkwork.onmicrosoft.com at 12:32:19Z was ThreatVerdict=Phish but Action=Allow, with report.exe attached.",
+          "OfficeActivity_CL and office_activity_inbox_rule_CL returned no matching mailbox/message/rule activity for admin during the investigation window.",
+          "sign_in_adelete_CL returned no admin-related sign-ins during 2026-08-18; this is corroborating absence, not proof of non-access."
+        ],
+        "nextAction": "Verify the message remains quarantined and that no user released it; investigate mirage@pkwork.onmicrosoft.com immediately because a related phish was allowed. Search mail, endpoint, and proxy telemetry for the sender domain, sender IP, message IDs, attachment names/hash, and any execution of report.exe or meeting-notes.docm. Block the malicious domain/hash and correct the gateway policy that allowed the related message; contact the recipients if either message was accessed."
+      }
+    }
+  ]
+}

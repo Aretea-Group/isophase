@@ -1,0 +1,48 @@
+{
+  "runId": "01a0194c-b7c1-7000-8a3b-fe9d2b647919",
+  "startedAt": "2026-08-19T09:14:13.313Z",
+  "completedAt": "2026-08-19T09:15:03.534Z",
+  "model": {
+    "provider": "openai",
+    "id": "gpt-5.6-terra"
+  },
+  "limits": {
+    "maxTurns": 50,
+    "timeoutMs": 600000
+  },
+  "results": [
+    {
+      "alertId": "6f8c3424-40a6-de72-b641-fdb86a159625",
+      "alertTitle": "Privilege escalation after sign-in for mirage@pkwork.onmicrosoft.com",
+      "status": "completed",
+      "startedAt": "2026-08-19T09:14:13.313Z",
+      "completedAt": "2026-08-19T09:15:03.534Z",
+      "durationMs": 50221,
+      "summary": {
+        "tpPercent": 99,
+        "tpReason": "This is a confirmed multi-cloud account compromise, not merely an anomalous Okta administration event. The same source IP performed successful Okta privilege/token/MFA changes, AWS persistence and data access, and GCP service-account persistence, data access, logging evasion, and resource creation.",
+        "fpPercent": 1,
+        "fpReason": "The activity could theoretically be an intentionally constructed test scenario, but telemetry labels the token and enrolled factor as attacker-controlled and records no approved or benign administrative context. The successful backdoor use and destructive changes leave no credible routine-administration explanation.",
+        "whatHappened": "At 07:36:10Z on 2026-08-19, mirage@pkwork.onmicrosoft.com signed into Okta from 198.51.100.42 (Moscow, RU). Within four minutes it self-granted super-admin, created “Backdoor API Token,” disabled Priya Sharma MFA, reset CEO PKWork MFA, and enrolled a new Mirage TOTP factor. The same IP then created AWS user backdoor-svc with active key and AdministratorAccess, opened AWS ingress, launched five p3.16xlarge instances, read finance/HR/API-key S3 objects, and deleted CloudTrail. In GCP it created owner service account backdoor-svc-gcp and key, opened allow-all ingress, launched GPU crypto-miners, read financial/PII/API-key objects, and disabled logging. Mirage workstation win11a (10.0.1.50) port-scanned, alerted for C2 to 192.0.2.100, and transferred 182,986,352 bytes there. AWS backdoor-svc then logged in from 203.0.113.77.",
+        "impact": "confirmed-compromise",
+        "keyEvidence": [
+          "Okta: six successful events from 198.51.100.42 between 07:36:10Z and 07:40:10Z self-granted Mirage super admin, created “Backdoor API Token,” altered Priya/CEO MFA, and enrolled a stated attacker-controlled TOTP factor.",
+          "AWS CloudTrail: Mirage from 198.51.100.42 created backdoor-svc, an active access key (AKIAI99ATTACKKEY), and attached AdministratorAccess; the account later successfully logged in as backdoor-svc from 203.0.113.77.",
+          "AWS CloudTrail: the same actor opened an all-protocol 0.0.0.0/0 security-group rule, launched five p3.16xlarge instances, retrieved corp-data-prod finance/HR/API-key files, then StopLogging and DeleteTrail succeeded.",
+          "GCP Audit: Mirage from 198.51.100.42 created backdoor-svc-gcp, created its key, granted it roles/owner, opened allow-all ingress, created three a2-highgpu crypto-miner instances, accessed financial/PII/API-key objects, and disabled/deleted logging sinks.",
+          "Palo Alto telemetry attributes 10.0.1.50/win11a to Mirage: 124-port scan at 07:30Z, C2.Beacon.DNS alert at 07:44:27Z, and 182,986,352-byte outbound SSL transfer to 192.0.2.100 at 07:59:10Z.",
+          "MailGuard delivered a high-confidence phish to Mirage at 06:50:37Z from finance-dept@malicious-infra.xyz; it carried report.exe and a payload URL, with SPF and DMARC failures."
+        ],
+        "researchDone": [
+          "Reviewed complete Okta activity for Mirage and 198.51.100.42 plus the surrounding Okta timeline; all six relevant events succeeded and no other use of that IP was found.",
+          "Reviewed Sentinel alerts around the incident; corroborating alerts include MFA tampering, AWS IAM persistence, AWS resource exposure, GCP firewall change, and GCP identity persistence.",
+          "Queried Entra sign-in telemetry for Mirage and 198.51.100.42; no matching Entra sign-in records were present.",
+          "Reviewed AWSCloudTrail for Mirage, 198.51.100.42, backdoor-svc, and 203.0.113.77; confirmed persistence, cloud resource actions, data-object reads, and logging deletion.",
+          "Reviewed GCPAuditLogs for Mirage and the created GCP service account; confirmed persistence, resource creation, sensitive-object reads, and logging-sink changes.",
+          "Reviewed MailGuard and Palo Alto/CommonSecurityLog telemetry; found delivered phishing and correlated suspicious scanning, C2 alerting, and large outbound transfer on Mirage workstation win11a.",
+          "OfficeActivity was sampled for related activity but its available records were historical/unrelated; no Office 365 corroboration for this 2026 incident was found."
+        ]
+      }
+    }
+  ]
+}
