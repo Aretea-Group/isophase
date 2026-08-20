@@ -13,6 +13,7 @@ import type { WebFetchClient } from "./clients/fetch.ts";
 import { buildInitialContext } from "./context.ts";
 import type { InvestigationSummary } from "./contracts/summary.ts";
 import {
+  InvestigationAbortedError,
   InvestigationIncompleteError,
   InvestigationModelError,
   InvestigationStepLimitError,
@@ -27,6 +28,20 @@ export interface InvestigateOptions {
    * harness so a trace belongs to exactly one investigation.
    */
   onEvent?: (event: AgentEvent) => void;
+  /**
+   * Stop this investigation from outside (PRD-5 §6).
+   *
+   * The CLI never passes one — it stops by dying, which is what `SIGINT` does today. A caller that
+   * shares a process with the agent has no process to kill, so cancellation has to be a signal.
+   */
+  signal?: AbortSignal;
+  /**
+   * An operator premise for turn 0 (PRD-5 §9).
+   *
+   * It arrives as part of the user message, not as a sixth tool — the agent's capability surface is
+   * unchanged. `buildInitialContext` owns the envelope and its sanitisation.
+   */
+  analystContext?: string;
 }
 
 export interface InvestigationHarnessOptions {
@@ -86,6 +101,7 @@ export class InvestigationHarness {
     let submission: InvestigationSummary | undefined;
     let turns = 0;
     let timedOut = false;
+    let aborted = false;
 
     const agent = new Agent({
       initialState: {
@@ -123,24 +139,38 @@ export class InvestigationHarness {
     const unsubscribe =
       options.onEvent === undefined ? undefined : agent.subscribe(options.onEvent);
 
-    // An Agent owns its AbortSignal and will not accept one, so the timeout bridges into abort().
+    // An Agent owns its AbortSignal and will not accept one, so both the timeout and the caller's
+    // signal bridge into abort(). Each sets its own flag first, because abort() alone is
+    // indistinguishable afterwards — see the error ladder below.
     const timer = setTimeout(() => {
       timedOut = true;
       agent.abort();
     }, timeoutMs);
 
+    const onAbort = (): void => {
+      aborted = true;
+      agent.abort();
+    };
+    // Already-aborted signals never fire the event, so the flag is set from the current state.
+    if (options.signal?.aborted === true) aborted = true;
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+
     try {
-      await agent.prompt(buildInitialContext(alert, [...tables.keys()]));
+      if (aborted) throw new InvestigationAbortedError();
+      await agent.prompt(buildInitialContext(alert, [...tables.keys()], options.analystContext));
     } finally {
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
       unsubscribe?.();
     }
 
     if (submission) return submission;
 
-    // Order matters below. Timeout is checked first because abort() sets an "aborted" stop reason
-    // and populates errorMessage, which would otherwise be misreported as a provider failure.
+    // Order matters below. Timeout and caller-abort are checked first because abort() sets an
+    // "aborted" stop reason and populates errorMessage, which would otherwise be misreported as a
+    // provider failure — the whole reason both keep their own flag.
     if (timedOut) throw new InvestigationTimeoutError(timeoutMs);
+    if (aborted) throw new InvestigationAbortedError();
 
     // pi-ai's StreamFn contract forbids throwing for request or runtime failures: they arrive as a
     // stop reason plus errorMessage on a normally-resolved prompt(). Without this branch every

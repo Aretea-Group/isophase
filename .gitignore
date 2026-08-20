@@ -30,3 +30,6 @@ baml_client/
 # Anchored to the repository root. Unanchored, this pattern matches any directory named `runs`
 # at any depth, which silently excluded the console's committed test fixtures (PRD-3 §12).
 /runs/
+
+# Analyst classifications recorded by the console. Local operational data, not source.
+/feedback/

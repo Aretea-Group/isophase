@@ -39,6 +39,19 @@ function labelledBlock(label: string, value: string, width: number, tone?: Tone)
 }
 
 /**
+ * The divider that closes the header block.
+ *
+ * Drawn once, hanging off the bottom of the band and entities rather than sitting above the first
+ * heading: attached to the heading it read as decoration on that one section, and a rule above
+ * every section turned the verdict into a column of boxes that read louder than the headings it
+ * was there to separate. Sized to the prose right edge rather than the pane's, which the scrollbar
+ * takes a column of.
+ */
+function sectionRule(width: number): Line {
+  return [{ text: `  ${"\u2500".repeat(Math.max(0, width - 4))}`, tone: "rule" }];
+}
+
+/**
  * The verdict line.
  *
  * Band word, split, and impact together, because they answer one question between them: is this
@@ -173,10 +186,16 @@ export function verdictBody(
   // the only place the pivot identifiers appear at all (PRD-3 §9.6).
   if (facts !== undefined) {
     const entities = labelledBlock("ENTITIES", entityPairs(facts).join(" · "), width);
-    if (entities.length > 0) lines.push(...entities, "");
+    if (entities.length > 0) lines.push(...entities);
   }
 
-  if (facts?.description !== undefined && facts.description.trim() !== "") {
+  // …and the rule under all of it. Suppressed when nothing follows, so it never trails the pane.
+  const described = facts?.description !== undefined && facts.description.trim() !== "";
+  if (described || view.blocks.length > 0 || (facts?.remediationSteps.length ?? 0) > 0) {
+    lines.push(sectionRule(width), "");
+  }
+
+  if (described && facts?.description !== undefined) {
     lines.push([{ text: "  WHY THE ALERT FIRED", tone: "heading", bold: true }]);
     lines.push(...wrap(facts.description, width - 4).map((l) => `  ${l}`));
     lines.push("");

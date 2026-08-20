@@ -148,8 +148,6 @@ when("following a run in progress", () => {
       // verdict -> activity -> transcript -> stream
       setup.mockInput.pressKey("4");
       setup.mockInput.pressKey("]");
-      setup.mockInput.pressKey("]");
-      setup.mockInput.pressKey("]");
       await settle(300);
       expect(setup.captureCharFrame()).toContain("agent start");
 
@@ -217,7 +215,11 @@ when("following a run in progress", () => {
       const start = setup.captureCharFrame();
       expect(start).toContain(SOLO_TITLE);
       expect(start).not.toContain("no alerts yet");
-      expect(start).toContain("running");
+      // In-flight is carried by the run row's progress and the [2] title. The word "running" used
+      // to come from pane [1]'s per-alert row; PRD-5 §7 gave that pane to the alert queue, so the
+      // same fact is asserted where it now lives rather than dropped.
+      expect(start).toContain("0/1 done");
+      expect(start).toContain("1 alert pending of 1");
       // No verdict yet, and none until the agent submits one: the pane says what it is doing.
       expect(start).toContain("INVESTIGATING");
 

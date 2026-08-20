@@ -57,39 +57,69 @@ bun run evaluate                  # scorecard vs ground truth, by model
 bun run evaluate --compare a b    # diff two runs
 ```
 
-## Reading the results
+## Analyst console (TUI)
 
-The agent's output is otherwise spread across stdout that scrolls away, a JSON file holding
-only the verdict, and transcripts up to 23 MB. A terminal console reads those two files and
-nothing else:
+Start the local services and open the console:
 
 ```bash
-bun run console                       # read runs/ and runs/traces/
-bun run console --runs <dir>          # somewhere else
+bun run infra:up
+bun run console
 ```
 
-It is read-only by construction: it never writes to `runs/`, never calls a model provider and
-never calls Mock Sentinel. A run in progress appears as it goes, with its turns and tool calls
-streaming when tracing is on.
+The normal view loads existing artifacts from `runs/` and the alert queue from Mock Sentinel. Use
+`--fresh` for a clean, non-destructive session: runs that existed when the console opened are hidden,
+all alerts return to the queue, and investigations started during that session appear normally.
+
+```bash
+bun run console --fresh                 # hide earlier runs for this session
+bun run console --read-only             # inspect artifacts without an alert queue or run controls
+bun run console --runs <dir>            # use another artifact directory
+bun run console --traces <dir>          # use another transcript directory
+```
+
+The four panes are:
 
 ```text
-[1] Alerts     the alerts in the selected run
-[2] Runs       every run, newest first, live ones distinguished from stale
-[3] Case       the selected alert's own facts — entities, ATT&CK, asset, extended properties
-[4] Main       Verdict · Activity · Transcript · Stream
+[1] Alerts   outstanding work from the live alert corpus; ◆ means ground truth exists
+[2] Runs     investigations visible in this session, newest first
+[3] Case     facts for the active queue alert or selected run
+[4] Main     Verdict · Agent stream · Activity · Transcript
 ```
 
-The verdict names its band as a word — `TRUE POSITIVE`, `INCONCLUSIVE` — using the same 30-70
-band `bun run evaluate` scores against, then the entities it concerns, what happened, and the
-case *for* and *against*. `researchDone` renders as `WHERE IT LOOKED` with equal weight to the
-evidence, because "checked X, found nothing" is a different claim from never having checked.
+Useful keys:
 
-Activity lists every tool call with the exact KQL readable in full and copyable with `y` —
-"queries used, for reproducibility" is already a required field in a human escalation write-up.
-Token and cost figures always state how many runs they cover, and a partly traced sweep's own
-total says so.
+```text
+1–4       focus a pane                 j/k or arrows   move the selection
+n         investigate the alert        x               cancel an active run
+e         re-run with analyst context  d               record an analyst classification
+[ / ]     switch result tabs           /               filter the focused list
+s         ground-truth alerts only      a               include covered alerts in the queue
+y         copy the focused content      ?               open the complete key reference
+q         quit
+```
 
-([PRD-3](./docs/prd-3-analyst-console.md), [ADR 006](./docs/adr/006-analyst-console.md).)
+Starting or extending a run opens a confirmation overlay because it calls the configured model
+provider. The new run immediately moves from `[1]` to `[2]`; Agent stream shows its turns and tool
+calls live. Console-started runs always record transcripts. `x` interrupts the active investigation
+and persists the partial artifact, while `d` writes the analyst's classification separately under
+`feedback/`.
+
+The `◆` marker reveals only that an evaluation scenario exists, never its id or expected verdict.
+Activity exposes every tool call and exact KQL; `y` copies the selected content. Verdict percentages
+use the same 30–70 inconclusive band as `bun run evaluate`.
+
+To put selected alerts back into the outstanding queue, archive their runs. Feedback is untouched
+unless explicitly included:
+
+```bash
+bun run queue:reset --run <run-id>
+bun run queue:reset --alert <alert-id> --include-feedback
+bun run queue:reset --restore --run <run-id> --include-feedback
+```
+
+See [PRD-5](./docs/prd-5-console-operator-surface.md),
+[PRD-3](./docs/prd-3-analyst-console.md), and
+[ADR 006](./docs/adr/006-analyst-console.md).
 
 ### What it has answered so far
 
@@ -225,7 +255,7 @@ apps/investigator/      the autonomous agent
   src/harness.ts        the only file in the repo that imports Pi
   src/tools/            the five agent capabilities
   src/clients/          Brave search and guarded page fetch
-apps/console/           read-only analyst console (TUI)
+apps/console/           analyst queue and investigation operator console (TUI)
   src/data/             lenient readers for artifacts and transcripts
   src/view/             pure view models — no terminal, no renderer import
   src/ui/               the only code that knows OpenTUI exists

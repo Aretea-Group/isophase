@@ -8,7 +8,7 @@ import {
   type VerdictBand,
 } from "./format.ts";
 
-export type RunState = "running" | "stale" | "completed" | "interrupted";
+export type RunState = "running" | "stale" | "completed" | "interrupted" | "failed";
 
 /** Glyphs carry the state on their own; colour only reinforces it (PRD-3 §9.8). */
 export const RUN_GLYPH: Record<RunState, string> = {
@@ -16,6 +16,7 @@ export const RUN_GLYPH: Record<RunState, string> = {
   stale: "◌",
   completed: "✓",
   interrupted: "⚠",
+  failed: "✗",
 };
 
 /**
@@ -38,6 +39,8 @@ export function runStateTone(state: RunState): Tone | undefined {
       return "running";
     case "stale":
       return "stale";
+    case "failed":
+      return "failed";
     case "interrupted":
       return "inconclusive";
     default:
@@ -65,6 +68,11 @@ export function classifyRun(input: LivenessInput): RunState {
 
   if (run.status === "completed") return "completed";
   if (run.status === "interrupted") return "interrupted";
+  // A sweep that died before investigating anything (PRD-5 §5.2). Checked here rather than left to
+  // the pre-PRD-3 fallback below, which infers "finished" from the mere presence of `completedAt`
+  // and would therefore render a startup failure as a clean completed run — the exact opposite of
+  // why the status was recorded.
+  if (run.status === "failed") return "failed";
 
   if (run.status === "running") {
     if (traceGrowing === true) return "running";

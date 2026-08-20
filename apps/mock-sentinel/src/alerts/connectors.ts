@@ -129,7 +129,7 @@ export function toAlertStatus(raw: string): AlertStatus {
     // CrowdStrike's `true_positive` is the counterpart of `false_positive`: an analyst worked the
     // detection and confirmed it. Sentinel splits those two outcomes as Resolved vs Dismissed, so
     // this is the symmetric mapping. Without the case it fell through to `Unknown` — losing the
-    // one disposition a consumer would actually care about, and silently, since `Unknown` is also
+    // one classification a consumer would actually care about, and silently, since `Unknown` is also
     // what a genuinely unparseable value yields.
     case "truepositive":
       return "Resolved";

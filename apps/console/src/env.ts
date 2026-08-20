@@ -17,6 +17,12 @@ export const env = createEnv({
     /** Where run artifacts live. Resolved against the working directory, as the investigator does. */
     RUNS_DIR: z.string().min(1).default("runs"),
     INVESTIGATOR_TRACE_DIR: z.string().min(1).default("runs/traces"),
+    /** Generated ids-only alert-to-scenario map (PRD-5 §7). Absent means "no markers", not an error. */
+    BENCHMARK_MAP_PATH: z.string().min(1).default("fixtures/benchmark-map.generated.json"),
+    /** Analyst classifications. A root outside `runs/`, which is documented as safe to delete. */
+    FEEDBACK_DIR: z.string().min(1).default("feedback"),
+    /** Ceiling on concurrent in-process runs — the only cost ceiling in the repo (PRD-5 §8). */
+    CONSOLE_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
 
     // Display only. The console never acts on any of these.
     SENTINEL_BASE_URL: z.string().min(1).default("http://localhost:8787"),

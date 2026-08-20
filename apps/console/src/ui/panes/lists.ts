@@ -1,9 +1,12 @@
 import type { RunArtifact, RunResult } from "../../data/runs.ts";
 import { alertFactsFromResult } from "../../view/alert.ts";
+import type { QueueRow } from "../../view/coverage.ts";
 import {
   bandTone,
   impactTone,
   pad,
+  severityOf,
+  severityTag,
   severityTone,
   shortImpact,
   truncate,
@@ -195,6 +198,49 @@ export function resultRows(results: RunResult[], selected: number, width: number
         { text: pad(truncate(row.title, room), room), bold: isSelected },
         { text: ` ${outcomeText}`, tone: tone ?? bandTone(row.band) },
         { text: ` ${impactText}`, tone: impactTone(result.summary?.impact) },
+      ],
+      isSelected,
+      width,
+    );
+  });
+}
+
+/**
+ * The ground-truth column is a marker, not a name.
+ *
+ * It carried the scenario id until it was pointed out that the ids *are* the answer for most of the
+ * corpus: `sunburst-domain-inconclusive` states its verdict outright, `aws-backdoor-account` and
+ * `ransomware-srv-dc01` say true-positive, `aws-bob-jones-readonly` says false-positive. Painting
+ * those onto the triage pane tells the analyst the answer before they open the alert, and makes the
+ * queue read as something other than the vanilla alert list Sentinel would show. What the pane
+ * needs is "this one has ground truth behind it, so it is worth re-running" — a boolean.
+ */
+const GROUND_TRUTH_WIDTH = 3;
+
+/**
+ * The alert queue — every alert, and what has been tried against it (PRD-5 §7).
+ *
+ * The `GT` column carries a scenario id and never a verdict. That an alert has an answer behind it
+ * is not the answer, and the ids arrive from a generated ids-only map precisely so that nothing
+ * stronger can reach this pane.
+ */
+export function queueLines(rows: QueueRow[], selected: number, width: number): Line[] {
+  return rows.map((row, at) => {
+    const isSelected = at === selected;
+    const severityText = severityTag(row.severity);
+    const gt = pad(row.groundTruth === "" ? "" : "◆", GROUND_TRUTH_WIDTH - 1);
+    const room = Math.max(
+      1,
+      width - MARKER_WIDTH - 3 - severityText.length - 1 - GROUND_TRUTH_WIDTH,
+    );
+
+    return highlight(
+      [
+        marker(isSelected),
+        { text: `${pad(row.glyph, 2)} `, tone: row.tone },
+        { text: `${severityText} `, tone: severityTone(severityOf(row.severity)) },
+        { text: pad(truncate(row.title, room), room), bold: isSelected },
+        { text: ` ${gt}`, tone: row.groundTruth === "" ? undefined : "accent" },
       ],
       isSelected,
       width,

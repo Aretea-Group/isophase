@@ -94,9 +94,9 @@ when("dashboard", () => {
     expect(output).toContain("SOC-FW-RDP");
     expect(output).toContain("CredentialAccess");
 
-    // Pane [3] is always present. Hiding it for single-alert runs made `1-4` a lie on almost
-    // every run in the corpus and left ⏎ walking to a pane that was not there.
-    expect(output).toContain("[1] Alert");
+    // Pane [1] is the alert queue since PRD-5 §7. The title carries the un-run count rather than
+    // claiming the pane holds only un-run alerts, which it does not.
+    expect(output).toContain("[1] Alerts");
 
     // The console describes the queue, not the machine. Provider, model and tracing belong to the
     // `c` screen; the header used to carry all three.
@@ -107,6 +107,10 @@ when("dashboard", () => {
 
   test("names the verdict band, not just the split", async () => {
     const { setup, app, frame } = await mount();
+    // [4] shows the queue selection's own alert while [1] has focus (PRD-5 §7), and the console
+    // opens on the queue. This test is about a run's verdict, so it selects the run list.
+    setup.mockInput.pressKey("2");
+    await setup.renderOnce();
     const output = frame();
 
     // `verdictBand` has classified 30-70 as inconclusive since PRD-3 and rendered it nowhere; a
@@ -124,8 +128,9 @@ when("dashboard", () => {
     const { setup, app, frame } = await mount();
     await selectRun(setup, frame, "aaaaaaaa");
 
-    // Pending alerts are the one progress indicator a mid-sweep run has (PRD-3 §13).
-    expect(frame()).toContain("[1] Alert");
+    // Pending alerts are the one progress indicator a mid-sweep run has (PRD-3 §13). It moved to
+    // the [2] title with PRD-5 §7, because it describes a run and [1] no longer shows one.
+    expect(frame()).toContain("[2] Runs");
     expect(frame()).toContain("pending of");
     unmount(setup, app);
   });
@@ -216,6 +221,8 @@ when("tabs", () => {
     await selectRun(setup, frame, "cc6430ca");
     expect(frame()).toContain("[4] cc6430ca");
 
+    // Activity is two tabs along now: the stream moved next to the verdict (PRD-5 §12.1).
+    setup.mockInput.pressKey("]");
     setup.mockInput.pressKey("]");
     await setup.renderOnce();
 
@@ -232,6 +239,7 @@ when("tabs", () => {
   test("Transcript reads the investigation as a conversation and expands a block", async () => {
     const { setup, app, frame } = await mount();
     await selectRun(setup, frame, "cc6430ca");
+    setup.mockInput.pressKey("]");
     setup.mockInput.pressKey("]");
     setup.mockInput.pressKey("]");
     await setup.renderOnce();
@@ -260,8 +268,7 @@ when("tabs", () => {
   test("Stream renders the live feed shape trace.ts already narrates", async () => {
     const { setup, app, frame } = await mount();
     await selectRun(setup, frame, "cc6430ca");
-    setup.mockInput.pressKey("]");
-    setup.mockInput.pressKey("]");
+    // One press: the agent stream sits immediately after the verdict now (PRD-5 §12.1).
     setup.mockInput.pressKey("]");
     await setup.renderOnce();
 
@@ -356,6 +363,10 @@ when("colour", () => {
 when("filtering and copying", () => {
   test("/ narrows the run list and reports how much it is hiding", async () => {
     const { setup, app, frame } = await mount();
+    // The console opens on the queue since PRD-5 §12.2, and `/` filters whatever has focus. This
+    // test is about the run list, so it selects it first.
+    setup.mockInput.pressKey("2");
+    await setup.renderOnce();
     expect(frame()).toContain("Privilege escalat");
 
     setup.mockInput.pressKey("/");
@@ -397,6 +408,10 @@ when("filtering and copying", () => {
 
   test("escape clears the filter and brings the hidden runs back", async () => {
     const { setup, app, frame } = await mount();
+    // The console opens on the queue since PRD-5 §12.2, and `/` filters whatever has focus. This
+    // test is about the run list, so it selects it first.
+    setup.mockInput.pressKey("2");
+    await setup.renderOnce();
 
     setup.mockInput.pressKey("/");
     await setup.mockInput.typeText("brute");

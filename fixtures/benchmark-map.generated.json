@@ -1,0 +1,58 @@
+[
+  {
+    "scenarioId": "adele-azure-destruction",
+    "alertId": "69589487-fa16-b080-6587-25623e4b3f39"
+  },
+  {
+    "scenarioId": "adele-sharepoint-exfiltration",
+    "alertId": "fcf15f79-09ce-f459-2a1f-26c97d28a253"
+  },
+  {
+    "scenarioId": "adele-signin-compromise",
+    "alertId": "0535bc09-6d6d-c8be-4c6d-42ad7194657c"
+  },
+  {
+    "scenarioId": "app-credential-added",
+    "alertId": "8dff45f5-e145-5576-5328-765837705a72"
+  },
+  {
+    "scenarioId": "aws-backdoor-account",
+    "alertId": "b11a4e1c-59b3-75e1-3c95-c068a1548765"
+  },
+  {
+    "scenarioId": "aws-bob-jones-readonly",
+    "alertId": "9f7f5623-fb58-6c8c-db3a-094c293e791d"
+  },
+  {
+    "scenarioId": "aws-jane-smith-readonly",
+    "alertId": "ca236d56-0cb5-d3ed-615c-525e01e2b74b"
+  },
+  {
+    "scenarioId": "disabled-account-signins",
+    "alertId": "c4a8c80f-1c83-1842-31c6-e68352fdfb07"
+  },
+  {
+    "scenarioId": "mirage-account-takeover",
+    "alertId": "6f8c3424-40a6-de72-b641-fdb86a159625"
+  },
+  {
+    "scenarioId": "model-evasion-attempts",
+    "alertId": "6203804c-88ac-f715-e303-a0a837133535"
+  },
+  {
+    "scenarioId": "phishing-quarantined",
+    "alertId": "56ff4829-ac5a-4f2c-602c-66c288685080"
+  },
+  {
+    "scenarioId": "ransomware-srv-dc01",
+    "alertId": "00f7a521-47ec-8c47-9667-1a84bc21e203"
+  },
+  {
+    "scenarioId": "soc-fw-rdp-brute-force",
+    "alertId": "cc6430ca-0fc5-b704-c048-1d5f3d8a2524"
+  },
+  {
+    "scenarioId": "sunburst-domain-inconclusive",
+    "alertId": "d52663c4-9e5d-c225-9489-780322169846"
+  }
+]

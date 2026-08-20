@@ -116,6 +116,41 @@ function scalarPairs(value: unknown): [string, string][] {
  * Used both to enrich an artifact-backed record and to recover one entirely, for the runs written
  * before the artifact carried any of this.
  */
+/**
+ * Facts for an alert that has no run yet (PRD-5 §7).
+ *
+ * `alertFactsFromResult` starts from what a run recorded; this starts from the alert itself, which
+ * is what the queue has. Everything beyond the id and title comes out of `enrichWithAlertJson`, so
+ * the two paths cannot describe the same alert differently — and what reaches the screen is the
+ * vendor's own payload, parsed, rather than a summary this layer invented.
+ */
+export function alertFactsFromAlert(alertJson: unknown): AlertFacts {
+  const properties = asRecord(asRecord(alertJson)?.["properties"]) ?? {};
+  const alertId =
+    typeof properties["systemAlertId"] === "string" ? properties["systemAlertId"] : "";
+  const title =
+    typeof properties["alertDisplayName"] === "string" ? properties["alertDisplayName"] : "";
+
+  const base: AlertFacts = {
+    alertId,
+    title,
+    severity: severityOf(undefined),
+    severityTag: severityTag(undefined),
+    window: "—",
+    detected: "—",
+    hasTime: false,
+    tactics: [],
+    techniques: [],
+    entities: [],
+    remediationSteps: [],
+    additionalData: [],
+    // "none" so `enrichWithAlertJson` fills severity from the payload — it leaves it alone when a
+    // run already recorded one, which is right for the other path and wrong for this one.
+    source: "none",
+  };
+  return enrichWithAlertJson(base, alertJson);
+}
+
 export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): AlertFacts {
   const properties = asRecord(asRecord(alertJson)?.["properties"]);
   if (properties === undefined) return facts;

@@ -127,9 +127,12 @@ describe("InvestigationRun", () => {
   });
 
   test("keeps the sweep's lifecycle separate from a single alert's outcome", () => {
-    // `interrupted` describes a sweep; `failed` describes one alert. Conflating them is exactly
-    // the mistake the two enums exist to prevent.
-    expect(() => InvestigationRun.parse({ ...base, status: "failed" })).toThrow();
+    // The two enums overlap on `failed` since PRD-5 §5.2 but do not mean the same thing: a *sweep*
+    // that failed never investigated anything — an unknown model, an unreachable Sentinel — while a
+    // *result* that failed is one alert going wrong inside a sweep that ran. `interrupted` remains
+    // sweep-only, which is the asymmetry that keeps them from being conflated.
+    expect(InvestigationRun.parse({ ...base, status: "failed" }).status).toBe("failed");
+    expect(() => InvestigationRun.parse({ ...base, status: "cancelled" })).toThrow();
 
     const withResult = {
       ...base,

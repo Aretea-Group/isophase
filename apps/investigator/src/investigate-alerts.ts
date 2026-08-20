@@ -4,14 +4,23 @@ import type { SecurityAlertResource } from "@soc/contracts";
 import type { AlertContext, InvestigationResult } from "./contracts/run.ts";
 import type { InvestigationHarness } from "./harness.ts";
 
-export interface RunAlertsOptions {
-  harness: InvestigationHarness;
+export interface InvestigateAlertsOptions {
+  harness: Pick<InvestigationHarness, "investigate">;
   alerts: SecurityAlertResource[];
   log?: (message: string) => void;
-  /** Called after each alert so a long sweep can be flushed if it is interrupted. */
+  /** Called after each alert so a long run can be flushed if it is interrupted. */
   onResult?: (result: InvestigationResult) => void;
   /** Build a per-alert Pi event observer, when tracing is enabled. */
   createEventSink?: (alert: SecurityAlertResource) => ((event: AgentEvent) => void) | undefined;
+  /**
+   * Stop the run (PRD-5 §6).
+   *
+   * Passed down to each investigation *and* checked between them. Aborting the harness alone stops
+   * the current alert and leaves the loop free to start the next one, which is not cancellation.
+   */
+  signal?: AbortSignal;
+  /** Carried into each investigation's opening context (PRD-5 §9). */
+  analystContext?: string;
 }
 
 /**
@@ -45,17 +54,30 @@ function describe(error: unknown): { name: string; message: string } {
 /**
  * Investigate a list of alerts sequentially (PRD-2 §6).
  *
+ * The middle rung of the ladder: `executeRun` carries out one run, this walks its alerts, and
+ * `harness.investigate()` handles one. Named for the inner unit it operates on — it was
+ * `runAlerts`, which used the outer unit's verb to do the inner unit's job and read against the
+ * vocabulary once "run" came to mean the batch.
+ *
  * One alert's failure never stops the batch, and there are no retries — a failed investigation is
- * recorded as a failure and the sweep moves on. Parallel processing is deliberately deferred; the
- * harness holds no shared mutable run state, so adding it later should not require redesigning
+ * recorded as a failure and the run moves on. Parallel processing is deliberately deferred; the
+ * harness holds no shared mutable state per run, so adding it later should not require redesigning
  * anything here.
  */
-export async function runAlerts(options: RunAlertsOptions): Promise<InvestigationResult[]> {
+export async function investigateAlerts(
+  options: InvestigateAlertsOptions,
+): Promise<InvestigationResult[]> {
   const { harness, alerts, onResult } = options;
   const log = options.log ?? (() => undefined);
   const results: InvestigationResult[] = [];
 
   for (const [index, alert] of alerts.entries()) {
+    // Between alerts, not only inside one: `agent.abort()` ends the current investigation and this
+    // loop would otherwise pick up the next.
+    if (options.signal?.aborted === true) {
+      log(`[investigator] cancelled — ${alerts.length - index} alert(s) not investigated.`);
+      break;
+    }
     const alertId = alert.properties.systemAlertId;
     const position = `${index + 1}/${alerts.length}`;
     const started = new Date();
@@ -65,7 +87,11 @@ export async function runAlerts(options: RunAlertsOptions): Promise<Investigatio
     try {
       const onEvent = options.createEventSink?.(alert);
       // eslint-disable-next-line no-await-in-loop -- sequential by design (PRD-2 §6)
-      const summary = await harness.investigate(alert, onEvent === undefined ? {} : { onEvent });
+      const summary = await harness.investigate(alert, {
+        ...(onEvent === undefined ? {} : { onEvent }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
+      });
       const completed = new Date();
       result = {
         alertId,

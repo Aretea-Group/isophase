@@ -4,6 +4,11 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 
+export interface ModelChoice {
+  provider: string;
+  id: string;
+}
+
 export interface ResolvedModel {
   model: Model<Api>;
   /** Bound and ready to hand to `Agent`'s `streamFn`. */
@@ -51,4 +56,41 @@ export async function resolveModel(provider: string, id: string): Promise<Resolv
   }
 
   return { model, streamFn: models.streamSimple.bind(models) };
+}
+
+const PROVIDERS = ["openai", "anthropic", "google"] as const;
+
+/**
+ * The models this machine can actually run (PRD-5 §9).
+ *
+ * Filtered by credential, not merely registered. `buildModels()` registers all three providers so
+ * the provider is a configuration choice rather than a code change — which means the raw catalogue
+ * is a wishlist, listing hundreds of models for providers with no key. Offering those in a picker
+ * is worse than useless: choosing one produces a run that dies at `resolveModel` before it
+ * investigates anything, and the analyst has no way to know which entries are real.
+ *
+ * `getAuth` is the same resolution a live request performs and returns undefined when a provider is
+ * unconfigured, so it is exactly the right predicate — and it is the one `resolveModel` already
+ * uses below, which keeps "offered" and "runnable" from drifting apart.
+ *
+ * Probed once per provider rather than once per model: a provider's credential does not vary by
+ * model, and the catalogues run to dozens of entries each.
+ */
+export async function listAvailableModels(): Promise<ModelChoice[]> {
+  const models = buildModels();
+  const available: ModelChoice[] = [];
+
+  for (const provider of PROVIDERS) {
+    const catalogue = models.getModels(provider);
+    const probe = catalogue[0];
+    if (probe === undefined) continue;
+    // eslint-disable-next-line no-await-in-loop -- three providers, and each probe is independent
+    const auth = await models.getAuth(probe).catch(() => undefined);
+    if (!auth) continue;
+    available.push(...catalogue.map((model) => ({ provider, id: model.id })));
+  }
+
+  return available.toSorted(
+    (a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id),
+  );
 }

@@ -743,7 +743,7 @@ decides whether a dense pane can be read at all:
 | tool errors, failed runs | `failed` | |
 | the selected row | `selected` background across the full row | a marker glyph alone reads weakly in a dense list |
 
-Nothing in the interface is styled to imply a recommendation. PRD-2 §15 leaves final disposition
+Nothing in the interface is styled to imply a recommendation. PRD-2 §15 leaves final classification
 with the analyst, and an interface that renders one outcome as more approved-looking than another
 quietly takes that back.
 
@@ -1020,7 +1020,7 @@ Candidates for later independent work, based on demonstrated need.
 
 ### Human feedback
 
-The console is the obvious place to capture an analyst's disposition, and roadmap item 2 wants it.
+The console is the obvious place to capture an analyst's classification, and roadmap item 2 wants it.
 It is excluded here because a read-only tool has no write path, no schema for a decision, and no
 story for where that decision lives. Adding one is a PRD, not a feature.
 

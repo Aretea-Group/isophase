@@ -80,6 +80,15 @@ export const InvestigationRunConfig = z.object({
   resultMaxChars: z.number().int().positive(),
   sentinelBaseUrl: z.string().min(1),
   webSearchConfigured: z.boolean(),
+  /**
+   * The premise an analyst supplied, stored raw (PRD-5 §9).
+   *
+   * Raw rather than sanitised, deliberately: the copy embedded in the prompt has its envelope
+   * delimiters stripped, and keeping the original beside it is what makes that sanitisation
+   * auditable after the fact. It is also how a reader — and `evaluate` — can tell a steered run
+   * from a clean one, which is the whole basis of PRD-5 §4.5.
+   */
+  analystContext: z.string().optional(),
 });
 
 export const InvestigationRun = z.object({
@@ -95,7 +104,16 @@ export const InvestigationRun = z.object({
    * `InvestigationResult.status`, which is per alert and has its own `completed | failed` enum —
    * `interrupted` describes a sweep, never an alert. Absent on artifacts written before PRD-3.
    */
-  status: z.enum(["running", "completed", "interrupted"]).optional(),
+  status: z.enum(["running", "completed", "interrupted", "failed"]).optional(),
+  /**
+   * Why a sweep never got started (PRD-5 §5.2).
+   *
+   * `failed` is the sweep that died before it could investigate anything — an unknown model, an
+   * unreachable Sentinel, a bad alert id. Previously those produced stderr and exit 1 with *no
+   * file at all*, so the four most likely mistakes were invisible to every reader of `runs/`.
+   * Distinct from `InvestigationResult.error`, which is one alert failing inside a sweep that ran.
+   */
+  error: z.object({ name: z.string(), message: z.string() }).optional(),
   /**
    * How many alerts the sweep set out to investigate. `results` only ever holds finished ones, so
    * without this a reader can show what completed but cannot say how much is left (PRD-3 §11).
@@ -119,6 +137,15 @@ export const InvestigationRun = z.object({
     .optional(),
   /** Where this run's transcripts landed. Absent when tracing was off. */
   traceDir: z.string().min(1).optional(),
+  /**
+   * The investigation this one was derived from (PRD-5 §9).
+   *
+   * A derived run always gets a *fresh* `runId`: transcripts are named `<runId>-<alertId>.jsonl`
+   * and opened with `appendFileSync`, so reusing an id would concatenate two transcripts and
+   * double-count the cost of both. No `kind` field — a model swap with no analyst text is neither
+   * "rerun" nor "context", and what changed is a diff of `model` and `config`, both already here.
+   */
+  derivedFrom: z.object({ runId: z.string().min(1), alertId: z.string().min(1) }).optional(),
   config: InvestigationRunConfig.optional(),
   /** Which model produced these results. Without it two artifacts are not comparable. */
   model: z.object({ provider: z.string(), id: z.string() }),
