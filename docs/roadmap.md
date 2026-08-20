@@ -226,7 +226,7 @@ land there rather than here, and is about the comparison surface on top of them.
 ### 10. Completed PRD-5 Follow-Ups
 
 These items shipped with PRD-5 rather than moving to a later console PRD: analyst-facing
-classification terminology (`d` retains its key), one exported Tab traversal exception list, the
+classification terminology, one exported Tab traversal exception list, the
 duplicate-spend warning, `queue:reset --include-feedback`, and a queue-focused `[3] Case` pane that
 follows the active alert. `console --fresh` adds a non-destructive session view that hides existing
 runs but shows newly launched ones. Cancellation was also exercised against a real in-flight

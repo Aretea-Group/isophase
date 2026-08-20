@@ -101,15 +101,16 @@ expected verdict, or other answer-key content.
 ```text
 1–4       focus a pane                 j/k or arrows   move the selection
 n         investigate an alert         x               cancel an active run
-e         re-run with analyst context  d               record a classification
+r         re-run with context/model    f               record your feedback
 [ and ]   switch result tabs           /               filter the focused list
-s         ground-truth alerts only      a               include covered alerts
-y         copy focused content          ?               complete key reference
-q         quit
+s         ground-truth alerts only     a               include covered alerts
+y         copy focused content         R               re-read from disk
+q         quit                         ?               complete key reference
 ```
 
-Starting or extending an investigation opens a confirmation overlay because it calls the selected
-model provider. The run appears immediately in `[2]`; Agent stream shows turns and tool calls as
+Starting or re-running an investigation opens an overlay because it calls the selected model
+provider. It opens on the confirm strip, which defaults to Cancel; the optional context and model
+fields sit above it, reached with ⇥ or ↑. The run appears immediately in `[2]`; Agent stream shows turns and tool calls as
 they happen. Console-started runs always write a transcript. Cancellation persists an interrupted
 artifact rather than discarding completed work.
 
