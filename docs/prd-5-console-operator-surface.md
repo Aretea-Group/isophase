@@ -1,9 +1,9 @@
 # PRD-5 — Console as an Operator Surface
 
-**Status:** Draft
+**Status:** Complete
 **Depends on:** PRD-2 — Core Investigation Agent; PRD-3 — Analyst Console; PRD-4 — Ground-Truth Expansion
 **Reverses:** PRD-3 §4.1 ("the console reads files; it never drives the agent"); ADR 006 §3 (the console may not import the investigator)
-**Would produce:** ADR 007 — Console Control Surface
+**Produces:** ADR 007 — Console Control Surface
 **Language/runtime:** TypeScript strict mode, Bun
 **Runtime schemas:** Zod at runtime/network boundaries, TypeBox at the Pi tool boundary
 
@@ -274,7 +274,7 @@ implying otherwise.
 | `apps/console/src/data/alerts.ts` | the only network primitive in the console; `AlertReader` narrowing |
 | `apps/console/src/view/coverage.ts` | pure: alerts × runs → coverage state |
 | `apps/console/src/drive/feedback.ts` | the only filesystem write primitive in the console |
-| `apps/console/src/ui/panes/compose.ts` | the overlay for flows 2–4 |
+| `apps/console/src/ui/app.ts` | the overlay for flows 2–4, kept beside its focus state and key handling |
 | `scripts/reset-queue.ts` | `bun run queue:reset` (§11) |
 
 `apps/console/package.json` gains `@soc/investigator`, `@soc/sentinel-client` and `@soc/contracts` —
@@ -792,7 +792,7 @@ excluded from the default report.
       contains only `scenarioId` and `alertId` pairs, names no forbidden needle, and every
       `alertId` resolves to a live alert. _(test: integration)_
 - [x] **AC9** — Given the queue pane and a generated benchmark map, When `s` is pressed, Then the
-      list filters to the fourteen alerts with ground truth and each shows its scenario id; and
+      list filters to the fourteen alerts with ground truth and each shows a neutral marker; and
       given the map file is absent, Then the queue opens with no markers and no error.
       _(test: unit)_
 - [x] **AC10** — Given an alert whose only covering run carried analyst context, When coverage is
@@ -809,10 +809,10 @@ excluded from the default report.
 - [x] **AC14** — Given the full keymap, When asserted against the consumed-key set, Then no key
       carries two meanings on the same pane, `c` still opens configuration, and the Tab
       stop-propagation exception list matches the exported array exactly. _(test: unit)_
-- [ ] **AC15** — Given an in-process run whose harness throws an unhandled rejection, When the
+- [x] **AC15** — Given an in-process run whose harness throws an unhandled rejection, When the
       supervisor observes it, Then the run is marked failed, `run_failed` is emitted, and the
       console process does not exit. _(test: integration)_
-- [ ] **AC16** — Given a re-run started with model B while the console's env names model A, When the
+- [x] **AC16** — Given a re-run started with model B while the console's env names model A, When the
       artifact is written, Then `model.id` is B in both the resolved model and the recorded field.
       _(test: unit)_
 - [x] **AC17** — Given analyst context containing an `<analyst_context>` delimiter, When it is

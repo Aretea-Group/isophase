@@ -44,9 +44,14 @@ function alertResource(): SecurityAlertResource {
       vendorName: "Microsoft",
       productName: "Azure Sentinel",
       alertType: "Test",
-      tactics: [],
-      techniques: [],
-      entities: [],
+      tactics: ["CredentialAccess", "Persistence"],
+      techniques: ["T1110", "T1098"],
+      entities: [
+        { type: "host", hostName: "server-01" },
+        { type: "account", name: "analyst@example.test" },
+        { type: "ip", address: "192.0.2.10" },
+      ],
+      additionalData: { source: "integration-test", action: "allowed" },
     },
   } as unknown as SecurityAlertResource;
 }
@@ -97,11 +102,11 @@ function fakeControl(): InvestigationControl & {
 
 let scratch: string | undefined;
 
-async function mount() {
+async function mount(height = 34) {
   scratch = await mkdtemp(join(tmpdir(), "console-drive-"));
   const runsDir = join(scratch, "runs");
   const control = fakeControl();
-  const setup = await createTestRenderer({ width: 130, height: 34 });
+  const setup = await createTestRenderer({ width: 130, height });
   const app = await runApp({
     runsDir,
     tracesDir: join(scratch, "traces"),
@@ -237,6 +242,34 @@ describe("a started alert leaves the queue (PRD-5 §7)", () => {
 });
 
 describe("regressions found by using it", () => {
+  test("j/k scroll the focused Case pane", async () => {
+    const { setup, app, frame } = await mount(24);
+    const casePane = (): string => {
+      const lines = frame().split("\n");
+      const start = lines.findIndex((line) => line.includes("[3] Case"));
+      const end = lines.findIndex((line, index) => index > start && line.startsWith("╰"));
+      return lines
+        .slice(start, end === -1 ? undefined : end + 1)
+        .map((line) => line.slice(0, 46))
+        .join("\n");
+    };
+
+    setup.mockInput.pressKey("3");
+    await setup.renderOnce();
+    const top = casePane();
+
+    setup.mockInput.pressKey("j");
+    await setup.renderOnce();
+    expect(casePane()).not.toBe(top);
+
+    setup.mockInput.pressKey("k");
+    await setup.renderOnce();
+    expect(casePane()).toBe(top);
+
+    app.stop();
+    setup.renderer.destroy();
+  });
+
   test("`4` focuses the main pane without changing what it is about", async () => {
     const { setup, app, frame } = await mount();
     const main = (): string =>

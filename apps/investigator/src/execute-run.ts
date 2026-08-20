@@ -5,6 +5,7 @@ import type { SentinelApiClient } from "@soc/sentinel-client";
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
 import type { InvestigationResult, InvestigationRun } from "./contracts/run.ts";
+import { InvestigationSupervisorError } from "./errors.ts";
 import { InvestigationHarness } from "./harness.ts";
 import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
@@ -156,9 +157,12 @@ export async function executeRun(
    * intermediate artifact write is survivable, losing the rest of the run to it is not.
    */
   let queue: Promise<string | undefined> = Promise.resolve(undefined);
-  const flushQueued = (status: RunStatus): Promise<string | undefined> => {
+  const flushQueued = (
+    status: RunStatus,
+    runError?: { name: string; message: string },
+  ): Promise<string | undefined> => {
     queue = queue.then(async () => {
-      const run = build(status);
+      const run = build(status, runError);
       try {
         const path = await write(config.runsDir, run);
         options.onProgress?.(run);
@@ -262,7 +266,16 @@ export async function executeRun(
 
   // A cancelled run is `interrupted`, not `completed` — the same word the CLI's SIGINT path has
   // always written, because it describes the same thing: stopped part-way, with usable data.
-  const finalStatus: RunStatus = options.signal?.aborted === true ? "interrupted" : "completed";
-  await flushQueued(finalStatus);
-  return build(finalStatus);
+  const supervisorFault =
+    options.signal?.reason instanceof InvestigationSupervisorError
+      ? options.signal.reason.fault
+      : undefined;
+  const finalStatus: RunStatus =
+    supervisorFault !== undefined
+      ? "failed"
+      : options.signal?.aborted === true
+        ? "interrupted"
+        : "completed";
+  await flushQueued(finalStatus, supervisorFault);
+  return build(finalStatus, supervisorFault);
 }

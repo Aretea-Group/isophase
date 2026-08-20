@@ -61,3 +61,14 @@ export class InvestigationAbortedError extends InvestigationError {
     super("Investigation was cancelled by the caller.");
   }
 }
+
+/** A detached async fault attributed to the sole active in-process investigation. */
+export class InvestigationSupervisorError extends InvestigationError {
+  override readonly name = "InvestigationSupervisorError";
+  readonly fault: { name: string; message: string };
+
+  constructor(fault: { name: string; message: string }) {
+    super(fault.message);
+    this.fault = fault;
+  }
+}

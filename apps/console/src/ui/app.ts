@@ -455,8 +455,10 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     borderColor: COLOR.border,
     titleColor: COLOR.title,
   });
+  const caseScroll = new ScrollBoxRenderable(renderer, { id: "case-scroll", flexGrow: 1 });
   const caseText = new TextRenderable(renderer, { id: "case-text", fg: COLOR.text });
-  caseBox.add(caseText);
+  caseScroll.add(caseText);
+  caseBox.add(caseScroll);
 
   const runsBox = new BoxRenderable(renderer, {
     id: "runs",
@@ -1354,6 +1356,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       state.resultIndex = 0;
       state.detailOpen = false;
       state.mainSource = "run";
+      caseScroll.scrollTo(0);
       void loadTrace();
     } else if (state.focus === 1) {
       // The queue addresses alerts that belong to no run, so there is no transcript to load. Calling
@@ -1364,6 +1367,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       if (next === state.queueIndex) return;
       state.queueIndex = next;
       state.mainSource = "queue";
+      caseScroll.scrollTo(0);
+    } else if (state.focus === 3) {
+      caseScroll.scrollBy(delta * 2);
     } else if (state.focus === 4) {
       if (state.tab === "transcript") {
         state.transcriptSelected = Math.min(
@@ -1515,8 +1521,14 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       state.focus = Number(name) as Focus;
       // Only the two list panes change what [4] is detailing. `3` and `4` move focus so their pane
       // can be scrolled, and leave the subject alone.
-      if (name === "1") state.mainSource = "queue";
-      if (name === "2") state.mainSource = "run";
+      if (name === "1") {
+        state.mainSource = "queue";
+        caseScroll.scrollTo(0);
+      }
+      if (name === "2") {
+        state.mainSource = "run";
+        caseScroll.scrollTo(0);
+      }
       state.screen = "dashboard";
       focusPane();
       render();
@@ -1949,12 +1961,17 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   if (owned) {
     process.on("SIGINT", () => shutdown(130));
     process.on("SIGTERM", () => shutdown(143));
-    process.on("uncaughtException", (error: unknown) => {
+    const crash = (error: unknown): void => {
       stop();
       renderer.destroy();
       console.error(error);
       process.exit(1);
+    };
+    process.on("unhandledRejection", (error: unknown) => {
+      if (control?.containUnhandledRejection?.(error) === true) return;
+      crash(error);
     });
+    process.on("uncaughtException", crash);
   }
 
   const { readRuns } = await import("../data/runs.ts");

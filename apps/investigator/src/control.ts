@@ -4,6 +4,7 @@ import type { SecurityAlertResource } from "@soc/contracts";
 import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
 import type { InvestigationRun } from "./contracts/run.ts";
+import { InvestigationSupervisorError } from "./errors.ts";
 import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "./execute-run.ts";
 import { listAvailableModels, type ModelChoice } from "./model.ts";
 
@@ -25,6 +26,8 @@ export interface InvestigationControl {
   live(): LiveRun[];
   /** Cancel everything still running. Called on quit. */
   shutdown(): void;
+  /** Attribute a process-level rejection when exactly one in-process run can own it. */
+  containUnhandledRejection?(error: unknown): boolean;
 }
 
 export interface StartRequest {
@@ -126,6 +129,7 @@ interface Running {
   controller: AbortController;
   live: LiveRun;
   turn: number;
+  supervisorFault?: { name: string; message: string };
 }
 
 /**
@@ -199,6 +203,15 @@ export class InProcessControl implements InvestigationControl {
     for (const entry of this.#running.values()) entry.controller.abort();
   }
 
+  containUnhandledRejection(error: unknown): boolean {
+    if (this.#running.size !== 1) return false;
+    const entry = this.#running.values().next().value;
+    if (entry === undefined) return false;
+    entry.supervisorFault = describe(error);
+    entry.controller.abort(new InvestigationSupervisorError(entry.supervisorFault));
+    return true;
+  }
+
   /**
    * A listener that throws must not break the run that emitted the event, nor the other listeners.
    * This is the same containment argument as the supervisor, one level down.
@@ -255,8 +268,13 @@ export class InProcessControl implements InvestigationControl {
       },
     })
       .then((run) => {
-        if (controller.signal.aborted) this.#emit({ type: "run_cancelled", runId, alertId });
-        else this.#emit({ type: "run_completed", runId, alertId, run });
+        if (entry.supervisorFault !== undefined) {
+          this.#emit({ type: "run_failed", runId, alertId, error: entry.supervisorFault });
+        } else if (controller.signal.aborted) {
+          this.#emit({ type: "run_cancelled", runId, alertId });
+        } else {
+          this.#emit({ type: "run_completed", runId, alertId, run });
+        }
         return undefined;
       })
       .catch((error: unknown) => {
