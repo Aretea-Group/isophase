@@ -35,6 +35,22 @@ export interface InvestigationToolDeps {
  * There are deliberately no alert-family-specific tools here. The agent owns the investigative path
  * (PRD-2 §9).
  */
+/**
+ * The agent's whole capability surface, by name.
+ *
+ * Duplicated from `createInvestigationTools` rather than derived from it, because deriving would
+ * mean constructing five closures over per-investigation state — a schema map, a Sentinel client,
+ * a submit callback — none of which a caller that only wants the names can supply. The duplication
+ * is guarded by a test that builds the real set and compares, so the two cannot drift.
+ */
+export const INVESTIGATION_TOOL_NAMES = [
+  "get_security_schema",
+  "query_security_data",
+  "web_search",
+  "web_fetch",
+  "submit_investigation",
+] as const;
+
 export function createInvestigationTools(deps: InvestigationToolDeps): AgentTool[] {
   return [
     createGetSecuritySchemaTool(deps.tables),

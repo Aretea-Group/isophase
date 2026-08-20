@@ -7,6 +7,7 @@ import type { InvestigationRun } from "./contracts/run.ts";
 import { InvestigationSupervisorError } from "./errors.ts";
 import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "./execute-run.ts";
 import { listAvailableModels, type ModelChoice } from "./model.ts";
+import { INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 /**
  * The surface an operator interface drives the investigator through (PRD-5 §5.3).
@@ -19,6 +20,14 @@ export interface InvestigationControl {
   listAlerts(): Promise<SecurityAlertResource[]>;
   /** Only models this machine holds a credential for — never the full registered catalogue. */
   listModels(): Promise<ModelChoice[]>;
+  /**
+   * What the agent will be able to do, named by the harness rather than by the caller.
+   *
+   * The console has no other honest route to this: it must not import agent internals (ADR 006 §3,
+   * as amended by PRD-5 §5.1), so without a seam it would be restating a tool list it cannot see
+   * and would not learn about a sixth tool.
+   */
+  listTools(): readonly string[];
   /** Returns immediately. The run proceeds in the background and reports through `subscribe`. */
   start(request: StartRequest): RunHandle;
   cancel(runId: string): void;
@@ -182,6 +191,10 @@ export class InProcessControl implements InvestigationControl {
 
   listModels(): Promise<ModelChoice[]> {
     return listAvailableModels();
+  }
+
+  listTools(): readonly string[] {
+    return INVESTIGATION_TOOL_NAMES;
   }
 
   subscribe(listener: (event: ControlEvent) => void): () => void {
