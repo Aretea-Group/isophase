@@ -1,6 +1,7 @@
 import {
   Agent,
   type AgentEvent,
+  type AgentMessage,
   type StreamFn,
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
@@ -19,7 +20,7 @@ import {
   InvestigationStepLimitError,
   InvestigationTimeoutError,
 } from "./errors.ts";
-import { createInvestigationTools } from "./tools/index.ts";
+import { createInvestigationTools, TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
   /**
@@ -42,6 +43,39 @@ export interface InvestigateOptions {
    * unchanged. `buildInitialContext` owns the envelope and its sanitisation.
    */
   analystContext?: string;
+  /**
+   * What this investigation cost, in effort and in money (PRD-6 §6.7).
+   *
+   * A callback rather than a widened return type, and that is load-bearing: every failure path
+   * below throws, so a return value would lose exactly the most expensive runs — the timeout that
+   * burned its whole budget is the one a cost comparison most needs. This fires from the `finally`
+   * that wraps `agent.prompt()`, before any of them.
+   */
+  onMetrics?: (metrics: InvestigationMetrics) => void;
+}
+
+/**
+ * Fixed-size counters, never a trace (ADR 008 §1).
+ *
+ * `toolCalls` is a record over the five closed tool names and nothing else — not a per-table tally,
+ * because once the artifact says which tables were touched the next patch scores whether they were
+ * the right ones, and PRD-2 §23's rule is gone without anyone deciding to remove it.
+ * `toolCalls.query_security_data` answers *did it do less work for the same answer*, which is the
+ * question a memory experiment actually asks, without naming a table.
+ */
+export interface InvestigationMetrics {
+  turns: number;
+  toolCalls: Record<string, number>;
+  usage: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    totalTokens: number;
+    costUsd: number;
+  };
+  /** What the provider actually served, when it says. `model.id` is only an alias (**D16**). */
+  servedModelId?: string;
 }
 
 export interface InvestigationHarnessOptions {
@@ -60,6 +94,41 @@ export interface InvestigationHarnessOptions {
   /** Character budget for a single query result (ADR 002, "result-size limits"). */
   resultMaxChars?: number;
   log?: (message: string) => void;
+}
+
+/**
+ * Fold the transcript's assistant messages into one set of counters.
+ *
+ * Reads `agent.state.messages` rather than `prompt()`'s return value, for the same reason
+ * `onMetrics` is a callback: the return value does not exist on the paths that matter.
+ */
+function collectMetrics(
+  messages: readonly AgentMessage[],
+  turns: number,
+  toolCalls: Record<string, number>,
+): InvestigationMetrics {
+  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, costUsd: 0 };
+  let servedModelId: string | undefined;
+
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    servedModelId ??= message.responseModel;
+    usage.input += message.usage.input;
+    usage.output += message.usage.output;
+    usage.cacheRead += message.usage.cacheRead;
+    usage.cacheWrite += message.usage.cacheWrite;
+    usage.totalTokens += message.usage.totalTokens;
+    usage.costUsd += message.usage.cost.total;
+  }
+
+  // `reasoning` is deliberately not summed: pi-ai documents it as a subset of `output`, so adding
+  // it would double-count the most expensive tokens in the run.
+  return {
+    turns,
+    toolCalls,
+    usage,
+    ...(servedModelId === undefined ? {} : { servedModelId }),
+  };
 }
 
 /**
@@ -136,8 +205,22 @@ export class InvestigationHarness {
       },
     });
 
+    // Fixed keys from the start, so "searched zero times" and "not recorded" are different facts.
+    const toolCalls: Record<string, number> = Object.fromEntries(
+      TOOL_NAMES.map((name) => [name, 0]),
+    );
+
     const unsubscribe =
       options.onEvent === undefined ? undefined : agent.subscribe(options.onEvent);
+
+    // A second subscriber, always on. Tracing writes 0.16-23 MB per investigation and is off by
+    // default; a count of tool calls is a number and belongs on the artifact regardless (PRD-6 §6.7).
+    const unsubscribeMetrics = agent.subscribe((event) => {
+      if (event.type !== "tool_execution_start") return;
+      // Only the closed set: an unknown name would make the record grow with what the agent did.
+      const seen = toolCalls[event.toolName];
+      if (seen !== undefined) toolCalls[event.toolName] = seen + 1;
+    });
 
     // An Agent owns its AbortSignal and will not accept one, so both the timeout and the caller's
     // signal bridge into abort(). Each sets its own flag first, because abort() alone is
@@ -162,6 +245,11 @@ export class InvestigationHarness {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
       unsubscribe?.();
+      unsubscribeMetrics();
+      // Inside the `finally`, so the ladder of throws below cannot skip it. The aggregate is
+      // already in process — `agent.state` is public and assistant messages carry `usage` — so this
+      // recovers a number the harness used to discard rather than reconstructing it from a JSONL.
+      options.onMetrics?.(collectMetrics(agent.state.messages, turns, toolCalls));
     }
 
     if (submission) return submission;

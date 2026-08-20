@@ -211,6 +211,55 @@ describe("executeRun — the artifact records the configuration that applied (PR
     expect(run.model).toEqual({ provider: "anthropic", id: "claude-x" });
     expect(run.limits.maxTurns).toBe(7);
   });
+
+  test("an unconfigured thinking level is absent, never fabricated (PRD-6 D12)", async () => {
+    const { write } = recorder();
+    const controller = new AbortController();
+    controller.abort();
+
+    const deps: InvestigatorDeps = {
+      sentinel: sentinelStub([]),
+      webSearch: {} as unknown as InvestigatorDeps["webSearch"],
+      webFetch: {} as unknown as InvestigatorDeps["webFetch"],
+      write,
+      resolveModel: () =>
+        Promise.resolve({ model: {}, streamFn: () => undefined } as unknown as ResolvedModel),
+    };
+
+    const { thinkingLevel: _omitted, ...withoutThinking } = CONFIG;
+    const run = await executeRun(withoutThinking, deps, {
+      runId: "run-7",
+      signal: controller.signal,
+    });
+
+    // It used to write "medium" here while omitting the key from the harness options, so
+    // pi-agent-core fell back to `off` and the artifact claimed a level that never applied.
+    expect(run.config?.thinkingLevel).toBeUndefined();
+    expect(Object.keys(run.config ?? {})).not.toContain("thinkingLevel");
+  });
+
+  test("the artifact records what produced it (PRD-6 §6.6)", async () => {
+    const { write } = recorder();
+    const controller = new AbortController();
+    controller.abort();
+
+    const deps: InvestigatorDeps = {
+      sentinel: sentinelStub([]),
+      webSearch: {} as unknown as InvestigatorDeps["webSearch"],
+      webFetch: {} as unknown as InvestigatorDeps["webFetch"],
+      write,
+      resolveModel: () =>
+        Promise.resolve({ model: {}, streamFn: () => undefined } as unknown as ResolvedModel),
+    };
+
+    const run = await executeRun(CONFIG, deps, { runId: "run-8", signal: controller.signal });
+
+    expect(run.provenance?.promptHash).toMatch(/^[\da-f]{12}$/);
+    expect(run.provenance?.submissionHash).toMatch(/^[\da-f]{12}$/);
+    expect(run.provenance?.piVersion).toMatch(/^core@/);
+    // No investigation ran, so nothing reported a tally and capability-versus-use is unknown.
+    expect(run.config?.webSearchUsed).toBeUndefined();
+  });
 });
 
 describe("InvestigationAbortedError", () => {

@@ -2,7 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlertResource } from "@soc/contracts";
 
 import type { AlertContext, InvestigationResult } from "./contracts/run.ts";
-import type { InvestigationHarness } from "./harness.ts";
+import type { InvestigationHarness, InvestigationMetrics } from "./harness.ts";
 
 export interface InvestigateAlertsOptions {
   harness: Pick<InvestigationHarness, "investigate">;
@@ -21,6 +21,14 @@ export interface InvestigateAlertsOptions {
   signal?: AbortSignal;
   /** Carried into each investigation's opening context (PRD-5 §9). */
   analystContext?: string;
+  /**
+   * Raw counters for each investigation, as the harness reports them (PRD-6 §6.7).
+   *
+   * `onResult` already carries the per-result subset. This exists for the run-level facts that are
+   * not per-result — `servedModelId` is identical across a run and belongs in `provenance`, not
+   * repeated on every result, where it would be a string the artifact grows by alert count.
+   */
+  onMetrics?: (alert: SecurityAlertResource, metrics: InvestigationMetrics) => void;
 }
 
 /**
@@ -44,6 +52,14 @@ function alertContext(alert: SecurityAlertResource): AlertContext {
       ? {}
       : { compromisedEntity: properties.compromisedEntity }),
   };
+}
+
+/** Spread the counters into a result, or nothing at all when the harness never reported any. */
+function recorded(
+  metrics: InvestigationMetrics | undefined,
+): Pick<InvestigationResult, "turns" | "toolCalls" | "usage"> {
+  if (metrics === undefined) return {};
+  return { turns: metrics.turns, toolCalls: metrics.toolCalls, usage: metrics.usage };
 }
 
 function describe(error: unknown): { name: string; message: string } {
@@ -83,6 +99,12 @@ export async function investigateAlerts(
     const started = new Date();
     log(`[investigator] ${position} ${alertId} — ${alert.properties.alertDisplayName}`);
 
+    // Captured into a local *before* the try, and spread into both branches below. The harness
+    // fires `onMetrics` from the `finally` around `agent.prompt()`, so a run that times out having
+    // burned its whole budget still records what it cost — which is the run a cost comparison most
+    // needs and the one a widened return type would lose (PRD-6 §6.7).
+    let metrics: InvestigationMetrics | undefined;
+
     let result: InvestigationResult;
     try {
       const onEvent = options.createEventSink?.(alert);
@@ -91,6 +113,10 @@ export async function investigateAlerts(
         ...(onEvent === undefined ? {} : { onEvent }),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
+        onMetrics: (reported) => {
+          metrics = reported;
+          options.onMetrics?.(alert, reported);
+        },
       });
       const completed = new Date();
       result = {
@@ -102,10 +128,12 @@ export async function investigateAlerts(
         completedAt: completed.toISOString(),
         durationMs: completed.getTime() - started.getTime(),
         summary,
+        ...recorded(metrics),
       };
       const seconds = (result.durationMs / 1000).toFixed(1);
+      const cost = metrics === undefined ? "" : ` · $${metrics.usage.costUsd.toFixed(2)}`;
       log(
-        `[investigator] ${position} completed in ${seconds}s — TP ${summary.tpPercent}% / FP ${summary.fpPercent}%`,
+        `[investigator] ${position} completed in ${seconds}s — TP ${summary.tpPercent}% / FP ${summary.fpPercent}%${cost}`,
       );
     } catch (error) {
       const completed = new Date();
@@ -119,6 +147,7 @@ export async function investigateAlerts(
         completedAt: completed.toISOString(),
         durationMs: completed.getTime() - started.getTime(),
         error: described,
+        ...recorded(metrics),
       };
       log(`[investigator] ${position} FAILED — ${described.name}: ${described.message}`);
     }

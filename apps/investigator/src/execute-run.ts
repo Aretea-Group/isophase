@@ -114,41 +114,61 @@ export async function executeRun(
 
   const collected: InvestigationResult[] = [];
   let alerts: SecurityAlertResource[] = [];
+  let servedModelId: string | undefined;
 
   const build = (
     status: RunStatus,
     error?: { name: string; message: string },
-  ): InvestigationRun => ({
-    runId,
-    startedAt,
-    completedAt: new Date().toISOString(),
-    status,
-    ...(error === undefined ? {} : { error }),
-    // Written before the first alert so a reader can say how much of the run is left, and which
-    // alert each remaining slot is; `results` only ever holds finished alerts (PRD-3 §7, §11).
-    alertCount: alerts.length,
-    plannedAlerts: alerts.map((alert) => ({
-      alertId: alert.properties.systemAlertId,
-      alertTitle: alert.properties.alertDisplayName,
-    })),
-    ...(config.trace ? { traceDir: config.traceDir } : {}),
-    ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
-    provenance: PROVENANCE,
-    config: {
-      // No `?? "medium"`: an unset thinking level is omitted from the harness options too, so
-      // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
-      ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
-      resultMaxChars: config.resultMaxChars,
-      sentinelBaseUrl: config.sentinelBaseUrl,
-      webSearchConfigured: config.webSearchConfigured,
-      // Raw, not the sanitised copy that reached the model — that is what makes the
-      // sanitisation auditable, and what lets `evaluate` recognise a steered run.
-      ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
-    },
-    model: { provider: config.provider, id: config.modelId },
-    limits: { maxTurns: config.maxTurns, timeoutMs: config.timeoutMs },
-    results: collected,
-  });
+  ): InvestigationRun => {
+    // Recomputed on every flush rather than at the end, so an in-flight artifact is as true as a
+    // finished one — which is the property PRD-3 §7 flushes for.
+    const tallied = collected.filter((result) => result.toolCalls !== undefined);
+    const webSearchUsed =
+      tallied.length === 0
+        ? undefined
+        : tallied.some((result) => (result.toolCalls?.["web_search"] ?? 0) > 0);
+
+    return {
+      runId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      status,
+      ...(error === undefined ? {} : { error }),
+      // Written before the first alert so a reader can say how much of the run is left, and which
+      // alert each remaining slot is; `results` only ever holds finished alerts (PRD-3 §7, §11).
+      alertCount: alerts.length,
+      plannedAlerts: alerts.map((alert) => ({
+        alertId: alert.properties.systemAlertId,
+        alertTitle: alert.properties.alertDisplayName,
+      })),
+      ...(config.trace ? { traceDir: config.traceDir } : {}),
+      ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
+      // `servedModelId` is what the provider actually served, reported per assistant message and
+      // identical across a run (**D16**). A provider re-pointing an alias is otherwise invisible and
+      // reads as agent regression.
+      provenance: {
+        ...PROVENANCE,
+        ...(servedModelId === undefined ? {} : { servedModelId }),
+      },
+      config: {
+        // No `?? "medium"`: an unset thinking level is omitted from the harness options too, so
+        // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
+        ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
+        resultMaxChars: config.resultMaxChars,
+        sentinelBaseUrl: config.sentinelBaseUrl,
+        webSearchConfigured: config.webSearchConfigured,
+        // Capability is not use. Derived from the tally rather than declared, so it costs nothing and
+        // cannot disagree with what happened (**D14**). Absent until a result carries a tally at all.
+        ...(webSearchUsed === undefined ? {} : { webSearchUsed }),
+        // Raw, not the sanitised copy that reached the model — that is what makes the
+        // sanitisation auditable, and what lets `evaluate` recognise a steered run.
+        ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
+      },
+      model: { provider: config.provider, id: config.modelId },
+      limits: { maxTurns: config.maxTurns, timeoutMs: config.timeoutMs },
+      results: collected,
+    };
+  };
 
   /**
    * Serialise the flushes.
@@ -231,6 +251,9 @@ export async function executeRun(
     log,
     ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    onMetrics: (_alert, metrics) => {
+      servedModelId ??= metrics.servedModelId;
+    },
     onResult: (result) => {
       collected.push(result);
       options.onResult?.(result);
