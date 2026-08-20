@@ -102,10 +102,26 @@ export const InvestigationResult = z.object({
  * them is visible rather than mysterious.
  */
 export const InvestigationRunConfig = z.object({
-  thinkingLevel: z.string().min(1),
+  /**
+   * Optional because it is genuinely unknown on some runs (PRD-6 §7 item 3, **D12**).
+   *
+   * `execute-run.ts` used to write `?? "medium"` here while omitting the key from the harness
+   * options when unset, so `pi-agent-core` fell back to `off` and the artifact claimed `medium`.
+   * That was the one place the artifact lied, and it lied about the one knob no condition on disk
+   * had ever varied. Absent now means absent, and `evaluate` renders it `?` — which never merges
+   * with a recorded `medium` (PRD-6 §5.2).
+   */
+  thinkingLevel: z.string().min(1).optional(),
   resultMaxChars: z.number().int().positive(),
   sentinelBaseUrl: z.string().min(1),
   webSearchConfigured: z.boolean(),
+  /**
+   * Whether the agent actually searched, as opposed to being able to (PRD-6 §7 item 4, **D14**).
+   *
+   * Derived from the tool tally, so it costs nothing now that §6.7 lands. Two runs that differ only
+   * in whether the web was reached were previously indistinguishable.
+   */
+  webSearchUsed: z.boolean().optional(),
   /**
    * The premise an analyst supplied, stored raw (PRD-5 §9).
    *

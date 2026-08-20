@@ -11,6 +11,7 @@ import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
 import type { ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
+import { PROVENANCE } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
 import { createTracer } from "./trace.ts";
 
@@ -132,8 +133,11 @@ export async function executeRun(
     })),
     ...(config.trace ? { traceDir: config.traceDir } : {}),
     ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
+    provenance: PROVENANCE,
     config: {
-      thinkingLevel: config.thinkingLevel ?? "medium",
+      // No `?? "medium"`: an unset thinking level is omitted from the harness options too, so
+      // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
+      ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
       resultMaxChars: config.resultMaxChars,
       sentinelBaseUrl: config.sentinelBaseUrl,
       webSearchConfigured: config.webSearchConfigured,

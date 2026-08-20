@@ -20,15 +20,20 @@ import {
  * sets it, so a submission issued alongside a parallel query would be ignored. The harness's
  * `shouldStopAfterTurn` is the authoritative stop.
  */
+/** Name, description and schema — everything the model sees, hashed by `provenance.ts`. */
+export const SUBMIT_INVESTIGATION = {
+  name: "submit_investigation",
+  label: "Submit investigation",
+  description:
+    "Submit your final assessment and end the investigation. tpPercent and fpPercent must sum to 100 — express uncertainty through the split rather than hedging in prose.",
+  parameters: InvestigationSummarySchema,
+} as const;
+
 export function createSubmitInvestigationTool(
   onSubmit: (summary: InvestigationSummary) => void,
 ): AgentTool<typeof InvestigationSummarySchema> {
   return {
-    name: "submit_investigation",
-    label: "Submit investigation",
-    description:
-      "Submit your final assessment and end the investigation. tpPercent and fpPercent must sum to 100 — express uncertainty through the split rather than hedging in prose.",
-    parameters: InvestigationSummarySchema,
+    ...SUBMIT_INVESTIGATION,
     execute: async (_toolCallId, params) => {
       assertPercentagesSumTo100(params);
       onSubmit(params);

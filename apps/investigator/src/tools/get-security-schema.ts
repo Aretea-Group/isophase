@@ -18,15 +18,20 @@ const Params = Type.Object(
  * Reads the schema already loaded at investigation startup — no second network call. Definitions
  * are returned as Mock Sentinel reported them, with no semantic interpretation layered on top.
  */
+/** Name, description and schema — everything the model sees, hashed by `provenance.ts`. */
+export const GET_SECURITY_SCHEMA = {
+  name: "get_security_schema",
+  label: "Get security schema",
+  description:
+    "Return the column definitions for one or more security tables. You start an investigation knowing only the table names; use this to see the columns before writing KQL against them.",
+  parameters: Params,
+} as const;
+
 export function createGetSecuritySchemaTool(
   tables: Map<string, SchemaTable>,
 ): AgentTool<typeof Params> {
   return {
-    name: "get_security_schema",
-    label: "Get security schema",
-    description:
-      "Return the column definitions for one or more security tables. You start an investigation knowing only the table names; use this to see the columns before writing KQL against them.",
-    parameters: Params,
+    ...GET_SECURITY_SCHEMA,
     execute: async (_toolCallId, params) => {
       const unknown = params.tables.filter((name) => !tables.has(name));
       if (unknown.length > 0) {

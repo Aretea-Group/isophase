@@ -80,16 +80,21 @@ export function fitResultToBudget(result: QueryResponse, maxChars: number): Fitt
  * reported. `SentinelApiError.message` already carries the Kusto engine's own diagnostic, so it
  * propagates untouched — that string is what lets the model repair its own query.
  */
+/** Name, description and schema — everything the model sees, hashed by `provenance.ts`. */
+export const QUERY_SECURITY_DATA = {
+  name: "query_security_data",
+  label: "Query security data",
+  description:
+    "Run a read-only KQL query against the security telemetry and return the raw result. Results are capped at 500 rows and at a fixed response size, and will tell you when either limit was hit — so prefer summarize/count/dcount over dumping rows when you are looking at volume, and project only the columns you need on wide tables.",
+  parameters: Params,
+} as const;
+
 export function createQuerySecurityDataTool(
   sentinel: SentinelApiClient,
   maxChars: number = DEFAULT_RESULT_MAX_CHARS,
 ): AgentTool<typeof Params> {
   return {
-    name: "query_security_data",
-    label: "Query security data",
-    description:
-      "Run a read-only KQL query against the security telemetry and return the raw result. Results are capped at 500 rows and at a fixed response size, and will tell you when either limit was hit — so prefer summarize/count/dcount over dumping rows when you are looking at volume, and project only the columns you need on wide tables.",
-    parameters: Params,
+    ...QUERY_SECURITY_DATA,
     execute: async (_toolCallId, params) => {
       const result = await sentinel.query(params.kql);
       const fitted = fitResultToBudget(result, maxChars);
