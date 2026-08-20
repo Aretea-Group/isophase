@@ -15,7 +15,9 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [`prd-3-analyst-console.md`](./prd-3-analyst-console.md) | **Complete** — the read-only analyst console (TUI) |
 | [`prd-4-ground-truth-expansion.md`](./prd-4-ground-truth-expansion.md) | **Complete** — expanding the evaluation answer key |
 | [`prd-5-console-operator-surface.md`](./prd-5-console-operator-surface.md) | **Complete** — the alert queue and investigation operator surface |
+| [`prd-6-run-comparability.md`](./prd-6-run-comparability.md) | **Draft** — making runs comparable across models, prompts, steering and memory |
 | [`research-console-write-path.md`](./research-console-write-path.md) | **Research** — roadmap §6, the console write path. Verdict: buildable in ~1k lines, no new dependency. Not a PRD; nothing in it is built |
+| [`research-run-comparability.md`](./research-run-comparability.md) | **Research** — roadmap §9, why runs are not comparable today. The measurements behind PRD-6 |
 | [`roadmap.md`](./roadmap.md) | Forward-looking capabilities and follow-up work |
 | [`training-lab-data.md`](./training-lab-data.md) | Verified telemetry source reference (ADR 001 spike result) |
 
@@ -29,9 +31,14 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [004 — Alert API shape](./adr/004-alert-api-shape.md) | Accepted |
 | [005 — Investigation agent boundary](./adr/005-investigation-agent-boundary.md) | Accepted |
 | [006 — Analyst console boundary](./adr/006-analyst-console.md) | Accepted |
+| [007 — Console control surface](./adr/007-console-control-surface.md) | Accepted |
+| [008 — The comparability record](./adr/008-comparability-record.md) | Proposed; amends 005 §2 |
 
 ADR 006 covers the console: why a TUI rather than a web frontend, why the run artifact gained a
 lifecycle, and why the console is not ground-truth-aware.
+
+ADR 008 covers benchmarking: why the run artifact gains counters but never content, why the
+comparison key is derived rather than declared, and why a scored report is never written to disk.
 
 ADR 005 is the one to read first if the code surprises you. It records six supersessions —
 `submit_investigation` over a BAML finalizer, a run artifact over a trace store, five tools over one,
