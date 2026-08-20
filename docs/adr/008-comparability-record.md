@@ -4,39 +4,49 @@
 **Date:** 2026-08-20
 **Implements:** PRD-6 — Run Comparability
 **Amends:** ADR 005 §2 (the run artifact holds per-alert outcomes only); PRD-2 §23 (formal
-regression infrastructure, deferred); `AGENTS.md` §9 (the REST surface gains a sixth route), §12
-(the artifact gains counters), §14 (a new phase)
+regression infrastructure, deferred); `AGENTS.md` §5 (the run corpus becomes append-only), §9 (the
+REST surface gains a sixth route), §12 (the artifact gains counters), §14 (a new phase);
+`docs/roadmap.md` §7 (which owned the band partition — decision 7)
 **Extends:** ADR 006 §4 (run artifact lifecycle), §5 (ground-truth scoring stays in `scripts/`);
 ADR 007 §2 (the investigator remains the sole writer of run artifacts)
 
 ## Context
 
-PRD-6 makes investigation runs comparable across models, prompts, analyst steering and — later —
-case memory. Implementing it as written contradicts two decisions taken when there was nothing to
-compare.
+PRD-6 makes investigation runs comparable across models, parameters, tools, prompts, analyst
+steering and — later — case memory, and accumulates enough saved evidence for those comparisons to
+mean something. Implementing it as written contradicts three decisions taken when there was nothing
+to compare.
 
 `AGENTS.md` §15 asks for an ADR rather than a silent change of course. This is that ADR.
 
-Two facts set the terms. First, the run artifact was deliberately not a trace store: ADR 005 §2
+Three facts set the terms. First, the run artifact was deliberately not a trace store: ADR 005 §2
 records that PRD-2 persists "per-alert outcomes only", and `contracts/run.ts` says the same in the
 schema, conditioning any addition on *"evaluation showing a concrete need"*. Second, PRD-2 §23
 deferred regression infrastructure and asked only that artifacts make later comparison
-straightforward.
+straightforward. Third, PRD-4 §9 and `docs/roadmap.md` §7 left the overlapping verdict bands alone so
+that scoring changes and corpus authoring would not land together.
 
-The need has now been demonstrated rather than argued. Measured across the artifacts on disk:
+The need has now been demonstrated rather than argued. Measured across **all 47 artifacts on disk**,
+the 43 in `runs/` and the 4 in `runs/.archive/`:
 
-- Grouping runs by everything they actually record yields **seven conditions, 30 cells, none with
-  more than two draws** — while `evaluate` reports two model tables, so each is a blend.
-- The only matched model comparison available gave **opposite signs two hours apart**, because one
-  run was archived and the shared scenario set shrank by one. Neither answer was wrong; both rested
-  on one draw per cell.
-- A stub answering a constant `65` to every alert, issuing no queries, scores **12/14** — beating
-  both measured models.
+- Grouping runs by everything they actually record yields **nine conditions, 32 cells, none with
+  more than two draws, and no condition covering more than 9 of the 14 scenarios** — while
+  `evaluate` reports two model tables, so each is a blend.
+- The only matched model comparison available has given **three different answers in one afternoon**
+   — terra ahead, luna ahead, and a 3–3 tie at `p = 1.000` — as runs were archived and restored
+  beneath it. None was wrong; each rested on one or two draws per cell.
+- A stub answering a constant to every alert, issuing no queries, scores **12/14** — beating both
+  measured models. Under a partition it scores 9/14, and **the partition flips exactly one draw in
+  forty**, so the cost that justified deferring it was an order of magnitude smaller than assumed.
+- **Analyst context, a parameter PRD-5 shipped, has zero scoreable draws.** All three steered
+  artifacts produced none, and `evaluate` skips steered runs anyway. The axis the console's re-run button
+  exists to exercise has never been measured once.
 - The system cannot state what a run cost without an opt-in transcript that writes 0.16–23 MB per
   investigation into the loop that is supposed to be cheap to repeat.
 
-Forty artifacts that cannot answer the roadmap's own cost question, and a comparison that inverts
-under an archived file, are the concrete need `contracts/run.ts` asked for.
+Forty-seven artifacts that cannot answer the roadmap's own cost question, a comparison that inverts
+under an archived file, and a shipped parameter with no measurements are the concrete need
+`contracts/run.ts` asked for.
 
 ## Decisions
 
@@ -113,12 +123,15 @@ or a `conditionId` computed and stored at run time. Rejected for three reasons:
   ahead of need in exactly the way §5 forbids.
 - A stored key can be computed wrongly at write time and is then wrong forever. A derived key is
   fixed in one file and re-applied to all history.
-- Legacy artifacts can never be recomputed into a declared taxonomy. All forty existing artifacts
-  resolve under a derived one.
+- Legacy artifacts can never be recomputed into a declared taxonomy. All forty-seven existing
+  artifacts resolve under a derived one.
 
 A concrete consequence, already visible: PRD-5's `config.analystContext` becomes a comparison axis
 with **zero code in this work**, because it lives inside `config`. A future memory field will arrive
-the same way.
+the same way. It renders as `ctx=<hash6>` or `baseline`, never as a bare steered flag — two different
+premises are two different conditions — and because a premise is written about a specific alert, a
+steered condition is usually one scenario wide. That is correct and it is why the steering result is
+a **paired delta against the run it was derived from** rather than a condition-level score.
 
 Corollary, and it is load-bearing: **an absent field is a value, never a wildcard.** A run that
 recorded no thinking level is `think=?`, and `?` never merges with `medium`. Treating absence as
@@ -178,20 +191,103 @@ the next patch scores whether they were the right ones, and the rule is gone wit
 to remove it. `toolCalls.query_security_data` answers the question a memory experiment actually asks
 — *did it do less work for the same answer* — without naming a table.
 
-### 7. The bands are not touched here
+### 7. The bands are repartitioned here — reversing a deferral
 
-The overlapping verdict bands (`TP >= 60`, `FP <= 40`, inconclusive `[30, 70]`) are a real defect:
-they let a blind constant score 12/14. They are owned by roadmap §7, and PRD-6 adds a skill column
-*beside* them rather than repartitioning them.
+**Was:** the overlapping verdict bands (`TP >= 60`, `FP <= 40`, inconclusive `[30, 70]`) are owned by
+roadmap §7. An earlier draft of this ADR kept them there, on the grounds that repartitioning
+alongside a new metric would move every cell for two reasons simultaneously and destroy the
+baseline — the principle PRD-4 §9 established.
 
-Landing both at once would move every cell for two reasons simultaneously and destroy the baseline —
-which is exactly what PRD-4 §9 refused to create when it left the bands alone so that corpus
-authoring and scoring changes would not arrive together. The same reasoning applies in the other
-direction.
+**Now:** PRD-6 lands the partition (`FP <= 40`, inconclusive `41–59`, `TP >= 60`) together with the
+skill column, and prints both band columns for at least one release.
 
-The band column also stays because it is the only scoring continuity the existing artifacts have,
-and because a row reading `12/14 PASS · skill −0.075` is a better argument for the partition than a
-silent re-score.
+The deferral is recorded rather than deleted because the reason it failed is the useful part: **its
+central cost estimate was assumed, and the measurement is an order of magnitude smaller.** Across
+the 40 scoreable draws on disk the partition flips exactly **one**. That draw sits in
+`runs/.archive/`, which means the roadmap's claim that "none of the 21 scored runs to date changes
+verdict under it" holds today only because the run that flips was archived out of the set — and
+decision 8 puts it back. The two changes therefore cannot be sequenced apart: whichever lands
+second is blamed for the other's movement.
+
+Three things keep PRD-4 §9's principle intact rather than trading it away:
+
+- **What §9 forbids is scoring changes landing with *corpus authoring*.** The partition is a scoring
+  change and it lands with the other scoring changes, in one pure module. Corpus authoring — the
+  class imbalance and the scenario dependence, PRD-6's D19 and D20 — stays with roadmap §7. The
+  boundary PRD-4 drew is exactly where it was.
+- **The movement is auditable per draw, not merely in aggregate.** The report prints `band⁰`, the
+  pre-partition column, beside `band`. A cell where they disagree is a cell the partition moved.
+- **The partition is asserted as a property, not as a number.** For every integer `0–100` and every
+  verdict, exactly one class accepts it, and no blind constant exceeds the class-mix floor. Pinning
+  the literal `9/14` would re-break the moment roadmap §7 rebalances the corpus.
+
+**The skill column is still the real fix, and this is the argument for it.** The one draw the
+partition flips is `app-credential-added` at `tp=60` — a Brier error of 0.010 against a target of
+0.5, the *best-calibrated* inconclusive answer anywhere in the corpus, marked FAIL for sitting one
+point over a boundary. Every other inconclusive draw ever recorded is 72 or higher, or 15. A
+three-way band is a lossy view of a continuous number wherever the boundaries go. That is why the
+bands are repartitioned *and* kept subordinate: the blind-constant row printing
+`tp=65: band 9/14 · skill −0.075` under every report is what stops either column from being read
+alone.
+
+### 8. The run corpus is append-only, and the queue may not reach into it
+
+**Was:** `runs/` is a working directory. `scripts/reset-queue.ts` returns an alert to the queue by
+renaming its artifact into `runs/.archive/`, and its own comment records why that works: both
+readers use a non-recursive `new Bun.Glob("*.json")`, "so a rename into `runs/.archive/` removes a
+run from the console *and* from the evaluation report with no code change in either".
+
+**Now:** that coupling is severed. `evaluate` reads `<runsDir>/*.json` **and**
+`<runsDir>/.archive/*.json`, deduping by run id; `queue:reset --purge` requires `--yes` and states
+what it destroys in draws and scenarios; and the report header carries a fingerprint over the sorted
+run ids actually scored.
+
+The rule underneath:
+
+> **A run artifact is a measurement that cost money and cannot be re-derived.** The model is
+> non-deterministic and pi-ai exposes no seed, so a repeat is a new sample, not a reproduction.
+> Nothing may remove a run from the scored set as a side effect of an unrelated operation.
+
+The console side of the archive is correct and unchanged — an archived run *should* leave the queue,
+because that is what returning an alert to the queue means. The evaluation side was never intended
+and was never decided; it fell out of two readers happening to share a glob. This ADR records the
+separation so it is not re-coupled by the next reader that wants "the current runs".
+
+This is the defect with the largest blast radius in PRD-6's register, because it is the one that
+makes every other number unquotable: three passes of PRD-6 read three different answers from the same
+two models (context above), and the differences were entirely file movements.
+
+**And the corpus enters version control.** `/runs/` leaves `.gitignore`; `/runs/traces/` replaces it.
+The run artifacts and their archive are committed; the transcripts are not. That split is what makes
+it cheap — 47 artifacts total 200 KB, none over 5.5 KB, against 126 MB of transcripts for 40 runs.
+
+Append-only inside the working tree is what the benchmark *requires*; committing is what makes the
+benchmark *portable*, and both are needed for the same reason. Step 5 buys roughly 96 investigations
+with real money against a non-deterministic model that exposes no seed, so the corpus cannot be
+regenerated — only bought again. A measurement set that exists on one laptop is one disk failure from
+being bought twice, and a number quoted with a fingerprint (above) is only checkable if someone else
+can check out the set it was computed over.
+
+It also gives §5.6's rule an enforcement mechanism that does not depend on anyone remembering it:
+removing a measurement becomes a diff.
+
+**Accepted cost:** the working tree goes dirty on every `bun run investigate`. That is correct rather
+than noisy — the artifacts *are* the deliverable — but it is a change in how the repository feels to
+work in, and it amends `AGENTS.md` §5's repository shape, which previously did not list `runs/` at
+all. `runs/traces/` and `feedback/` stay ignored: transcripts are optional by construction (decision
+1), and analyst classifications are operational data that ADR 007 keeps out of `runs/` deliberately.
+
+**One consequence worth recording because it was found by running the check rather than by reasoning
+about it:** `runs/` has to join `.oxfmtrc.json`'s `ignorePatterns`, beside `fixtures/**` and
+`**/*.md`. A committed artifact is data, and a formatter that rewrites it makes the committed bytes
+differ from what `writeRunArtifact` emits — so every subsequent run would land unformatted, and
+`bun run fmt:check` would be asking someone to edit a measurement. The general rule is already in
+that file's other entries: tooling formats source, never records.
+
+**Rejected: a curated `fixtures/baseline-runs/`** promoted into by a new command. It adds a committed
+root that `AGENTS.md` §5 would have to govern, plus a workflow step, to avoid a `git add` — and it
+reintroduces exactly the two-tier split (real runs here, blessed runs there) that decision 8 exists
+to remove.
 
 ## Testing
 
@@ -204,7 +300,20 @@ silent re-score.
 - A test asserts `evaluate` writes no file (decision §2).
 - A test asserts `toolCalls` keys are a subset of the five tool names and that every added field is a
   scalar or a fixed-key record (decision §1's bright line).
-- A test loads every artifact in `runs/` and `runs/.archive/` through `InvestigationRun.parse`.
+- A test loads one committed artifact per schema generation, under
+  `apps/investigator/test/fixtures/runs/`, through `InvestigationRun.parse`. Deliberately not a sweep
+  of the live `runs/`: that couples the suite to whatever a developer last ran, and stays wrong
+  whichever way §12 Q7 goes.
+- A property test asserts the three bands partition `[0, 100]` — for every integer and every verdict,
+  exactly one class accepts it — and that no blind constant beats the class-mix floor (decision 7).
+- A test writes an artifact into `<runsDir>/.archive/` and asserts it is scored, appears in the
+  report and is inside the run-set fingerprint; another asserts a run id present in both directories
+  is counted once (decision 8).
+- A test asserts `queue:reset --purge` without `--yes` refuses, and that its dry-run names the draws
+  it would destroy (decision 8).
+- A test asserts a run carrying `analystContext` is scored, lands in a condition distinct from its
+  parent's, and that a `derivedFrom` pair differing by more than the premise is marked `unmatched`
+  (decision 3).
 - `ground-truth-isolation.test.ts` ROOTS and the oxlint boundary rule are unchanged, and a test
   asserts that they remain sufficient — no new agent-side reachable path reads `fixtures/scenarios/`.
 - A test pins the table-name list reaching `buildInitialContext`, so the corpus manifest cannot
@@ -222,8 +331,12 @@ time the variance decomposition runs on real data rather than on fixtures.
 ## Consequences
 
 **Positive:** a comparison that inverted under an archived file becomes one that states its own
-denominator, coverage and noise floor; repeats stop being discarded, which is the only variance
-instrument the system can have, since pi-ai exposes no seed; cost and effort become artifact-side
+denominator, coverage and noise floor; a run can no longer leave the measurement set as a side
+effect of a queue operation, so a quoted number stays checkable against its fingerprint; repeats
+stop being discarded, which is the only variance instrument the system can have, since pi-ai exposes
+no seed; a blind constant stops beating the models it is supposed to calibrate them against; analyst
+context becomes a measurable axis with a matched, paired comparison built into the report, which is
+worth more per run than anything else here; cost and effort become artifact-side
 facts with tracing off, retiring three of the four coverage caveats in the console and dissolving
 the cost half of PRD-5 §18 Q2 (the durable-transcript half stands, since decision 1 keeps
 transcripts optional); the prompt becomes a comparison axis for the first time, which is what makes steering
@@ -234,11 +347,17 @@ the baseline.
 
 **Negative:** the run artifact grows a provenance block and three per-result fields, and ADR 005 §2's
 sentence no longer reads literally; the report gets substantially longer and its headline gets
-worse, with most conditions reading "insufficient data" — a correction that will be read as a
-regression; every existing measurement is invalidated, and a re-baseline of roughly 84 investigations
-is unavoidable because no condition on disk has three draws; the harness gains a second always-on
-subscriber; Mock Sentinel gains a route and the client a method; and the `_CorpusManifest` write
-makes bootstrap responsible for a fact it previously only computed and discarded.
+worse **twice over**, with most conditions reading "insufficient data" and the partition taking a
+further draw off the corpus and three off the blind constant — a correction that will be read as a
+regression; the partition marks the corpus's best-calibrated inconclusive answer FAIL, which is
+honest about bands and uncomfortable to read; a second band column (`band⁰`) has to be carried and
+later removed; every existing measurement is invalidated, and a re-baseline of roughly **96**
+investigations — 84 baseline plus 12 steered — is unavoidable because no condition on disk has three
+draws and the steering axis has none at all; `evaluate` and `queue:reset` both gain a dependency on
+the archive layout, which is now a contract between them rather than an implementation detail; the
+harness gains a second always-on subscriber; Mock Sentinel gains a route and the client a method;
+and the `_CorpusManifest` write makes bootstrap responsible for a fact it previously only computed
+and discarded.
 
 ## References
 
@@ -252,4 +371,6 @@ makes bootstrap responsible for a fact it previously only computed and discarded
 - PRD-2 §20 (ground-truth isolation), §23 (regression infrastructure, trajectory not graded)
 - PRD-4 §9 (why scoring changes and corpus authoring must not land together)
 - PRD-5 §4.5 (record what a later benchmark will need; measure nothing here)
-- `docs/roadmap.md` §7 (Evaluation at Scale — owns the band partition) and §9 (Benchmarking Surface)
+- `docs/roadmap.md` §7 (Evaluation at Scale — owned the band partition until decision 7 moved it into
+  PRD-6; still owns corpus rebalancing) and §9 (Benchmarking Surface)
+- `scripts/reset-queue.ts` (PRD-5 §11) — the archive mechanism decision 8 decouples from scoring
