@@ -240,9 +240,22 @@ GET  /alerts
 GET  /alerts/:id
 GET  /schema
 POST /query
+GET  /corpus
 ```
 
 All requests/responses crossing the public boundary must have Zod validation where applicable.
+
+`GET /corpus` is PRD-6 §6.8's addition and the first since this surface was specified. It reports
+the identity of the loaded corpus — time anchor, offset, telemetry revision, alert-set hash — so a
+run artifact can record which data it was scored against. It reads a `_CorpusManifest` marker table
+that bootstrap writes into the database it has just built, and returns 404 when there is none, so an
+older Mock Sentinel degrades rather than breaking `bun run investigate`.
+
+Tables whose name begins with `_` are infrastructure, not telemetry: `GET /schema` drops them and
+`POST /query` rejects them. The agent's opening context is built from the table names `/schema`
+returns, so a table added to that database would otherwise be a table the agent is invited to
+query — and a benchmarking change that alters turn-0 context is a change to the thing being
+measured.
 
 The Mock Sentinel service owns the REST facade. Kusto is internal.
 
@@ -311,6 +324,19 @@ per-alert outcomes — it is not the trace store above.
 PRD-5 lets the local console drive the investigator through `InvestigationControl` while keeping
 the investigator as the sole writer of `runs/` (ADR 007). Analyst classifications live separately
 under `feedback/` and are recorded but never fed back to the agent.
+
+PRD-6 adds an optional `provenance` block to the run and optional `turns`, `toolCalls` and `usage`
+to each result (ADR 008 §1). Evaluation showed the concrete need this list was always conditioned
+on: 47 artifacts that cannot say what a run cost, and a comparison that inverts when a file moves.
+One rule governs the addition, and it is what keeps "not a trace store" true in substance:
+
+> **Nothing added to the run artifact may grow with the length of an investigation.** No per-event
+> records, no messages, no tool arguments, no KQL text, no query results. A count of
+> `query_security_data` calls is a number; the queries themselves are a trace.
+
+The trace store list above is unchanged and still deferred. `runs/` is also a committed root now
+(§5) — a run is a measurement that cannot be re-derived, so nothing may remove one from the scored
+set as a side effect.
 
 Do not store hidden chain-of-thought as a product requirement.
 
@@ -393,6 +419,20 @@ Acceptance:
 - the console starts, extends and cancels investigations only through `InvestigationControl`;
 - the investigator remains the sole writer of `runs/`;
 - analyst classifications are recorded outside `runs/` and never enter agent context.
+
+### Phase 10
+Run Comparability (PRD-6).
+
+Acceptance:
+- runs are grouped by a condition key derived in `scripts/` from what each artifact recorded, never
+  by model name and never by a field declared on a contract;
+- a cell holds every repeat, and no draw is discarded, overwritten or silently excluded;
+- every run ever recorded is scored, including `runs/.archive/`, and the report fingerprints the set
+  it scored;
+- the verdict bands partition the range, with a blind-constant baseline row printed under every
+  report;
+- the artifact records prompt, runtime and corpus identity, and cost and effort, with tracing off;
+- no scored artifact is written to disk, and ground-truth isolation is unchanged.
 
 ## 15. When to Stop and Ask for Architecture Input
 

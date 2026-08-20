@@ -122,12 +122,12 @@ Potential capabilities:
   currently unknown, since every run to date has covered a single alert
 * Exercise the investigation timeout, which is implemented and wired but has never fired
 * Expand ground-truth coverage beyond six scenarios — **owned by PRD-4**
-* Fix the overlapping scoring bands. `evaluate-runs.ts` passes a true positive at `tpPercent >= 60`
-  and an inconclusive at 30–70, so the two ranges overlap and a constant answer of 65 satisfies
-  both — it scores 6/6 against the current key without investigating anything. Making the three
-  classes partition the range (FP `<= 40`, inconclusive 41–59, TP `>= 60`) is a one-line change, and
-  none of the 21 scored runs to date changes verdict under it. PRD-4 §9 deliberately leaves this
-  alone so that ground-truth authoring and scoring changes do not land together
+* ~~Fix the overlapping scoring bands.~~ **Moved to PRD-6** (§4.4, §6.10; ADR 008 §7). The claim
+  that "none of the 21 scored runs to date changes verdict under it" was measured and is false once
+  `runs/.archive/` is scored — one draw flips, `app-credential-added` at `tp=60`, and it read as
+  true only because that run had been archived out of the set. PRD-4 §9's rule is intact: what it
+  forbids is scoring changes landing with *corpus authoring*, and the partition landed with the
+  other scoring changes while the corpus items below stayed here
 * Score whether an investigation covered the ground its scenario says settles it. Every fixture
   carries `discriminatingEvidence` — the queries a correct investigation cannot skip — and nothing
   reads it; `scenarios.test.ts` only asserts the array is non-empty. Trace-level coverage would
@@ -141,8 +141,12 @@ Potential capabilities:
   decision record
 * Spot-check alerts that have no ground truth, to catch reasoning failures the six scenarios
   structurally cannot see
-* Model-tier comparison as a product question: terra-class reasoning cleared the calibration control
-  that luna failed, at roughly ten times the token price
+* Model-tier comparison as a product question. **Unverified** — the claim that terra-class reasoning
+  cleared a calibration control luna failed, at roughly ten times the token price, rests on an
+  unmatched comparison. Matched under PRD-6's condition key it has given three answers in one
+  afternoon and currently reads a 3–3 tie at `p = 1.000` across 8 shared scenarios (PRD-6 §3.2,
+  §3.3). PRD-6 §11 step 5 settles it; running terra by default is not supported either way until
+  then
 
 ### 8. Alert Grouping and Incident Correlation
 
