@@ -138,7 +138,12 @@ bun run queue:reset --alert <alert-id>
 bun run queue:reset --alert <alert-id> --include-feedback
 bun run queue:reset --restore --run <run-id> --include-feedback
 bun run queue:reset --dry-run --all
+bun run queue:reset --purge --run <run-id> --yes   # destroys the artifact
 ```
+
+Archiving takes an alert out of the **queue** and leaves the run in the **benchmark** — `evaluate`
+reads `runs/.archive/` too. Only `--purge` destroys a measurement, it requires `--yes`, and its dry
+run reports the loss in scoreable draws rather than in files.
 
 ## Other workflows
 
@@ -152,15 +157,48 @@ bun run investigate --alert <alert-id>  # one alert
 Each invocation writes `runs/<run-id>.json`. With tracing enabled, each alert also gets a JSONL
 transcript under `runs/traces/`.
 
+**Run artifacts are committed.** A run costs real money against a model with no seed, so it cannot
+be re-derived — only bought again — and a benchmark that cannot be reproduced from a fresh clone is
+not a benchmark. Expect `git status` to show new artifacts after an investigation. Transcripts stay
+local: `runs/traces/` is gitignored and runs to hundreds of megabytes.
+
 ### Evaluate runs
 
-Evaluation joins run results with hidden scenario metadata outside the agent boundary.
+Evaluation joins run results with hidden scenario metadata outside the agent boundary. It prints;
+it never writes a scored file, because a score plus the agent's own percentage recovers the verdict
+and that would put the answer key on disk.
 
 ```bash
-bun run evaluate                  # latest baseline run per model and scenario
-bun run evaluate --run <run-id>   # one run
-bun run evaluate --compare a b    # compare two runs
+bun run evaluate                                   # every condition
+bun run evaluate --run <run-id>                    # one run
+bun run evaluate --compare <a> <b>                 # two runs, or two condition ids
+bun run evaluate --gaps [--json]                   # what is missing before the corpus can answer
+bun run evaluate --gaps --condition <id> ...       # ...for the conditions you intend to fill
+bun run evaluate --runs <dir>                      # score a different set (implies <dir>/.archive)
+bun run evaluate --exclude-archive                 # score only what the console's queue sees
 ```
+
+Three words carry the report:
+
+| | |
+|---|---|
+| **draw** | one investigation of one alert — one answer, one `tpPercent` |
+| **condition** | everything a run was *set up* with: model, thinking level, limits, prompt hash, corpus, analyst premise. Runs sharing a condition are comparable |
+| **cell** | one `(condition, scenario)` box, holding **every** draw. Nothing is overwritten and nothing is dropped |
+
+A condition is the grouping key, not a thing being scored. **What is scored is the outcome against
+ground truth** — the agent's `tpPercent` versus the scenario's true verdict, as a pass/fail band and
+as a Brier-style skill figure beside it. Turns, tool calls and cost print as columns for analysis and
+are never inputs to the score. The key hashes settings only: two runs configured identically share a
+cell whether or not the agent happened to search the web, because that is a result, not a setup.
+
+Three draws per cell is the floor at which a repeat means anything. `--gaps` counts the shortfall and
+`--condition` narrows it to the conditions worth filling — unfiltered it totals every condition on
+disk, including pre-config generations whose harness no longer exists.
+
+Every run ever recorded is scored, `runs/.archive/` included. Archiving returns an alert to the
+console's queue; it must not delete a measurement, and the report header fingerprints the exact set
+of run ids it scored so a quoted number can be checked later.
 
 ### Operate the local data stack
 
@@ -183,7 +221,12 @@ GET  /alerts
 GET  /alerts/:id
 GET  /schema
 POST /query        read-only KQL
+GET  /corpus       which data is loaded: time anchor, telemetry revision, alert-set hash
 ```
+
+Tables whose name begins with `_` are internal bookkeeping: `/schema` omits them and `/query`
+rejects them, because `/schema` feeds the agent's opening context and a table listed there is a
+table the agent is invited to query.
 
 Kusto is internal. Investigator and console code must never query it directly or import Mock
 Sentinel fixture repositories.
@@ -256,6 +299,7 @@ implementation rules are in [`AGENTS.md`](./AGENTS.md).
 - [PRD-3 — Analyst console](./docs/prd-3-analyst-console.md)
 - [PRD-4 — Ground-truth expansion](./docs/prd-4-ground-truth-expansion.md)
 - [PRD-5 — Console operator surface](./docs/prd-5-console-operator-surface.md)
+- [PRD-6 — Run comparability](./docs/prd-6-run-comparability.md)
 - [Architecture decision records](./docs/adr/)
 - [Roadmap](./docs/roadmap.md)
 

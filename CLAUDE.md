@@ -30,7 +30,7 @@ ever type-checks.
 | `bun run data:bootstrap` | create tables and ingest telemetry; safe to re-run. Also `data:reset`, `data:verify`, `data:manifest` |
 | `bun run dev:mock-sentinel` | REST facade on `:8787`, watch mode |
 | `bun run investigate [--alert <systemAlertId>]` | one sweep of the agent; needs a provider key in `.env` |
-| `bun run evaluate [--run <id>] [--compare <a> <b>]` | score runs against the hidden ground truth |
+| `bun run evaluate [--run <id>] [--compare <a> <b>] [--gaps]` | score runs against the hidden ground truth; `--gaps` says what the corpus still needs |
 | `bun run console [--runs <dir>] [--traces <dir>]` | read-only TUI over `runs/` |
 
 Integration suites (`**/test/integration/`) probe for their live dependency and `describe.skipIf`
@@ -85,7 +85,14 @@ else receives parsed config. Provider API keys are deliberately absent from all 
 **The run artifact is the join point.** `runs/<run-id>.json` holds per-alert outcomes keyed by
 `systemAlertId`, flushed after every alert with a `status`, so an in-flight sweep is readable. It is
 not a trace store (ADR 005 §2) — transcripts are separate, under `runs/traces/`, and only when
-`INVESTIGATOR_TRACE=true`. Both the console and `evaluate` read it; neither writes it. The console
+`INVESTIGATOR_TRACE=true`. Both the console and `evaluate` read it; neither writes it.
+
+PRD-6 makes `runs/` a **committed** root and adds fixed-size counters under one rule: nothing on the
+artifact may grow with the length of an investigation (ADR 008 §1). `evaluate` groups runs by a
+*condition* — a key derived in `scripts/` from what each run was set up with, never from what it
+did — and scores the outcome against ground truth alone; cost and effort print beside the score and
+never enter it. It reads `runs/.archive/` too, because archiving returns an alert to the console's
+queue and must not delete a measurement (ADR 008 §8). The console
 is read-only by construction: `src/view/` holds pure view models with no renderer import, and
 `src/ui/` is the only code that knows OpenTUI exists.
 
