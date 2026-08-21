@@ -251,6 +251,17 @@ export async function verifyOnly(
 
   await waitForKusto(client, { log });
 
+  // `waitForKusto` only proves the engine answers. Without this check the first
+  // thing to touch a missing database is `verifySchema`, whose `.show database`
+  // is unguarded, so the run dies on Kusto's raw "Entity ID … was not found" —
+  // accurate but silent about the fact that a recreated container starts empty.
+  if (!(await client.hasDatabase(database))) {
+    throw new Error(
+      `Database '${database}' does not exist at ${client.endpoint}. ` +
+        `A fresh Kusto container starts empty — run \`bun run data:bootstrap\` to create it and ingest the telemetry.`,
+    );
+  }
+
   const issues: VerificationIssue[] = [];
   let totalRows = 0;
   let totalColumns = 0;

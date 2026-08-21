@@ -70,7 +70,12 @@ curl -s localhost:8787/health | jq
 `data:bootstrap` creates 22 Kusto tables, ingests the pinned Microsoft Sentinel Training Lab
 telemetry, generates alerts, and verifies representative data and scenario queries. It is safe to
 run again. The emulator stores data inside its container, so bootstrap again after the container is
-removed.
+removed — `infra:down` followed by `infra:up` leaves an engine with no database at all.
+
+Until that bootstrap completes, `/health` answers `503` with `dependencies.database: "down"`. That
+is the expected reading of an unseeded stack, not a fault: the endpoint reports whether Mock
+Sentinel can actually serve, and an engine with no `SentinelLab` cannot. Integration suites gate on
+it and skip themselves rather than failing on empty results.
 
 ### Open the console
 
@@ -168,7 +173,7 @@ bun run evaluate --compare a b    # compare two runs
 ```bash
 bun run infra:up          # Kusto + Mock Sentinel
 bun run infra:logs
-bun run infra:down
+bun run infra:down        # removes the Kusto container, and with it the database
 
 bun run data:bootstrap   # create, ingest, and verify
 bun run data:verify      # verify without ingesting
