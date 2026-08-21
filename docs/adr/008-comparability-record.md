@@ -130,8 +130,21 @@ A concrete consequence, already visible: PRD-5's `config.analystContext` becomes
 with **zero code in this work**, because it lives inside `config`. A future memory field will arrive
 the same way. It renders as `ctx=<hash6>` or `baseline`, never as a bare steered flag — two different
 premises are two different conditions — and because a premise is written about a specific alert, a
-steered condition is usually one scenario wide. That is correct and it is why the steering result is
-a **paired delta against the run it was derived from** rather than a condition-level score.
+steered condition is usually one scenario wide. Read the cell rather than a condition-level skill
+figure computed from one draw.
+
+**The key hashes settings, never outcomes.** A condition answers *how was this run set up*, so a
+field describing what the agent then did is excluded from the hash and kept on the artifact:
+`config.webSearchUsed` is recorded, printed, never hashed. Including it fragmented cells for a reason
+that is a result — two runs of the same model under the same limits landed in different conditions
+because the agent happened to search in one — which is precisely the variation a cell exists to
+average over. What this benchmark scores is the outcome against ground truth; effort, cost and tool
+counts sit beside the score as diagnostics and never enter it.
+
+**`derivedFrom` is recorded and not scored.** PRD-5 records which run a re-run came from, and that
+stays. The benchmark does not read it and does not pair parent against child: a derived pair is
+provenance, and this decision keeps the scored surface to outcomes alone. A pairing view can be built
+the day something asks for one.
 
 Corollary, and it is load-bearing: **an absent field is a value, never a wildcard.** A run that
 recorded no thinking level is `think=?`, and `?` never merges with `medium`. Treating absence as

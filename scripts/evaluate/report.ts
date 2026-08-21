@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { InvestigationRun } from "../../apps/investigator/src/contracts/run.ts";
 import type { Scenario } from "../../apps/mock-sentinel/src/scenarios/scenarios.ts";
-import { type Condition, conditionOf, fieldDiff } from "./condition.ts";
+import { type Condition, conditionOf } from "./condition.ts";
 import {
   BANDS,
   bandOk,
@@ -74,39 +74,6 @@ export interface ConditionReport {
   totalCostUsd?: number;
 }
 
-/**
- * A run and the run it was derived from, scored on the scenarios they share (PRD-6 §6.11).
- *
- * This is the highest-value comparison in the report and the only one that is matched *by
- * construction*: an analyst re-ran one alert having changed one thing, so every other variable is
- * held still without anyone having to arrange it. A condition table cannot show it, because a
- * premise is written about a specific alert and most steered conditions are therefore one scenario
- * wide — the result is the paired delta, not a one-cell skill figure that looks like a model score.
- */
-export interface DerivedPair {
-  childRunId: string;
-  parentRunId: string;
-  childConditionId: string;
-  parentConditionId?: string;
-  /**
-   * What changed besides the premise. Non-empty means the pair measures nothing in particular.
-   *
-   * The one `derivedFrom` pair on disk is a steered re-run of a **luna** parent under
-   * `claude-haiku-4-5` — two variables at once. The report names that rather than PRD-5 constraining
-   * what a re-run may change: the console should stay free, and the benchmark should be the thing
-   * that notices (PRD-6 §12 Q6).
-   */
-  changedBeyondPremise: string[];
-  scenarios: {
-    scenarioId: string;
-    verdict: Verdict;
-    parentDraws: number[];
-    childDraws: number[];
-    parentScore: number;
-    childScore: number;
-  }[];
-}
-
 export interface SkippedRun {
   file: string;
   reason: string;
@@ -158,7 +125,6 @@ export interface BuiltReport {
   unjoinedAlertIds: string[];
   conditionsById: Map<string, Condition>;
   drawsByRun: Map<string, Draw[]>;
-  pairs: DerivedPair[];
 }
 
 /**
@@ -180,15 +146,9 @@ export function buildReport(input: BuildInput): BuiltReport {
   const drawsByCell = new Map<string, Draw[]>();
   const drawsByRun = new Map<string, Draw[]>();
   const runLevelFailures = new Map<string, { runId: string; errorName: string }[]>();
-  const conditionByRun = new Map<string, string>();
-  const derived: { childRunId: string; parentRunId: string }[] = [];
 
   for (const run of runs) {
     const condition = conditionOf(run);
-    conditionByRun.set(run.runId, condition.id);
-    if (run.derivedFrom !== undefined) {
-      derived.push({ childRunId: run.runId, parentRunId: run.derivedFrom.runId });
-    }
     conditionsById.set(condition.id, condition);
     runsByCondition.set(condition.id, [...(runsByCondition.get(condition.id) ?? []), run.runId]);
 
@@ -314,64 +274,12 @@ export function buildReport(input: BuildInput): BuiltReport {
 
   conditions.sort((a, b) => b.covered - a.covered || a.condition.id.localeCompare(b.condition.id));
 
-  const byScenario = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
-  const pairs: DerivedPair[] = [];
-  for (const { childRunId, parentRunId } of derived) {
-    const childConditionId = conditionByRun.get(childRunId);
-    const parentConditionId = conditionByRun.get(parentRunId);
-    if (childConditionId === undefined) continue;
-
-    const child = conditionsById.get(childConditionId);
-    const parent =
-      parentConditionId === undefined ? undefined : conditionsById.get(parentConditionId);
-    const changedBeyondPremise =
-      child === undefined || parent === undefined
-        ? []
-        : fieldDiff(parent, child)
-            .map((entry) => entry.field)
-            .filter((field) => field !== "analystContext");
-
-    const drawsOf = (runId: string, scenarioId: string): number[] =>
-      (drawsByRun.get(runId) ?? [])
-        .filter((draw) => draw.scenarioId === scenarioId)
-        .map((draw) => draw.tpPercent ?? failedDrawProbability(baseRate));
-
-    const shared = new Set((drawsByRun.get(childRunId) ?? []).map((draw) => draw.scenarioId));
-    const scored: DerivedPair["scenarios"] = [];
-    for (const scenarioId of [...shared].toSorted()) {
-      const parentDraws = drawsOf(parentRunId, scenarioId);
-      const childDraws = drawsOf(childRunId, scenarioId);
-      const scenario = byScenario.get(scenarioId);
-      if (parentDraws.length === 0 || childDraws.length === 0 || !scenario) continue;
-      if (!isVerdict(scenario.verdict)) continue;
-      const target = targetFor(scenario.verdict);
-      scored.push({
-        scenarioId,
-        verdict: scenario.verdict,
-        parentDraws,
-        childDraws,
-        parentScore: cellScore(parentDraws, target).score,
-        childScore: cellScore(childDraws, target).score,
-      });
-    }
-
-    pairs.push({
-      childRunId,
-      parentRunId,
-      childConditionId,
-      ...(parentConditionId === undefined ? {} : { parentConditionId }),
-      changedBeyondPremise,
-      scenarios: scored,
-    });
-  }
-
   return {
     conditions,
     buckets,
     unjoinedAlertIds: [...unjoined].toSorted(),
     conditionsById,
     drawsByRun,
-    pairs,
   };
 }
 

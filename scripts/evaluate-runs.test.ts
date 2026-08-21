@@ -323,6 +323,22 @@ describe("evaluate — the condition key", () => {
     expect(without.id).not.toBe(withThinking.id);
   });
 
+  test("an outcome never fragments the key — only settings do", () => {
+    // `webSearchUsed` records whether the agent actually searched. Two runs configured identically
+    // must land in the same cell whether or not it happened to, or a result would decide which runs
+    // are comparable and the cell could never average over the thing it exists to average over.
+    const withUse = JSON.parse(artifact({ runId: "a" })) as { config: Record<string, unknown> };
+    withUse.config["webSearchUsed"] = true;
+    const withoutUse = JSON.parse(artifact({ runId: "b" })) as { config: Record<string, unknown> };
+    withoutUse.config["webSearchUsed"] = false;
+
+    expect(conditionOf(withUse as never).id).toBe(conditionOf(withoutUse as never).id);
+    // And a genuine setting still splits them.
+    expect(conditionOf(JSON.parse(artifact({ runId: "c", thinkingLevel: "high" }))).id).not.toBe(
+      conditionOf(withUse as never).id,
+    );
+  });
+
   test("a label never collapses two condition ids", () => {
     const runs = [
       artifact({ runId: "a", model: "m1" }),
@@ -469,71 +485,6 @@ describe("evaluate — compare", () => {
   });
 });
 
-describe("evaluate — the derived pair", () => {
-  test("prints a steered child beside the run it came from", async () => {
-    const alertId = truePositive.startingAlertId;
-    const corpus = await withCorpus([
-      { runId: "parent", draws: [{ alertId, tpPercent: 90 }] },
-      {
-        runId: "child",
-        analystContext: "this host is a scanner",
-        derivedFrom: { runId: "parent", alertId },
-        draws: [{ alertId, tpPercent: 20 }],
-      },
-    ]);
-    try {
-      const report = await evaluate(corpus.runsDir);
-      expect(report.out).toContain("DERIVED PAIRS");
-      expect(report.out).toContain("child ← parent");
-      // Matched by construction: the premise is the only thing that moved.
-      expect(report.out).not.toContain("unmatched");
-      expect(report.out).toContain(truePositive.id);
-    } finally {
-      await rm(corpus.dir, { recursive: true, force: true });
-    }
-  });
-
-  test("marks a pair that changed more than the premise", async () => {
-    const alertId = truePositive.startingAlertId;
-    const corpus = await withCorpus([
-      { runId: "parent", model: "model-a", draws: [{ alertId, tpPercent: 90 }] },
-      {
-        runId: "child",
-        model: "model-b",
-        analystContext: "a premise",
-        derivedFrom: { runId: "parent", alertId },
-        draws: [{ alertId, tpPercent: 20 }],
-      },
-    ]);
-    try {
-      const report = await evaluate(corpus.runsDir);
-      // The console stays free to re-run anything; the benchmark is the thing that notices.
-      expect(report.out).toContain("unmatched — changed beyond the premise");
-      expect(report.out).toContain("model");
-    } finally {
-      await rm(corpus.dir, { recursive: true, force: true });
-    }
-  });
-
-  test("says so when the parent is not in the scored set", async () => {
-    const alertId = truePositive.startingAlertId;
-    const corpus = await withCorpus([
-      {
-        runId: "orphan-child",
-        analystContext: "a premise",
-        derivedFrom: { runId: "purged-parent", alertId },
-        draws: [{ alertId, tpPercent: 20 }],
-      },
-    ]);
-    try {
-      const report = await evaluate(corpus.runsDir);
-      expect(report.out).toContain("is not in this run set");
-    } finally {
-      await rm(corpus.dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("evaluate — the legend", () => {
   test("names every recorded field, and marks an inferred submission shape", async () => {
     const corpus = await withCorpus([
@@ -548,6 +499,30 @@ describe("evaluate — the legend", () => {
       expect(report.out).toContain("timeoutMs");
       // Pre-provenance artifacts have their submission shape inferred from field presence.
       expect(report.out).toContain("(inferred)");
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a run carrying derivedFrom still scores, and nothing pairs on it", async () => {
+    // The field stays on the artifact — PRD-5 records which run a re-run came from — but the
+    // benchmark does not read it. Sequential runs are tracked; they are not a measurement here.
+    const alertId = truePositive.startingAlertId;
+    const corpus = await withCorpus([
+      { runId: "parent", draws: [{ alertId, tpPercent: 90 }] },
+      {
+        runId: "child",
+        analystContext: "a premise",
+        derivedFrom: { runId: "parent", alertId },
+        draws: [{ alertId, tpPercent: 20 }],
+      },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir);
+      expect(report.out).not.toContain("DERIVED PAIRS");
+      // Both runs are scored, in their own conditions, on the outcome alone.
+      expect(report.out).toContain("baseline");
+      expect(report.out).toMatch(/ctx=\w{6}/);
     } finally {
       await rm(corpus.dir, { recursive: true, force: true });
     }

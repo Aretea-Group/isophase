@@ -199,70 +199,6 @@ function printLegend(report: BuiltReport, labels: Map<string, string>): void {
   }
 }
 
-/**
- * Each derived run beside the run it came from (PRD-6 §6.11).
- *
- * Worth more per run than anything else in this report: an analyst changed one thing and re-ran, so
- * the comparison is matched by construction rather than by arrangement. A condition table cannot
- * show it — a premise is written about one alert, so most steered conditions are one scenario wide.
- */
-function printPairs(report: BuiltReport, labels: Map<string, string>): void {
-  if (report.pairs.length === 0) return;
-  console.info("\nDERIVED PAIRS");
-
-  for (const pair of report.pairs) {
-    const label = labels.get(pair.childConditionId) ?? pair.childConditionId;
-    console.info(`\n  ${pair.childRunId} ← ${pair.parentRunId}   ${label}`);
-
-    if (pair.changedBeyondPremise.length > 0) {
-      console.info(
-        `    unmatched — changed beyond the premise: ${pair.changedBeyondPremise.join(", ")}. ` +
-          `A pair that moves two variables measures neither.`,
-      );
-    }
-    if (pair.parentConditionId === undefined) {
-      console.info(
-        `    parent ${pair.parentRunId} is not in this run set — nothing to pair against.`,
-      );
-      continue;
-    }
-    if (pair.scenarios.length === 0) {
-      console.info("    no scenario has draws on both sides.");
-      continue;
-    }
-
-    const floor = noiseFloor(
-      (report.conditions.find((c) => c.condition.id === pair.parentConditionId)?.cells ?? []).map(
-        (cell) => cell.score,
-      ),
-    );
-
-    for (const scenario of pair.scenarios) {
-      const delta = scenario.childScore - scenario.parentScore;
-      const verdict =
-        floor !== undefined && Math.abs(delta) < floor
-          ? "no measurable difference"
-          : delta < 0
-            ? `better by ${Math.abs(delta).toFixed(3)}`
-            : delta > 0
-              ? `worse by ${delta.toFixed(3)}`
-              : "identical";
-      console.info(
-        `    ${pad(scenario.scenarioId, 31)}${pad(scenario.verdict, 15)}` +
-          `parent ${pad(scenario.parentDraws.join(", "), 12)}${pad(scenario.parentScore.toFixed(3), 8)}` +
-          `child ${pad(scenario.childDraws.join(", "), 12)}${pad(scenario.childScore.toFixed(3), 8)}` +
-          verdict,
-      );
-    }
-    if (floor === undefined) {
-      console.info(
-        "    the parent condition has no repeat, so there is no measured floor to judge these against.",
-      );
-    }
-  }
-  console.info("");
-}
-
 function printCondition(condition: ConditionReport, label: string, total: number): void {
   console.info(`\n${condition.condition.id}  ${label}`);
   console.info(
@@ -641,7 +577,6 @@ if (argv.includes("--gaps")) {
   } else {
     printConditions(report, labels, scenarios.length);
     printLegend(report, labels);
-    printPairs(report, labels);
     for (const condition of report.conditions) {
       if (condition.cells.length === 0) continue;
       printCondition(condition, labels.get(condition.condition.id) ?? "", scenarios.length);

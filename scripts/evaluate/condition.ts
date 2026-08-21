@@ -48,6 +48,26 @@ export interface Condition {
 
 const UNKNOWN = "?";
 
+/**
+ * Recorded on `config`, deliberately **excluded** from the key.
+ *
+ * The key groups runs that were *set up* the same way. These fields describe what the agent then
+ * did, and mixing the two fragments a cell for a reason that is a result rather than a setting:
+ * two runs of the same model with the same limits would land in different conditions because the
+ * agent happened to search the web in one of them and not the other — which is the very difference
+ * the cell exists to average over.
+ *
+ * They stay on the artifact and stay in the report as columns. What is scored is the outcome
+ * against ground truth; effort and cost are diagnostics beside it, never inputs to it.
+ */
+const OUTCOME_FIELDS = new Set(["webSearchUsed"]);
+
+/** The configured half of `config` — everything the operator chose before the run started. */
+function settingsOf(config: Record<string, unknown> | undefined): Record<string, unknown> | null {
+  if (config === undefined) return null;
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !OUTCOME_FIELDS.has(key)));
+}
+
 function hash6(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 6);
 }
@@ -146,7 +166,9 @@ export function conditionOf(run: InvestigationRun): Condition {
       sortKeys({
         provider: run.model.provider,
         model: run.model.id,
-        config: config ?? null,
+        // Settings only. `webSearchUsed` and anything else describing what happened is excluded,
+        // or an outcome would decide which runs are comparable (see OUTCOME_FIELDS).
+        config: settingsOf(config as Record<string, unknown> | undefined),
         limits: run.limits,
         submission: fields.submission,
         provenance: provenanceKey(run),

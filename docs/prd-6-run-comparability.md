@@ -81,7 +81,7 @@ after       one table per condition, one cell per (condition, scenario), every d
             every run ever recorded is scored; the scored set is fingerprinted
             bands partition, so the blind constant tp=65 scores 9/14 band (was 12/14)
               and -0.075 skill, printed as the baseline row under every report
-            steered runs are scored and paired against the parent they were derived from
+            steered runs are scored as their own condition, on the outcome alone
             "no measurable difference" and "insufficient data" are results the tool can state
 ```
 
@@ -307,6 +307,14 @@ orphaned set; §6.5's exit-1 makes it loud the first time it fires.
 
 The key is computed in `scripts/` by hashing what a run recorded. It is not a field on the artifact
 and not an enum on a contract.
+
+**It hashes settings, never outcomes.** A condition answers *how was this run set up*, so anything
+describing what the agent then did is excluded — `config.webSearchUsed` is recorded, printed, and
+never hashed. Letting it in fragmented cells for a reason that is a result: two runs of the same
+model under the same limits landed in different conditions because the agent happened to search in
+one of them, which is exactly the difference a cell exists to average over. What is scored is the
+outcome against ground truth. Effort, cost and tool counts are diagnostics printed beside it and are
+never inputs to it.
 
 A declared taxonomy — `augmentation: ["analyst-context", "case-memory"]`, or a `conditionId` written
 at run time — costs a contract edit per axis, can be computed wrongly at write time, and can never
@@ -659,34 +667,28 @@ value satisfying two of them (**D3**).
 
 ### 6.11 Analyst context as an axis
 
-Deleting PRD-5's §4.5 skip (**D10**) is what lets steered runs into the report; it does not by itself
-make them *comparable*, because a steered run answers a different question from its parent.
+Deleting PRD-5's §4.5 skip (**D10**) is what lets steered runs into the report.
 
 - **The premise is part of the condition**, via the hashed `config` (§5.1) and rendered `ctx=<hash6>`
   or `baseline` (§6.1). Two different premises are two conditions. This is why the key hashes the
-  whole of `config` rather than named members: `analystContext` needed no schema work and neither
-  will the next parameter.
-- **`derivedFrom` gives a paired report.** For every derived run, print the parent cell and the child
-  cell on the same scenario side by side — the draws, both scores, and the delta against the parent
-  condition's noise floor (§6.4). A pair is a *matched* comparison by construction, which is worth
-  more per run than anything else in this document: it holds every variable still except the one the
-  analyst changed.
-- **A pair that changed more than the premise is flagged, not hidden.** The single `derivedFrom` pair
-  on disk is a steered re-run of a **luna** parent under `claude-haiku-4-5` — two variables at once,
-  measuring neither. The report names the field-level diff and marks the pair `unmatched`. This
-  settles §12 Q6 in the direction of the report noticing rather than PRD-5 constraining: the console
-  should stay free to re-run anything, and the benchmark should be the thing that says what the
-  re-run can support.
+  configured half of `config` rather than named members: `analystContext` needed no schema work and
+  neither will the next parameter.
 - **Steering does not enter the baseline.** A `baseline` condition and a `ctx=…` condition are
   distinct ids, so the blind-constant row, the skill figures and the sign test are all per condition
-  and never blend the two. That is the property PRD-5's §4.5 skip was defending, obtained from the key
+  and never blend the two. That is the property the §4.5 skip was defending, obtained from the key
   rather than from an exclusion.
 - **A steered condition is normally one scenario wide, and that is correct.** An analyst premise is
   written about a specific alert, so hashing the raw text means most steered conditions cover exactly
-  one scenario. A condition table cannot aggregate that, and it should not try: the steering result
-  is the **paired delta against the parent**, summed over pairs, and the report says so rather than
-  printing a one-cell condition with a skill figure that looks like a model score. A premise reused
-  verbatim across scenarios *does* group, and then it is a condition like any other.
+  one scenario. Read the cell, not a condition-level skill figure that would look like a model score
+  computed from one draw.
+
+**`derivedFrom` is recorded and deliberately not scored.** PRD-5 records which run a re-run came
+from, and that stays — knowing a run was sequential is worth keeping. The benchmark does not read it
+and does not pair parent against child. A parent-versus-child report was built and then removed, on
+the judgement that the benchmark scores **outcomes against ground truth** and nothing else for now:
+a derived pair is provenance, and it belongs to whatever tool later wants to trace a sequence. The
+measurement it would have offered — a matched, single-variable comparison — is still reachable the
+ordinary way, by running a premise as its own condition at n≥3 beside its baseline.
 
 ### 6.12 Baseline readiness
 
@@ -751,9 +753,9 @@ land in step 1 against the corpus as it stands.
    directories is counted once (§6.9).
 10. **Destroying a measurement requires confirmation.** A test asserts `queue:reset --purge` without
     `--yes` refuses, and that its dry-run names the draws it would remove (§6.9).
-11. **A steered run is scored and paired.** A test asserts a run carrying `analystContext` produces
-    draws, lands in a condition distinct from its parent's, and that a `derivedFrom` pair differing
-    by more than the premise is marked `unmatched` (§6.11).
+11. **A steered run is scored, and an outcome never fragments the key.** A test asserts a run
+    carrying `analystContext` produces draws and lands in its own condition; another asserts two runs
+    differing only in `webSearchUsed` resolve to one condition (§5.1, §6.11).
 
 ## 9. Explicitly Out of Scope
 
@@ -762,6 +764,9 @@ land in step 1 against the corpus as it stands.
   disk is a distinct string, so there is no invariant to match. The slope is the real reason: once the
   artifact says *which tables* were touched, the next patch scores whether they were the right ones.
   `toolCalls.query_security_data` answers the memory question without crossing it.
+- **Scoring `derivedFrom`.** The field is recorded and the benchmark does not read it (§6.11). A
+  parent-versus-child pairing is a provenance view rather than an outcome measurement; build it when
+  something asks for it.
 - **Corpus rebalancing, difficulty weights, `cluster`/`role` markers.** Roadmap §7 (§4.5). The band
   partition moved *into* this PRD (§4.4); corpus authoring did not, and that boundary is what keeps
   PRD-4 §9's rule intact.
@@ -822,8 +827,9 @@ land in step 1 against the corpus as it stands.
     across how many scenarios it would destroy.
 22. A run carrying `analystContext` is **scored**, lands in a condition distinct from the baseline
     one, and renders `ctx=<hash6>` — two different premises never share a cell.
-23. A `derivedFrom` run prints paired against its parent on the shared scenario, with both scores and
-    a delta against the noise floor; a pair differing by more than the premise is marked `unmatched`.
+23. Two runs configured identically share a condition whether or not the agent happened to use the
+    web: the key hashes settings, never outcomes (§5.1). A run carrying `derivedFrom` is scored like
+    any other and nothing pairs on it — the field is recorded, not benchmarked (§6.11).
 24. Every cell prints its `n`, and a condition with no cell at `n>=3` says so in words.
 25. `bun run evaluate --gaps` prints, per condition, the scenarios below three draws and the total
     number of investigations that would close the gap; `--gaps --json` emits the same machine-readably.
@@ -841,7 +847,7 @@ Step 0 is a hard gate. Steps 1–4 each land green on their own and each is usef
 | **2** | **Prompt and runtime identity.** `provenance.ts`, contract items 1 and 3, `INSTRUCTIONS_LABEL` | D11, D12, D17 | Unlocks the prompt axis — and therefore steering and memory. Coordinate the `execute-run.ts` touch with PRD-5 |
 | **3** | **Cost and effort.** `onMetrics`, the tool tally, contract items 2 and 4 | D13, D14 | Needs ADR 008. Independent of 1, 2 and 4 |
 | **4** | **Corpus identity.** `_CorpusManifest`, the `_`-prefix exclusion, `GET /corpus`, `getCorpus()`, the anchor wiring | D15 | Widest blast radius, and the only step that touches Mock Sentinel. Worth doing before a new baseline is accumulated, not before step 1 |
-| **5** | **Re-baseline.** Not code, and the actual deliverable (§1). Two matched conditions × 14 scenarios × n=3 = **84** investigations, plus **12** steered — 4 scenarios × 1 premise × n=3, paired against the baseline draws already bought — for a first reading on the analyst-context axis. 96 investigations, ~90–120 min, ~$6–18 | D22 | Unavoidable: 32 cells under an honest key, **zero at n≥3**, and **zero** steered draws of any kind. Do it after steps 2 and 3 so the runs carry a prompt hash and a cost, and drive it from `evaluate --gaps --json` (§6.12) so the countdown is the tool's, not a spreadsheet's |
+| **5** | **Re-baseline.** Not code, and the actual deliverable (§1). Two matched conditions × 14 scenarios × n=3 = **84** investigations, plus **12** steered — 4 scenarios × 1 premise × n=3, read against the baseline draws for those same scenarios — for a first reading on the analyst-context axis. 96 investigations, ~90–120 min, ~$6–18 | D22 | Unavoidable: 32 cells under an honest key, **zero at n≥3**, and **zero** steered draws of any kind. Do it after steps 2 and 3 so the runs carry a prompt hash and a cost, and drive it from `evaluate --gaps --json` (§6.12) so the countdown is the tool's, not a spreadsheet's |
 
 Step 6, an experiment manifest and runner, is deliberately deferred to *only if driving step 5 by
 hand hurts*. It adds a committed root, which AGENTS.md §5 governs, and 84 runs can be a shell loop
@@ -878,11 +884,12 @@ once.
    §4.5 skip exists and step 1 deletes it rather than pre-empting it, and `config.analystContext`
    and `derivedFrom` are already on disk for the derived key to pick up. Nothing here is blocked.
    The one file both touch is `execute-run.ts`, for the `thinkingLevel` fix in step 2.
-6. **The cross-model derived run — now settled into §6.11.** `01a01ea6-a5f6` is a steered re-run of a
-   **luna** parent under `claude-haiku-4-5`. A `derivedFrom` pair that changes two variables at once
-   measures neither. The report flags a derived pair whose condition ids differ by more than
-   `analystContext` and marks it `unmatched`, rather than PRD-5 constraining what a re-run may
-   change — the console stays free, and the benchmark is the thing that notices.
+6. **The cross-model derived run — moot for this PRD.** `01a01ea6-a5f6` is a steered re-run of a
+   **luna** parent under `claude-haiku-4-5`, and a `derivedFrom` pair that changes two variables at
+   once measures neither. That was an argument for the report flagging it, until the benchmark
+   stopped reading `derivedFrom` at all (§6.11). It resurfaces the day a pairing view is built: the
+   console should stay free to re-run anything, and the tool reading the pair should be the thing
+   that notices.
 7. **`runs/*.json` in version control — settled: yes, and it is §6.9's design rather than an open
    question.** 47 artifacts total 200 KB, none over 5.5 KB, and step 5 adds roughly another 400 KB;
    `runs/traces/` (126 MB) stays ignored, which is what makes the split cheap. A benchmark that
