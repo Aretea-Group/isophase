@@ -9,6 +9,7 @@ import {
   severityTag,
   severityTone,
   shortImpact,
+  shortModel,
   truncate,
   type Line,
   type Span,
@@ -40,6 +41,17 @@ const MARKER_WIDTH = 2;
  */
 const OUTCOME_WIDTH = 9;
 const IMPACT_WIDTH = 11;
+/**
+ * The model column, which now flexes with the sidebar.
+ *
+ * The sidebar is elastic since the geometry moved to `view/layout.ts`, so a wide terminal can
+ * afford to print `sonnet-5` where a 120-column one still has room for only six characters. Six was
+ * hard-coded, and six is not enough to tell `claude-opus-5` from `claude-sonnet-5`.
+ */
+const MODEL_MIN_WIDTH = 6;
+const MODEL_MAX_WIDTH = 10;
+/** The title stops giving up columns to the model at this point; a name beats a model id. */
+const TITLE_MIN_WIDTH = 18;
 
 function marker(selected: boolean): Span {
   return {
@@ -148,7 +160,9 @@ export function runRows(
     const fixed = MARKER_WIDTH + 2 + severity.length + 1 + 1 + OUTCOME_WIDTH;
     // The model is the first thing to go on a narrow pane: it tells two runs of the same alert
     // apart, which matters less than being able to read either of their titles.
-    const model = width - fixed - 7 >= 12 ? pad(row.model.replace(/^gpt-[\d.]+-/, ""), 6) : "";
+    const spare = width - fixed - TITLE_MIN_WIDTH - 1;
+    const model =
+      spare < MODEL_MIN_WIDTH ? "" : shortModel(row.model, Math.min(MODEL_MAX_WIDTH, spare));
     const room = Math.max(1, width - fixed - (model === "" ? 0 : model.length + 1));
     const isSelected = at === selected;
 

@@ -26,17 +26,32 @@ import {
   type AlertFacts,
 } from "../view/alert.ts";
 import { duplicateSpend, queueRows } from "../view/coverage.ts";
-import { bandLabel, linesText, truncate, verdictBand, wrap, type Line } from "../view/format.ts";
-import { isPending, resultsWithPending } from "../view/run-list.ts";
-import { toTranscript, transcriptLines, type TranscriptBlock } from "../view/transcript.ts";
 import {
-  pendingLine,
-  queueLines,
-  resultRows,
-  runRows,
-  scrollOffset,
-  windowed,
-} from "./panes/lists.ts";
+  bandLabel,
+  bandTone,
+  classificationForBand,
+  classificationLabel,
+  definitionRow,
+  linesText,
+  prose,
+  plural,
+  truncate,
+  verdictBand,
+  wrap,
+  type Line,
+} from "../view/format.ts";
+import {
+  CASE_MAX_HEIGHT,
+  MIN_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  layout,
+  minHeightFor,
+  measure,
+  tooSmall,
+} from "../view/layout.ts";
+import { RUN_STATE_WORD, classifyRun, isPending, resultsWithPending } from "../view/run-list.ts";
+import { toTranscript, transcriptLines, type TranscriptBlock } from "../view/transcript.ts";
+import { pendingLine, queueLines, runRows, scrollOffset, windowed } from "./panes/lists.ts";
 import {
   activityBody,
   callArgsText,
@@ -66,17 +81,16 @@ const TAB_LABEL: Record<Tab, string> = {
   activity: "activity",
   transcript: "transcript",
 };
-const SIDEBAR_WIDTH = 46;
 /**
- * Sidebar geometry.
+ * Sidebar geometry lives in `view/layout.ts`.
  *
- * The case pane is a **fixed** height. Sizing it to its contents looked tidier and was wrong: every
- * alert has a different amount to say, so moving down the run list resized pane [1], which resized
- * pane [2] underneath it, and the list appeared to jump under the analyst's own keypress. A pane
- * that changes size while you are navigating past it is worse than one with a blank row in it.
+ * It is arithmetic over two numbers, it was the source of both ways this screen broke at the edges
+ * of the size envelope, and it is now a pure function with tests rather than eleven expressions
+ * inside `render`. The rule it encodes has not changed: every pane is sized from the *terminal*,
+ * never from its contents. Sizing the case pane to its alert looked tidier and was wrong — moving
+ * down the run list resized the pane below it, and the list appeared to jump under the analyst's
+ * own keypress.
  */
-const CASE_MAX_HEIGHT = 20;
-const CASE_MIN_HEIGHT = 8;
 /** The four classifications, in the order the overlay cycles them (PRD-5 §10). */
 const CLASSIFICATIONS = [
   "TruePositive",
@@ -159,6 +173,14 @@ function confirmVerb(kind: ComposeKind): string {
 }
 
 /**
+ * Where the compose form's values start: the cursor column plus the widest label.
+ *
+ * `fieldMark` is four characters and `comment  ` is nine, so anything hanging under a value — the
+ * comment field's description — lines up here rather than at the pane's own margin.
+ */
+const COMMENT_GUTTER = 13;
+
+/**
  * Rows of the model list shown at once.
  *
  * The list is windowed rather than complete because the overlay floats over `[4]` and must not
@@ -177,13 +199,6 @@ function composeTraversalKey(
   return key.shift ? "shift+tab" : "tab";
 }
 
-const QUEUE_MAX_HEIGHT = 18;
-const QUEUE_MIN_HEIGHT = 6;
-const RUNS_MIN_HEIGHT = 6;
-/** Below this the two columns collapse; below `MIN_WIDTH` nothing is drawn (PRD-3 §9.6). */
-const NARROW_WIDTH = 100;
-const MIN_WIDTH = 60;
-
 /**
  * Why the transcript tabs have nothing to show.
  *
@@ -191,78 +206,142 @@ const MIN_WIDTH = 60;
  * traced run that has only just started has no transcript *yet*, and reporting that as "tracing
  * was off" describes a configuration the run does not have (PRD-3 §11).
  */
-function noTranscriptLines(waiting: boolean): string[] {
+function noTranscriptLines(waiting: boolean, width: number): Line[] {
   if (waiting) {
     return [
       "",
-      "  Waiting for this investigation's transcript.",
+      [{ text: "  Waiting for this investigation's transcript.", tone: "heading", bold: true }],
       "",
-      "  Tracing is on for this run, so the file appears as soon as the agent",
-      "  writes its first event; this pane picks it up within a second and",
-      "  follows it from there.",
+      ...prose(
+        "Tracing is on for this run, so the file appears as soon as the agent writes its first " +
+          "event; this pane picks it up within a second and follows it from there.",
+        width,
+      ),
     ];
   }
   return [
     "",
-    "  No transcript for this investigation.",
+    [{ text: "  No transcript for this investigation.", tone: "heading", bold: true }],
     "",
-    "  Tracing was off when this run happened (INVESTIGATOR_TRACE=false),",
-    "  so its tool calls, reasoning, KQL and token usage were never written down.",
+    ...prose(
+      "Tracing was off when this run happened (INVESTIGATOR_TRACE=false), so its tool calls, " +
+        "reasoning, KQL and token usage were never written down.",
+      width,
+    ),
     "",
-    "  Future runs record them with:",
+    [{ text: "  Future runs record them with:", tone: "label" }],
     "    INVESTIGATOR_TRACE=true bun run investigate",
   ];
 }
 
-function helpLines(): string[] {
-  return [
-    "",
-    "  1 2 3 4     focus Alerts, Runs, Case, Main",
-    "  j k ↓ ↑     move within the focused panel",
-    "  g G         first / last",
-    "  ⏎           expand the selected call, or load a transcript block in full",
-    "  ⎋           back, or clear the filter",
-    "  [ ]         previous / next tab — Verdict · Agent stream · Activity · Transcript",
-    "  /           filter the focused list",
-    "  y           copy the focused pane — on a call, the exact KQL",
-    "  s           queue: only alerts with ground truth",
-    "  a           queue: also show alerts that already have a run",
-    "",
-    "  In [1] Alerts, the left glyph is what has been tried against it:",
-    "    (blank)  nothing yet          ●  a run has it now",
-    "    ✓        investigated         ✗  every run against it failed",
-    "    ✓·       only ever run with analyst context supplied",
-    "  ◆ marks an alert with ground truth behind it — the id is deliberately not shown,",
-    "  because most scenario names give the verdict away.",
-    "  Counts do not fold duplicates: 107 of the 151 alerts are two vendor views of 54",
-    "  events, so the outstanding-work number overstates by roughly fifty.",
-    "",
-    "  n           queue: start an investigation on the selection",
-    "  r           runs: re-run this alert with context and a chosen model",
-    "  f           runs: record your feedback on this investigation",
-    "  x           runs: cancel a running investigation",
-    "  c           configuration and cost",
-    "  F           Agent stream: toggle follow",
-    "  R           re-read from disk now",
-    "  ?           this help",
-    "  q  Ctrl-C   quit",
-    "",
-    "  In the n / r / f overlay:",
-    "    ↑ ↓ ⇥       move between fields, and through the model list",
-    "    type        fill the focused field; on the model row it filters the list",
-    "    ⏎           accept the field and move on; on Cancel/Confirm it acts",
-    "    ⎋           close the overlay in one press, from anywhere in it",
-    "  Confirm always starts on Cancel. Nothing is spent by a key you were already holding.",
-    "",
-    "  IMPACT is the agent's own field, submitted alongside TP/FP:",
-    "    none                  attempted, and achieved nothing",
-    "    contained             succeeded, then was stopped or reverted",
-    "    confirmed-compromise  achieved something that matters",
-    "    unknown               the available telemetry cannot say",
-    "  A brute force where every attempt failed is a true positive, impact 'none'.",
-    "",
-    "  The investigator is the sole writer of runs/. Your feedback goes to feedback/.",
-  ];
+/**
+ * The help screen, as the definition list it always was.
+ *
+ * Every line here used to be a hand-padded string sized to a guess, so the screen needed about 136
+ * columns to render without soft-wrapping under its own border — and the one place an analyst
+ * reads carefully was the worst offender on the whole dashboard. The keys are data now, the prose
+ * is wrapped to the pane, and the sections carry headings in the same voice the verdict pane uses.
+ */
+const HELP_SECTIONS: { heading: string; keys: [string, string][]; notes?: string[] }[] = [
+  {
+    heading: "MOVING AROUND",
+    keys: [
+      ["1 2 3 4", "focus Alerts, Runs, Case, Main"],
+      ["j k ↓ ↑", "move within the focused panel"],
+      ["g G", "first / last"],
+      ["[ ]", "previous / next tab — Verdict · Agent stream · Activity · Transcript"],
+      ["⏎", "expand the selected call, or load a transcript block in full"],
+      ["⎋", "back, or clear the filter"],
+      ["/", "filter the focused list — see WHILE FILTERING below"],
+      ["y", "copy the focused pane — on a call, the exact KQL"],
+    ],
+  },
+  {
+    heading: "THE QUEUE",
+    keys: [
+      ["n", "start an investigation on the selected alert"],
+      ["s", "show only alerts with ground truth behind them"],
+      ["a", "also show alerts that already have a run"],
+    ],
+    notes: [
+      "The left glyph is what has been tried against an alert: blank is nothing yet, ● is a run " +
+        "that has it now, ✓ is investigated, ✓· is only ever run with analyst context supplied, " +
+        "and ✗ means every run against it failed.",
+      "◆ marks an alert with ground truth behind it. The scenario id is deliberately not shown, " +
+        "because most scenario names give the verdict away.",
+      "Counts do not fold duplicates: 107 of the 151 alerts are two vendor views of 54 events, so " +
+        "the outstanding-work number overstates by roughly fifty.",
+    ],
+  },
+  {
+    heading: "ACTING ON A RUN",
+    keys: [
+      ["r", "re-run this alert with context and a chosen model"],
+      ["f", "record your feedback on this investigation"],
+      ["x", "cancel a running investigation"],
+      ["F", "Agent stream: follow the tail, or stop following"],
+    ],
+  },
+  {
+    heading: "THE CONSOLE",
+    keys: [
+      ["c", "configuration and cost"],
+      ["R", "re-read from disk now"],
+      ["?", "this help"],
+      ["q  Ctrl-C", "quit"],
+    ],
+    notes: ["The investigator is the sole writer of runs/. Your feedback goes to feedback/."],
+  },
+  {
+    heading: "WHILE FILTERING",
+    keys: [
+      ["type", "narrow the list; the count in the pane title is matches / total"],
+      ["↑ ↓", "move through the matches, without closing the input"],
+      ["⏎", "keep the filter and go back to the normal keys"],
+      ["⎋", "clear the filter"],
+    ],
+    notes: [
+      "j and k are printable, so they narrow the query rather than moving — use the arrows. The " +
+        "selection stays on whatever run it was on for as long as that run still matches, and " +
+        "drops to the first match when it stops.",
+    ],
+  },
+  {
+    heading: "IN THE n / r / f OVERLAY",
+    keys: [
+      ["↑ ↓ ⇥", "move between fields, and through the model list"],
+      ["type", "fill the focused field; on the model row it filters the list"],
+      ["⏎", "accept the field and move on; on Cancel or Confirm it acts"],
+      ["⎋", "close the overlay in one press, from anywhere in it"],
+    ],
+    notes: ["Confirm always starts on Cancel. Nothing is spent by a key you were already holding."],
+  },
+  {
+    heading: "IMPACT",
+    keys: [
+      ["none", "attempted, and achieved nothing"],
+      ["contained", "succeeded, then was stopped or reverted"],
+      ["confirmed-compromise", "achieved something that matters"],
+      ["unknown", "the available telemetry cannot say"],
+    ],
+    notes: [
+      "The agent's own field, submitted alongside TP/FP. A brute force where every attempt failed " +
+        "is a true positive with impact 'none'.",
+    ],
+  },
+];
+
+function helpLines(width: number): Line[] {
+  const lines: Line[] = [];
+  for (const section of HELP_SECTIONS) {
+    lines.push("", [{ text: `  ${section.heading}`, tone: "heading", bold: true }]);
+    const termWidth = Math.max(...section.keys.map(([term]) => term.length)) + 2;
+    for (const [term, detail] of section.keys) {
+      lines.push(...definitionRow(term, detail, width, termWidth));
+    }
+    for (const note of section.notes ?? []) lines.push("", ...prose(note, width, "dim"));
+  }
+  return lines;
 }
 
 /**
@@ -289,8 +368,41 @@ function runHaystack(run: RunArtifact): string {
     .toLowerCase();
 }
 
-const KEY_BAR =
-  " 1-4 pane   j/k move   n start   r re-run   f feedback   x cancel   / filter   ? help   q quit";
+/**
+ * The key bar, fitted to the terminal rather than clipped by it.
+ *
+ * It was one fixed string 95 characters long, so anything narrower cut it from the right — and the
+ * two hints on the right are `? help` and `q quit`. The bar was dropping the way out and the way to
+ * the full key list exactly when the screen was too small to make sense of, which is when a reader
+ * needs them most.
+ *
+ * Hints go by how recoverable they are, and then by how widely they apply. `?` and `q` cannot be
+ * reached from anywhere else and never leave. `c` follows them: it works from every pane, it is
+ * where spend is reported, and it was the one key on that footing missing from the bar — while
+ * `n`, `r`, `f` and `x` were all listed despite each working in only one pane. Those four go first.
+ */
+const KEY_HINTS: { text: string; rank: number }[] = [
+  { text: "1-4 pane", rank: 3 },
+  { text: "j/k move", rank: 3 },
+  { text: "n start", rank: 5 },
+  { text: "r re-run", rank: 6 },
+  { text: "f feedback", rank: 7 },
+  { text: "x cancel", rank: 7 },
+  { text: "/ filter", rank: 4 },
+  { text: "c config", rank: 2 },
+  { text: "? help", rank: 1 },
+  { text: "q quit", rank: 1 },
+];
+
+function keyBarText(width: number): string {
+  for (let rank = 7; rank >= 1; rank -= 1) {
+    const text = ` ${KEY_HINTS.filter((hint) => hint.rank <= rank)
+      .map((hint) => hint.text)
+      .join("   ")}`;
+    if (text.length <= width) return text;
+  }
+  return truncate(" ? help   q quit", width);
+}
 
 export interface AppOptions {
   runsDir: string;
@@ -519,19 +631,14 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
   const header = new TextRenderable(renderer, { id: "header", height: 1, fg: COLOR.label });
   const content = new BoxRenderable(renderer, { id: "content", flexDirection: "row", flexGrow: 1 });
-  const keyBar = new TextRenderable(renderer, {
-    id: "keybar",
-    height: 1,
-    fg: COLOR.dim,
-    content: KEY_BAR,
-  });
+  const keyBar = new TextRenderable(renderer, { id: "keybar", height: 1, fg: COLOR.dim });
   screen.add(header);
   screen.add(content);
   screen.add(keyBar);
 
   const sidebar = new BoxRenderable(renderer, {
     id: "sidebar",
-    width: SIDEBAR_WIDTH,
+    width: SIDEBAR_MIN_WIDTH,
     flexDirection: "column",
   });
   const caseBox = new BoxRenderable(renderer, {
@@ -553,7 +660,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     id: "runs",
     flexGrow: 1,
     flexShrink: 0,
-    minHeight: RUNS_MIN_HEIGHT,
     border: true,
     borderStyle: "rounded",
     title: "[2] Runs",
@@ -657,11 +763,18 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     return resultsWithPending(visibleRuns()[state.runIndex]);
   }
 
+  /**
+   * The selected run's alerts. Never filtered.
+   *
+   * This used to narrow on `filterTarget === 1`, from before PRD-5 §7 made pane [1] the alert
+   * *queue* rather than a list of the selected run's alerts. Since then the two have shared one
+   * needle while being different lists, and the result list is not drawn anywhere — it only feeds
+   * `currentResult`, which is the alert pane [4] describes. So filtering the queue for something a
+   * run's own alert did not match emptied this list, and [4] went blank for a run that was still
+   * selected and still perfectly readable, with nothing on screen saying why.
+   */
   function visibleResults(): RunResult[] {
-    const results = allResults();
-    if (state.filter === "" || state.filterTarget !== 1) return results;
-    const needle = state.filter.toLowerCase();
-    return results.filter((result) => resultHaystack(result).includes(needle));
+    return allResults();
   }
 
   /**
@@ -715,6 +828,39 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   const currentResult = (): RunResult | undefined => visibleResults()[state.resultIndex];
 
   /** Keep both selections inside their filtered lists after the filter or the data changes. */
+  /**
+   * Change the filter with the selection pinned to whatever it was pointing at.
+   *
+   * Every selection index in this console addresses a *filtered* list, so any change to the filter
+   * changes what the index means. Left alone, the cursor stayed at row N of a list that was now a
+   * different list: typing slid the selection from run to run a character at a time, and clearing
+   * the filter with `⎋` dropped it onto whatever happened to sit at that offset in the full list.
+   *
+   * Pinning it keeps the selected run selected for as long as it still matches, drops to the first
+   * match when it stops matching — the only other place a reader expects the cursor to be — and
+   * reads a transcript only when the selection genuinely moved.
+   */
+  function withAnchoredSelection(change: () => void): void {
+    const run = currentRun()?.runId;
+    const alert = currentQueueAlert()?.alertId;
+
+    change();
+
+    if (state.filterTarget === 2) {
+      const at = visibleRuns().findIndex((candidate) => candidate.runId === run);
+      state.runIndex = at === -1 ? 0 : at;
+    } else {
+      const at = visibleQueue().findIndex((row) => row.alertId === alert);
+      state.queueIndex = at === -1 ? 0 : at;
+    }
+    clampSelection();
+
+    if (currentRun()?.runId !== run) {
+      state.resultIndex = 0;
+      void loadTrace();
+    }
+  }
+
   function clampSelection(): void {
     state.runIndex = Math.min(state.runIndex, Math.max(0, visibleRuns().length - 1));
     state.resultIndex = Math.min(state.resultIndex, Math.max(0, visibleResults().length - 1));
@@ -808,31 +954,79 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     }
   }
 
+  /** Rows a pane has at the current terminal size; zero means it is not drawn (see `layout`). */
+  function paneRows(pane: Focus): number {
+    const geometry = layout(renderer.width, renderer.terminalHeight);
+    if (pane === 1) return geometry.alertsHeight;
+    if (pane === 2) return geometry.runsHeight;
+    if (pane === 3) return geometry.caseHeight;
+    return 1;
+  }
+
   // ---- rendering ---------------------------------------------------------------------------
   function render(): void {
     if (closed) return;
     const width = renderer.width;
-    const narrow = width < NARROW_WIDTH;
+    const height = renderer.terminalHeight;
 
-    if (width < MIN_WIDTH) {
+    /**
+     * Too small to draw, in one of two directions.
+     *
+     * There was only ever a width guard, so a short terminal did not degrade — the sidebar
+     * overflowed and drew its bottom border across the key bar. Both directions now say the same
+     * thing the same way, and neither wears a `[4]` title: this is not pane four, and labelling it
+     * so invited the reader to press `1` to leave it.
+     */
+    const small = tooSmall(width, height);
+    if (small !== undefined) {
       header.content = "";
       keyBar.content = "";
       sidebar.visible = false;
-      mainBox.visible = false;
       caseText.content = "";
-      mainText.content = `\n  Terminal too narrow — ${width} columns.\n  The console needs at least ${MIN_WIDTH}.\n`;
       mainBox.visible = true;
+      mainBox.title = "";
+      tabBar.visible = false;
+      tabBar.height = 0;
+      composeBox.visible = false;
+      mainText.content = styled(
+        small === "narrow"
+          ? [
+              "",
+              [{ text: `  Terminal too narrow — ${width} columns.`, tone: "heading", bold: true }],
+              [{ text: `  The console needs at least ${MIN_WIDTH}.`, tone: "dim" }],
+            ]
+          : [
+              "",
+              [{ text: `  Terminal too short — ${height} rows.`, tone: "heading", bold: true }],
+              [{ text: `  The console needs at least ${minHeightFor(width)}.`, tone: "dim" }],
+            ],
+      );
       return;
     }
+
+    const geometry = layout(width, height);
+    const { narrow, sidebarWidth } = geometry;
 
     sidebar.visible = true;
     mainBox.visible = true;
     content.flexDirection = narrow ? "column" : "row";
-    sidebar.width = narrow ? "100%" : SIDEBAR_WIDTH;
+    sidebar.width = narrow ? "100%" : sidebarWidth;
+    /**
+     * Narrow mode has to state the sidebar's height or it takes every row.
+     *
+     * Stacked, the sidebar and pane [4] are siblings in one column; the sidebar's children summed
+     * to the whole budget, and `mainBox`, on `flexGrow`, was allotted nothing. Between 60 and 99
+     * columns the console therefore had no reading surface at all — no verdict, no transcript, no
+     * stream — and pressing `4` did not bring one back, because there were no rows to give it.
+     */
+    sidebar.height = narrow ? geometry.sidebarHeight : "100%";
+    sidebar.flexGrow = narrow ? 0 : 1;
     // Narrow drops [3] Case, not [1]. The case facts are recoverable at any width by focusing [4],
     // which renders the same thing through `alertLines`; the queue is not recoverable at all, and
     // hiding it would also remove the only route to `n` (PRD-5 §12.3).
-    caseBox.visible = !narrow;
+    caseBox.visible = geometry.caseHeight > 0;
+    alertsBox.visible = geometry.alertsHeight > 0;
+    runsBox.visible = geometry.runsHeight > 0;
 
     // What is on screen is a queue of investigations, not a description of this machine. Provider,
     // model, tracing and spend all moved to the `c` screen, which already carried them (PRD-3 §8.5).
@@ -847,7 +1041,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
           text: state.unreadable.length === 0 ? "" : ` · ${state.unreadable.length} unreadable`,
           tone: "inconclusive",
         },
-        { text: control === undefined ? " · read-only" : " · can start runs", tone: "dim" },
+        { text: control === undefined ? " · read-only" : " · active", tone: "dim" },
       ],
     ]);
 
@@ -861,38 +1055,20 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     const caseLines: Line[] =
       caseFacts === undefined
         ? [[{ text: " no alert recorded", tone: "dim" }]]
-        : alertLines(caseFacts, SIDEBAR_WIDTH - 3);
+        : alertLines(caseFacts, sidebarWidth - 3);
     caseText.content = styled(caseLines);
     caseBox.title = truncate(
       `[3] Case${caseFacts === undefined ? "" : ` — ${caseFacts.alertId.slice(0, 8)}`}`,
-      SIDEBAR_WIDTH - 4,
+      sidebarWidth - 4,
     );
 
-    const listWidth = (narrow ? width : SIDEBAR_WIDTH) - 2;
+    const listWidth = (narrow ? width : sidebarWidth) - 2;
     const runs = visibleRuns();
 
     // Heights are assigned rather than negotiated, so the scroll maths below is exact and the
-    // sidebar cannot reflow while someone is moving through it.
-    const sidebarRows = Math.max(0, renderer.terminalHeight - 2);
-    // A share of the terminal, not of the alert. This changes only when the window is resized, so
-    // the run list underneath stays put while an analyst moves through it.
-    const caseHeight = Math.min(
-      CASE_MAX_HEIGHT,
-      Math.max(CASE_MIN_HEIGHT, Math.floor(sidebarRows * 0.3)),
-    );
-    // A fixed share, not content-sized. The queue is 150 rows where the old pane was one, and a
-    // pane that resizes while you navigate past it moves the list under your own keypress
-    // (PRD-5 §12.2).
-    const alertsHeight = Math.min(
-      QUEUE_MAX_HEIGHT,
-      Math.max(QUEUE_MIN_HEIGHT, Math.floor(sidebarRows * (narrow ? 0.5 : 0.35))),
-    );
-    // The runs pane takes what is left and never less than its floor — it is the pane that must
-    // keep working when the terminal is short, since it is how a run is reached at all.
-    const runsHeight = Math.max(
-      RUNS_MIN_HEIGHT,
-      sidebarRows - (narrow ? 0 : caseHeight) - alertsHeight,
-    );
+    // sidebar cannot reflow while someone is moving through it. `layout` guarantees the three
+    // never sum past the rows there are, which is the guarantee the old arithmetic lacked.
+    const { caseHeight, alertsHeight, runsHeight } = geometry;
     caseBox.height = caseHeight;
     alertsBox.height = alertsHeight;
     runsBox.height = runsHeight;
@@ -905,15 +1081,13 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     const pending = pendingLine(currentRun());
     runsBox.title = truncate(
       `[2] Runs${filterSuffix(2, state.runs.length, runs.length)}${pending === undefined ? "" : ` —${pending.trimEnd()}`}${state.unreadable.length > 0 ? ` (${state.unreadable.length} unreadable)` : ""}`,
-      SIDEBAR_WIDTH - 4,
+      sidebarWidth - 4,
     );
 
-    // A one-row list wastes the pane, and pane [1] now carries the alert's facts in every case —
-    // so the list only earns its place when there is more than one alert, or when a sweep is still
-    // running and the pending count is the only progress indicator (PRD-3 §8.1, §11).
-    // Always present. Hiding it for single-alert runs made `1-4` a lie on almost every run in the
-    // corpus and left ⏎ walking to a pane that was not there.
-    alertsBox.visible = true;
+    // Present at every size the terminal can hold it. Hiding it for single-alert runs made `1-4` a
+    // lie on almost every run in the corpus and left ⏎ walking to a pane that was not there; the
+    // only thing that removes it now is a terminal with no rows to give it, which `layout` decides
+    // and `focusablePanes` reports back to anyone who presses `1`.
     const rows = visibleQueue();
     /**
      * The title says what the pane holds, which is every alert — not only the un-run ones.
@@ -930,7 +1104,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       .join(" ");
     alertsBox.title = truncate(
       `[1] Alerts ${scope} (${rows.length}/${state.alerts.length})${filterSuffix(1, state.alerts.length, rows.length)}`,
-      SIDEBAR_WIDTH - 4,
+      sidebarWidth - 4,
     );
     const queueRowsAll = queueLines(rows, state.queueIndex, listWidth);
     state.queueScroll = scrollOffset(
@@ -940,8 +1114,13 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       alertsHeight - 2,
     );
     alertsText.content = styled(
+      // Wrapped across the pane, not clipped to its first row. The pane is 20 rows of empty space
+      // when the queue cannot load, and the one line in it was being cut mid-sentence — `start it
+      // with \`bun run dev…` — so the fix the message exists to give was the part that got lost.
       state.alertsError !== undefined
-        ? [[{ text: `  ${truncate(state.alertsError, listWidth - 2)}`, tone: "failed" }]]
+        ? wrap(state.alertsError, listWidth - 2).map((line): Line => [
+            { text: `  ${line}`, tone: "failed" },
+          ])
         : queueRowsAll.length === 0
           ? [[{ text: `  ${emptyQueueReason()}`, tone: "dim" }]]
           : windowed(queueRowsAll, state.queueScroll, alertsHeight - 2),
@@ -956,7 +1135,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       box.borderColor = state.focus === focus ? COLOR.borderFocused : COLOR.border;
     }
 
-    const boxWidth = narrow ? width : width - SIDEBAR_WIDTH;
+    const boxWidth = narrow ? width : width - sidebarWidth;
     const bodyWidth = Math.max(20, boxWidth - 4);
     mainText.content = styled(mainBody(bodyWidth));
 
@@ -1007,16 +1186,21 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
      * messages was silently discarded (PRD-5 §5.1).
      */
     keyBar.content = styled([
-      state.notice !== undefined
-        ? [{ text: truncate(state.notice, width), tone: "accent", bold: true }]
-        : state.status !== undefined && Date.now() < state.status.until
-          ? [
-              {
-                text: truncate(state.status.text, width),
-                tone: state.status.failed ? "failed" : "running",
-              },
-            ]
-          : [{ text: truncate(KEY_BAR, width), tone: "dim" }],
+      state.filtering
+        ? [
+            { text: `  filtering ${state.filterTarget === 1 ? "alerts" : "runs"}`, tone: "accent" },
+            { text: "   ↑↓ pick a match   ⏎ keep the filter   ⎋ clear it", tone: "dim" },
+          ]
+        : state.notice !== undefined
+          ? [{ text: truncate(state.notice, width), tone: "accent", bold: true }]
+          : state.status !== undefined && Date.now() < state.status.until
+            ? [
+                {
+                  text: truncate(state.status.text, width),
+                  tone: state.status.failed ? "failed" : "running",
+                },
+              ]
+            : [{ text: keyBarText(width), tone: "dim" }],
     ]);
   }
 
@@ -1063,11 +1247,15 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     ]);
     return [
       [{ text: "  " }, ...spans],
-      [{ text: "  " + "─".repeat(Math.max(0, width - 2)), tone: "dim" }],
+      // Stopped at the reading measure, like the section rules below it. Run to the pane's own edge
+      // it was the one horizontal line on a wide terminal that did not share a right margin with
+      // the others, which reads as an oversight rather than as a different kind of divider.
+      [{ text: `  ${"─".repeat(Math.max(0, measure(width) - 2))}`, tone: "dim" }],
     ];
   }
 
-  function mainBody(width: number): Line[] {
+  function mainBody(paneWidth: number): Line[] {
+    let width = paneWidth;
     /**
      * Nothing is drawn under an open overlay, and that is what makes the overlay theme-neutral.
      *
@@ -1083,7 +1271,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
      * in every terminal.
      */
     if (state.mode === "compose") return [];
-    if (state.screen === "help") return helpLines();
+    if (state.screen === "help") return helpLines(measure(width));
     /**
      * The queue's selection owns [4] (PRD-5 §7).
      *
@@ -1093,15 +1281,17 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
      * `alertLines` the case pane uses, so it says what the alert says and nothing more.
      */
     if (state.screen === "dashboard" && state.mainSource === "queue") {
+      // The alert view is the detection's own prose, so it takes the reading measure too.
+      width = measure(width);
       const selected = currentQueueAlert();
       if (selected === undefined) {
         return [
           "",
           [{ text: "  No alert selected.", tone: "heading", bold: true }],
           "",
-          state.alertsError === undefined
-            ? [{ text: `  ${emptyQueueReason()}`, tone: "dim" as const }]
-            : [{ text: `  ${state.alertsError}`, tone: "failed" as const }],
+          ...(state.alertsError === undefined
+            ? [[{ text: `  ${emptyQueueReason()}`, tone: "dim" as const }]]
+            : prose(state.alertsError, width, "failed")),
           "",
           [
             {
@@ -1148,21 +1338,31 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     }
 
     if (state.runs.length === 0) {
+      const text = measure(width);
       return [
         "",
-        "  No runs yet.",
+        [{ text: "  No runs yet.", tone: "heading", bold: true }],
         "",
-        "  Produce one with:",
+        [{ text: "  Produce one with:", tone: "label" }],
         "    bun run investigate --alert <id>",
         "",
-        "  Turn on transcripts to see tool calls and cost:",
+        [{ text: "  Turn on transcripts to see tool calls and cost:", tone: "label" }],
         "    INVESTIGATOR_TRACE=true bun run investigate",
         ...(state.unreadable.length === 0
           ? []
           : [
               "",
-              `  ${state.unreadable.length} path(s) could not be read:`,
-              ...state.unreadable.map((u) => `    ${u.path} — ${u.issue}`),
+              [
+                {
+                  text: `  ${plural(state.unreadable.length, "path")} could not be read:`,
+                  tone: "failed" as const,
+                },
+              ],
+              // A path plus its errno is routinely 150 characters and was left to soft-wrap, so
+              // the one screen that reports a broken file looked broken itself.
+              ...state.unreadable.flatMap((u) =>
+                wrap(`${u.path} — ${u.issue}`, Math.max(8, text - 4)).map((line) => `    ${line}`),
+              ),
             ]),
       ];
     }
@@ -1185,14 +1385,16 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     // An in-flight investigation has no verdict — the agent submits one call at the end — so the
     // Verdict tab reports progress instead of an empty assessment (PRD-3 §13).
+    // Prose width is `measure`'s decision and nothing else's — see the note there on why there is
+    // no cap. Everything on this screen takes the pane it is given.
     if (state.tab === "verdict") {
       return isPending(result)
-        ? progressBody(state.alertFacts, state.index, traced, width)
-        : verdictBody(result, state.alertFacts, width);
+        ? progressBody(state.alertFacts, state.index, traced, measure(width))
+        : verdictBody(result, state.alertFacts, measure(width));
     }
 
     if (state.tab === "transcript") {
-      if (state.index === undefined) return noTranscriptLines(waiting);
+      if (state.index === undefined) return noTranscriptLines(waiting, measure(width));
       state.transcriptBlocks = toTranscript(state.index, width);
       // A tailing transcript grows underneath the selection; clamp rather than let it point past
       // the end of the conversation.
@@ -1208,7 +1410,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       );
     }
 
-    if (state.index === undefined) return noTranscriptLines(waiting);
+    if (state.index === undefined) return noTranscriptLines(waiting, measure(width));
 
     if (state.tab === "stream") return streamBody(state.index, width);
 
@@ -1370,7 +1572,26 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       ...(seed === undefined ? {} : { model: seed }),
       modelFilter: "",
       modelOffset: 0,
-      classificationIndex: 0,
+      /**
+       * Feedback opens on what the run concluded, not on the first of four.
+       *
+       * It was hard-coded to index 0 — `TruePositive` — whatever the run had said, so opening `f`
+       * on an investigation the agent called a false positive and pressing Save without touching
+       * the row recorded that the analyst thought it was a true positive. On the one form whose
+       * job is capturing disagreement, the default was an opinion nobody had expressed.
+       *
+       * Opening on the agent's own verdict makes agreeing one keypress and disagreeing a
+       * deliberate one, which is the right way round. An inconclusive or unscored run opens on
+       * `Undetermined`: a run that reached no conclusion cannot pre-fill one.
+       */
+      classificationIndex: Math.max(
+        0,
+        CLASSIFICATIONS.indexOf(
+          classificationForBand(
+            verdictBand(currentResult()?.summary?.tpPercent),
+          ) as (typeof CLASSIFICATIONS)[number],
+        ),
+      ),
       comment: "",
       confirm: false,
     };
@@ -1556,13 +1777,39 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     };
   }
 
+  /**
+   * Cancel, but only something that is actually running.
+   *
+   * This checked that a run was *selected* and never that it was live, so `x` on an investigation
+   * that finished a fortnight ago called `control.cancel` and reported " cancelling 01a01960…".
+   * Nothing was cancelled. `x cancel` is on the key bar from every screen, so it is easy to press
+   * by accident, and an operator interface claiming an action it did not take is the one failure
+   * that costs it trust in everything else it says.
+   *
+   * The run list already decides liveness for its own glyph; this asks the same question of the
+   * same function rather than inventing a second answer.
+   */
   function cancelSelectedRun(): void {
     const run = currentRun();
     if (control === undefined || run === undefined) {
-      state.notice = " nothing to cancel";
+      state.notice = " nothing to cancel — select a running investigation in [2]";
       render();
       return;
     }
+
+    const liveness = classifyRun({
+      run,
+      now: Date.now(),
+      ...(state.growing.has(run.runId) ? { traceGrowing: true } : {}),
+    });
+    if (liveness !== "running" && liveness !== "stale") {
+      // Naming the state is the point: "nothing to cancel" alone reads as a console that did not
+      // understand the keypress rather than as a run that is already over.
+      state.notice = ` ${run.runId.slice(0, 8)} is ${RUN_STATE_WORD[liveness]} — nothing to cancel`;
+      render();
+      return;
+    }
+
     control.cancel(run.runId);
     setStatus(` cancelling ${run.runId.slice(0, 8)}…`);
     render();
@@ -1723,18 +1970,41 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // key — including `q`, which would otherwise quit halfway through typing "query" (PRD-3 §9.7).
     if (state.filtering) {
       key.stopPropagation();
-      if (name === "escape") {
-        state.filter = "";
-        state.filtering = false;
-      } else if (name === "return") {
-        state.filtering = false;
-      } else if (name === "backspace") {
-        state.filter = state.filter.slice(0, -1);
-      } else if (key.sequence.length === 1 && key.sequence >= " " && !key.ctrl && !key.meta) {
-        state.filter += key.sequence;
+      /**
+       * Move through the matches without closing the input.
+       *
+       * There was no way to. `↑`/`↓` fell through every branch and did nothing at all, and `j`/`k`
+       * are printable, so reaching for them appended them to the query — `/multiple` became
+       * `/multiplej` and the match count dropped to zero. The only route to a result was `⏎` and
+       * then `j`, which nothing on screen said, and `⎋` — the other key a reader reaches for when
+       * they have finished typing — throws the query away rather than keeping it.
+       *
+       * `Ctrl-N`/`Ctrl-P` do the same thing, for anyone whose hands expect a readline.
+       */
+      const step =
+        name === "down" || (key.ctrl && name === "n")
+          ? 1
+          : name === "up" || (key.ctrl && name === "p")
+            ? -1
+            : 0;
+      if (step !== 0) {
+        moveSelection(step);
+        render();
+        return;
       }
-      clampSelection();
-      void loadTrace();
+
+      withAnchoredSelection(() => {
+        if (name === "escape") {
+          state.filter = "";
+          state.filtering = false;
+        } else if (name === "return") {
+          state.filtering = false;
+        } else if (name === "backspace") {
+          state.filter = state.filter.slice(0, -1);
+        } else if (key.sequence.length === 1 && key.sequence >= " " && !key.ctrl && !key.meta) {
+          state.filter += key.sequence;
+        }
+      });
       render();
       return;
     }
@@ -1768,7 +2038,24 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // Panel-level keys are consumed here so they never reach a focused list (PRD-3 §9.7).
     if (["1", "2", "3", "4"].includes(name)) {
       key.stopPropagation();
-      state.focus = Number(name) as Focus;
+      const wanted = Number(name) as Focus;
+      /**
+       * A pane that is not on screen does not take focus silently.
+       *
+       * `[3] Case` is dropped when the panes stack and `[1] Alerts` when the terminal is too short
+       * to hold it, so `1-4 pane` on the key bar is not true at every size. Focus used to move to
+       * the missing pane anyway: the keys went somewhere invisible and the console looked frozen.
+       */
+      const room = paneRows(wanted);
+      if (room === 0) {
+        state.notice =
+          wanted === 3
+            ? " [3] Case is hidden at this width — its facts are in [4]"
+            : ` [${wanted}] is hidden — the terminal is too short for it`;
+        render();
+        return;
+      }
+      state.focus = wanted;
       // Only the two list panes change what [4] is detailing. `3` and `4` move focus so their pane
       // can be scrolled, and leave the subject alone.
       if (name === "1") {
@@ -1796,13 +2083,12 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         key.stopPropagation();
         moveSelection(-1);
         return;
+      // `G` reaches us as `g` with `shift` set, so a separate `case "G"` was unreachable and both
+      // keys jumped to the top — leaving no way at all to reach the end of a 44-run list or a
+      // 154-alert queue, while `?` advertised "first / last".
       case "g":
         key.stopPropagation();
-        moveSelection(-1_000_000);
-        return;
-      case "G":
-        key.stopPropagation();
-        moveSelection(1_000_000);
+        moveSelection(key.shift ? 1_000_000 : -1_000_000);
         return;
       // `[` and `]` rather than ⇥. Tab is the terminal's own focus key and reads as "move focus",
       // which is what 1-4 do here; brackets read as "the next one of these", which is what this is.
@@ -1905,9 +2191,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         else if (state.detailOpen) state.detailOpen = false;
         else if (state.screen !== "dashboard") state.screen = "dashboard";
         else if (state.filter !== "") {
-          state.filter = "";
-          clampSelection();
-          void loadTrace();
+          withAnchoredSelection(() => {
+            state.filter = "";
+          });
         } else state.focus = 2;
         focusPane();
         render();
@@ -1937,7 +2223,10 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
    * in an escalation write-up, and retyping a query out of a terminal is how it gets omitted.
    */
   async function copyFocused(): Promise<void> {
-    const width = Math.max(20, renderer.width - SIDEBAR_WIDTH - 4);
+    const width = Math.max(
+      20,
+      renderer.width - layout(renderer.width, renderer.terminalHeight).sidebarWidth - 4,
+    );
     let text: string;
     let what: string;
 
@@ -1945,11 +2234,13 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       text = state.alertFacts === undefined ? "" : linesText(alertLines(state.alertFacts, 120));
       what = "case facts";
     } else if (state.focus === 1 || state.focus === 2) {
+      // [1] is the queue, so `y` there copies the queue. It copied the selected run's alerts,
+      // which is the pane [1] stopped being at PRD-5 §7.
       text =
         state.focus === 2
           ? linesText(runRows(visibleRuns(), Date.now(), state.growing, -1, 120))
-          : linesText(resultRows(visibleResults(), -1, 120));
-      what = state.focus === 2 ? "run list" : "alert list";
+          : linesText(queueLines(visibleQueue(), -1, 118));
+      what = state.focus === 2 ? "run list" : "alert queue";
     } else if (state.detailOpen && state.tab === "activity") {
       const row = state.activityRows[state.activitySelected];
       text = row === undefined ? "" : callArgsText(row);
@@ -2076,7 +2367,15 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       { text: compose.alertId, tone: "dim" },
     ]);
 
-    if (compose.kind === "start") {
+    /**
+     * `start` and `rerun` are the same spend, so they carry the same warnings.
+     *
+     * This block was gated on `start` alone. A re-run makes an identical provider call and showed
+     * none of it — no tool list, no "this calls a paid provider", no duplicate-entity warning —
+     * so the action an analyst presses repeatedly was the quiet one and the action they press once
+     * was the loud one. If anything the warning belongs more on `r`.
+     */
+    if (compose.kind === "start" || compose.kind === "rerun") {
       /**
        * Whether the chosen model can actually run, checked against the startup credential probe.
        *
@@ -2197,29 +2496,65 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     }
 
     if (compose.kind === "feedback") {
+      /**
+       * What the agent concluded, on the row where you agree or disagree with it.
+       *
+       * The form asks whether the agent got it right and did not say what the agent had said, so
+       * the fact the whole judgement turns on was one keypress behind the analyst. It is also what
+       * makes the pre-filled verdict legible: a default that mirrors the run only reads as a
+       * default if the run's own answer is on screen beside it.
+       */
+      const agent = verdictBand(currentResult()?.summary?.tpPercent);
+
+      // A run with no verdict did not *say* anything, so it is reported as silence rather than as
+      // a fifth opinion called "unscored".
+      const said =
+        agent === "unknown"
+          ? "this run recorded no verdict"
+          : `agent said ${bandLabel(agent).toLowerCase()}`;
+      const chosen = classificationLabel(
+        CLASSIFICATIONS[compose.classificationIndex] ?? "Undetermined",
+      );
+      // Beside the choice if there is room, under it if there is not. As one unbreakable row it
+      // soft-wrapped to column 0 and ran beneath the overlay's own border on a narrow terminal.
+      const inline = `    verdict  ${chosen}   ← →      ${said}`.length <= width;
+
       lines.push(
         "",
         [
           fieldMark(compose, 0),
           { text: "verdict  ", tone: "label" },
-          { text: CLASSIFICATIONS[compose.classificationIndex] ?? "Undetermined" },
+          { text: chosen },
           { text: "   ← →", tone: "dim" },
+          ...(inline ? [{ text: `      ${said}`, tone: bandTone(agent) }] : []),
         ],
+        ...(inline
+          ? []
+          : [[{ text: `${" ".repeat(COMMENT_GUTTER)}${said}`, tone: bandTone(agent) }] as Line]),
         [
           fieldMark(compose, 1),
           { text: "comment  ", tone: "label" },
           {
-            text: compose.comment === "" ? "(why you disagree, or why you agree)" : compose.comment,
+            text:
+              compose.comment === "" ? "(what the agent should know next time)" : compose.comment,
             tone: compose.comment === "" ? "dim" : undefined,
           },
         ],
-        "",
-        [
-          {
-            text: `  Written to ${env.FEEDBACK_DIR}/. No provider call, nothing spent, runs/ untouched.`,
-            tone: "dim",
-          },
-        ],
+        /**
+         * What the record is for, as the comment field's own description.
+         *
+         * It was two free-standing lines under the form — one saying what feedback is for, one
+         * saying where the file lands and what it does not spend — which read as a footnote about
+         * the console rather than as help with the field being filled in. Hung under `comment` at
+         * the value column it is what it always was: the answer to "why am I typing this".
+         *
+         * The register is the analyst's: what they write shapes what the agent does with the next
+         * alert of this kind, which is the reason to spend thirty seconds on it.
+         */
+        ...wrap(
+          "Feeds future investigations of alerts like this one.",
+          Math.max(20, width - COMMENT_GUTTER - 2),
+        ).map((line): Line => [{ text: `${" ".repeat(COMMENT_GUTTER)}${line}`, tone: "dim" }]),
       );
     }
 
@@ -2297,10 +2632,25 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         void loadTrace();
       }
     } else if (previous !== undefined) {
-      const at = state.runs.findIndex((run) => run.runId === previous);
-      state.runIndex = at === -1 ? 0 : at;
+      /**
+       * Re-find the selection in the list it is an index into, which is the *visible* one.
+       *
+       * `state.runIndex` addresses `visibleRuns()` — filtered, and with in-process runs prepended.
+       * This looked the run back up in `state.runs`, the unfiltered on-disk list, and wrote that
+       * position back. So every poll tick, once a second, the selection moved to whatever run
+       * happened to sit at the same offset in the other list: with a filter open the selection
+       * walked the corpus a row a second, and with a sweep running it was off by the number of
+       * live runs. That is what made the filter look like it did nothing — the row it selected was
+       * being overwritten a second later.
+       *
+       * A run that has dropped out of view keeps the index rather than resetting to the top: it is
+       * usually a filter keystroke mid-word, and jumping to row zero on each character is the same
+       * bug in a smaller form.
+       */
+      const at = visibleRuns().findIndex((run) => run.runId === previous);
+      if (at !== -1) state.runIndex = at;
     }
-    state.runIndex = Math.min(state.runIndex, Math.max(0, state.runs.length - 1));
+    clampSelection();
     // Retry while there is still no transcript. During a live sweep the artifact is flushed
     // before the next alert's transcript exists, so a single attempt at selection time would
     // never find one (PRD-3 §10.2). Costs one existence check per poll.

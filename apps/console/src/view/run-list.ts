@@ -33,6 +33,21 @@ const STALE_GRACE_MS = 60_000;
 const FALLBACK_TIMEOUT_MS = 600_000;
 
 /** A run's state, as a tone. The glyph in `RUN_GLYPH` carries it without colour (PRD-3 §9.8). */
+/**
+ * The state as a word, for a sentence rather than a glyph.
+ *
+ * `RUN_GLYPH` covers the list rows. A message has to *say* it: "nothing to cancel" on its own reads
+ * as a console that did not understand the key, where "01a01960 is already finished" reads as an
+ * answer.
+ */
+export const RUN_STATE_WORD: Record<RunState, string> = {
+  running: "still running",
+  stale: "not writing any more",
+  completed: "already finished",
+  interrupted: "already interrupted",
+  failed: "already failed",
+};
+
 export function runStateTone(state: RunState): Tone | undefined {
   switch (state) {
     case "running":
