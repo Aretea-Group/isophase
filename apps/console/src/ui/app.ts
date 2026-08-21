@@ -86,24 +86,86 @@ const CLASSIFICATIONS = [
 ] as const;
 
 /**
- * How many fields each overlay has, so Tab cycles without falling off the end.
+ * How many fields each overlay has, so traversal cycles without falling off the end.
  *
- * Tab traversal is ours: OpenTUI 0.5.4 ships no `focusNext`, `focusPrevious` or `tabIndex` at all
+ * Traversal is ours: OpenTUI 0.5.4 ships no `focusNext`, `focusPrevious` or `tabIndex` at all
  * (PRD-5 §12.5), so this is the single place that knows the shape of each form.
  */
 function fieldCount(kind: ComposeKind): number {
   switch (kind) {
-    // Start takes the same inputs as extend — a premise and a model. Offering them only on a
+    // Start takes the same inputs as a re-run — context and a model. Offering them only on a
     // re-run meant the first investigation of an alert could not be steered or re-pointed without
     // running it once with the defaults first, which is a strange thing to make someone do.
     case "start":
       return 2;
-    case "extend":
+    case "rerun":
       return 2;
-    case "classification":
+    case "feedback":
       return 2;
   }
 }
+
+/** Which field index holds the model list, or `-2` for overlays that have none. */
+function modelField(kind: ComposeKind): number {
+  return kind === "feedback" ? -2 : 1;
+}
+
+/**
+ * The cursor column, and the one place that decides what "focused" looks like.
+ *
+ * Every row asks this rather than testing `field` inline, so a row cannot end up marked focused
+ * while another is taking keys — which is what the old strip did by painting a highlighted
+ * `Cancel` at all times, next to a `▶` sitting on a different row.
+ */
+function fieldMark(compose: ComposeState, field: number): { text: string; tone: "accent" } {
+  return { text: compose.field === field ? "  ▶ " : "    ", tone: "accent" };
+}
+
+/**
+ * The overlay's own title, on the overlay's own border.
+ *
+ * It used to be `[4]`'s title, because compose replaced the pane's contents; a modal about a
+ * *queue* alert then appeared to belong to whatever run was selected. Now that the overlay is a
+ * box floating over `[4]` (§12.4), the border carries the subject and the pane underneath keeps
+ * telling the truth about itself.
+ */
+function composeTitle(compose: ComposeState): string {
+  const alert = truncate(compose.alertTitle, 44);
+  switch (compose.kind) {
+    case "start":
+      return `Start an investigation — ${alert}`;
+    case "rerun":
+      return `Re-run — ${alert}`;
+    case "feedback":
+      return `Your feedback — ${alert}`;
+  }
+}
+
+/**
+ * What the action button says it will do.
+ *
+ * A generic "Confirm" makes the overlay that spends money look identical to the one that writes a
+ * local file — and the button is the last thing read before pressing it.
+ */
+function confirmVerb(kind: ComposeKind): string {
+  switch (kind) {
+    case "start":
+      return "Start";
+    case "rerun":
+      return "Run";
+    case "feedback":
+      return "Save";
+  }
+}
+
+/**
+ * Rows of the model list shown at once.
+ *
+ * The list is windowed rather than complete because the overlay floats over `[4]` and must not
+ * grow past it. Eight is enough to read the shape of the catalogue without the confirm strip
+ * leaving the box on a short terminal.
+ */
+const MODEL_LIST_HEIGHT = 8;
 
 /** Public contract for the two terminal inputs that perform compose traversal. */
 export const COMPOSE_TAB_STOP_PROPAGATION_EXCEPTIONS = ["tab", "shift+tab"] as const;
@@ -176,14 +238,21 @@ function helpLines(): string[] {
     "  events, so the outstanding-work number overstates by roughly fifty.",
     "",
     "  n           queue: start an investigation on the selection",
-    "  e           runs: re-run with analyst context and a chosen model",
-    "  d           runs: record a classification",
+    "  r           runs: re-run this alert with context and a chosen model",
+    "  f           runs: record your feedback on this investigation",
     "  x           runs: cancel a running investigation",
     "  c           configuration and cost",
     "  F           Agent stream: toggle follow",
-    "  r           re-read from disk now",
+    "  R           re-read from disk now",
     "  ?           this help",
     "  q  Ctrl-C   quit",
+    "",
+    "  In the n / r / f overlay:",
+    "    ↑ ↓ ⇥       move between fields, and through the model list",
+    "    type        fill the focused field; on the model row it filters the list",
+    "    ⏎           accept the field and move on; on Cancel/Confirm it acts",
+    "    ⎋           close the overlay in one press, from anywhere in it",
+    "  Confirm always starts on Cancel. Nothing is spent by a key you were already holding.",
     "",
     "  IMPACT is the agent's own field, submitted alongside TP/FP:",
     "    none                  attempted, and achieved nothing",
@@ -192,7 +261,7 @@ function helpLines(): string[] {
     "    unknown               the available telemetry cannot say",
     "  A brute force where every attempt failed is a true positive, impact 'none'.",
     "",
-    "  The investigator is the sole writer of runs/. Classifications go to feedback/.",
+    "  The investigator is the sole writer of runs/. Your feedback goes to feedback/.",
   ];
 }
 
@@ -221,7 +290,7 @@ function runHaystack(run: RunArtifact): string {
 }
 
 const KEY_BAR =
-  " 1-4 pane   j/k move   n start   x cancel   e extend   d classify   / filter   ? help   q quit";
+  " 1-4 pane   j/k move   n start   r re-run   f feedback   x cancel   / filter   ? help   q quit";
 
 export interface AppOptions {
   runsDir: string;
@@ -344,16 +413,36 @@ interface State {
   status?: { text: string; failed: boolean; until: number };
 }
 
-type ComposeKind = "start" | "extend" | "classification";
+type ComposeKind = "start" | "rerun" | "feedback";
 
 interface ComposeState {
   kind: ComposeKind;
   alertId: string;
   alertTitle: string;
-  /** Which field has focus. -1 is the confirm strip, which is where every overlay opens. */
+  /**
+   * Which field has focus. `-1` is the confirm strip, which is where every overlay opens.
+   *
+   * Opening on the first *field* was tried and reverted: it made the common case — start this
+   * alert on the configured model — cost four keystrokes instead of two, and it put an optional
+   * free-text box under the cursor, which reads as something that must be filled before you may
+   * proceed. The double-focus that motivated the move had a different cause and is fixed where it
+   * belonged: the strip now marks its choice only while it holds focus.
+   */
   field: number;
-  premise: string;
-  modelIndex: number;
+  context: string;
+  /**
+   * The chosen model, by value rather than by index.
+   *
+   * An index into the offered list cannot survive the filter: type two characters and index 3 is a
+   * different model, silently. Holding the choice itself means the highlighted row and the model
+   * that will run are the same thing by construction — which is the property worth having, because
+   * the failure it prevents is spending money on a model the operator did not pick.
+   */
+  model?: ModelChoice;
+  /** Type-to-filter over the offered models. Only meaningful while the model row has focus. */
+  modelFilter: string;
+  /** Window offset for the model list, carried so it does not re-centre under the cursor. */
+  modelOffset: number;
   classificationIndex: number;
   comment: string;
   /** Confirm defaults to Cancel: a modal dismissed by a held key is theatre (PRD-5 §12.4). */
@@ -510,6 +599,34 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   mainBox.add(tabBar);
   mainBox.add(mainScroll);
 
+  /**
+   * The compose overlay: a bordered box floating over `[4]`, which is what §12.4 specified.
+   *
+   * The first cut rendered it *as* `[4]`'s body instead, so the pane it was supposed to cover
+   * vanished underneath it and the modal inherited the pane's title. Absolute positioning inside
+   * `mainBox` keeps the alert or run you were reading visible around the edges, and gives the box
+   * its own border and title so there is never a question about what the keys are acting on.
+   *
+   * Nothing here calls `.focus()`. `state.mode` is the only thing that routes keys (§12.5), so the
+   * library's non-recursive `set visible` blur has nothing to strand.
+   */
+  const composeBox = new BoxRenderable(renderer, {
+    id: "compose",
+    position: "absolute",
+    top: 1,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    visible: false,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: COLOR.accent,
+    titleColor: COLOR.accent,
+  });
+  const composeText = new TextRenderable(renderer, { id: "compose-text", fg: COLOR.text });
+  composeBox.add(composeText);
+  mainBox.add(composeBox);
+
   content.add(sidebar);
   content.add(mainBox);
 
@@ -578,7 +695,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
    */
   function emptyQueueReason(): string {
     if (state.alerts.length === 0) {
-      return control === undefined ? "no control — opened read-only" : "press r to load alerts";
+      return control === undefined ? "no control — opened read-only" : "press R to load alerts";
     }
     if (state.filter !== "" && state.filterTarget === 1) return "no alert matches the filter";
     // Kept inside the 46-column pane: a wrapped hint is harder to read than a short one.
@@ -861,6 +978,23 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     const titleRoom = Math.max(8, boxWidth - 6);
     mainBox.title = truncate(mainTitle(), titleRoom);
 
+    /**
+     * The overlay is sized to its content, so a short form is a short box.
+     *
+     * Height is set rather than left to flex because the box is absolutely positioned: without an
+     * explicit height it collapses to nothing. Capped at the pane so a long model list scrolls the
+     * window (`modelListLines`) instead of pushing the confirm strip out of the terminal.
+     */
+    const composing = state.mode === "compose" && state.compose !== undefined;
+    composeBox.visible = composing;
+    if (composing && state.compose !== undefined) {
+      const overlayWidth = Math.max(20, boxWidth - 8);
+      const lines = composeLines(state.compose, overlayWidth);
+      composeText.content = styled(lines);
+      composeBox.height = Math.min(Math.max(6, lines.length + 2), Math.max(6, renderer.height - 6));
+      composeBox.title = truncate(composeTitle(state.compose), Math.max(8, overlayWidth - 4));
+    }
+
     mainScroll.stickyScroll = state.tab === "stream" && state.follow;
     mainScroll.stickyStart = "bottom";
 
@@ -900,16 +1034,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   }
 
   function mainTitle(): string {
-    // Compose owns the pane while it is open. Leaving the selected run's title above a modal reads
-    // as though the overlay belongs to that run, which for `n` on a queue alert it does not.
-    if (state.mode === "compose" && state.compose !== undefined) {
-      const kind = state.compose.kind;
-      return kind === "start"
-        ? "[4] Start an investigation"
-        : kind === "extend"
-          ? "[4] Re-run with analyst context"
-          : "[4] Record a classification";
-    }
     if (state.screen === "config") return "[4] Configuration";
     if (state.screen === "help") return "[4] Keys";
     if (state.mainSource === "queue") {
@@ -944,10 +1068,21 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   }
 
   function mainBody(width: number): Line[] {
-    // Compose outranks every screen: it is modal, and the analyst is mid-action.
-    if (state.mode === "compose" && state.compose !== undefined) {
-      return composeLines(state.compose, width);
-    }
+    /**
+     * Nothing is drawn under an open overlay, and that is what makes the overlay theme-neutral.
+     *
+     * The box paints no background of its own. Two absolute colours were tried — `#1c1c1c` to sit
+     * "a shade off" the terminal, then `#000000` to "match" it — and both are guesses about a
+     * background this process cannot read: against a tinted theme each landed as a rectangle in
+     * the wrong colour. Painting nothing means the terminal's own background shows through the
+     * box, whatever it is, and the `accent` border alone says the box is there.
+     *
+     * That only works if there is nothing underneath to read through it, hence blanking here. The
+     * cost is the alert text that used to remain visible around the modal — already worth little
+     * once the box grew to the pane's full width, and worth less than an overlay that looks native
+     * in every terminal.
+     */
+    if (state.mode === "compose") return [];
     if (state.screen === "help") return helpLines();
     /**
      * The queue's selection owns [4] (PRD-5 §7).
@@ -1154,9 +1289,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   /**
    * Each action belongs to one subject, and refuses rather than retargeting.
    *
-   * `n` acts on the queue's alert; `e` and `d` act on the selected run. None of them used to check,
-   * so pressing `d` while reading an un-run alert in [1] recorded a classification against whatever
-   * run happened to be selected in [2] — a verdict silently filed against a different
+   * `n` acts on the queue's alert; `r` and `f` act on the selected run. None of them used to check,
+   * so pressing the feedback key while reading an un-run alert in [1] recorded a verdict against
+   * whatever run happened to be selected in [2] — filed silently against a different
    * investigation. Refusing with a message that names the right pane is the whole fix.
    */
   function openCompose(kind: ComposeKind): void {
@@ -1164,14 +1299,14 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     if (wantsRun && state.mainSource !== "run") {
       state.notice =
-        kind === "extend"
-          ? " e re-runs an investigation — select one in [2] first"
-          : " d records your verdict on an investigation — select one in [2] first";
+        kind === "rerun"
+          ? " r re-runs an investigation — select one in [2] first"
+          : " f records your feedback on an investigation — select one in [2] first";
       render();
       return;
     }
     if (!wantsRun && state.mainSource !== "queue") {
-      state.notice = " n starts an investigation on an alert — select one in [1], or e to re-run";
+      state.notice = " n starts an investigation on an alert — select one in [1], or r to re-run";
       render();
       return;
     }
@@ -1179,9 +1314,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     const alert = kind === "start" ? currentQueueAlert() : undefined;
     const result = kind === "start" ? undefined : currentResult();
 
-    // A classification is a judgement on a finished investigation. On one still running there is
-    // nothing yet to agree or disagree with, and `agentAssessment` would freeze an empty verdict.
-    if (kind === "classification" && result !== undefined && isPending(result)) {
+    // Feedback is a judgement on a finished investigation. On one still running there is nothing
+    // yet to agree or disagree with, and `agentAssessment` would freeze an empty verdict.
+    if (kind === "feedback" && result !== undefined && isPending(result)) {
       state.notice = " this investigation is still running — no verdict to record yet";
       render();
       return;
@@ -1201,18 +1336,29 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       return;
     }
     /**
-     * The picker opens on the model this console is configured for, not on index 0.
+     * The picker opens on the model this console is configured for, not on the first offered one.
      *
-     * `listModels()` returns every registered provider's catalogue sorted alphabetically, so index
-     * 0 is an Anthropic model regardless of configuration. Defaulting there meant pressing `e` and
-     * confirming silently switched provider — and against a provider with no credential
-     * configured, the run failed before it started. Re-running "the same alert, same
-     * configuration" is half of what this flow is for; it has to actually default to that.
+     * Defaulting to the head of the list meant confirming without touching the field silently
+     * switched provider — and against one with no credential, the run failed before it started.
+     * Re-running "the same alert, same configuration" is half of what this flow is for; it has to
+     * actually default to that. Falling back to the first offer keeps the field non-empty when the
+     * configured model is not among the curated set.
      */
-    const configured = state.models.findIndex(
-      (model) =>
-        model.provider === env.INVESTIGATOR_PROVIDER && model.id === env.INVESTIGATOR_MODEL,
-    );
+    const configured =
+      state.models.find(
+        (model) =>
+          model.provider === env.INVESTIGATOR_PROVIDER && model.id === env.INVESTIGATOR_MODEL,
+      ) ?? state.models[0];
+
+    // Re-running defaults to the model that produced the run being re-run, not to the console's
+    // env — "same alert, one thing changed" is only true if the thing you did not change is held.
+    const previous = kind === "rerun" ? currentRun()?.model : undefined;
+    const seed =
+      previous === undefined
+        ? configured
+        : (state.models.find(
+            (model) => model.provider === previous.provider && model.id === previous.id,
+          ) ?? configured);
 
     state.mode = "compose";
     state.compose = {
@@ -1220,12 +1366,99 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       alertId,
       alertTitle,
       field: -1,
-      premise: "",
-      modelIndex: configured === -1 ? 0 : configured,
+      context: "",
+      ...(seed === undefined ? {} : { model: seed }),
+      modelFilter: "",
+      modelOffset: 0,
       classificationIndex: 0,
       comment: "",
       confirm: false,
     };
+    render();
+  }
+
+  /**
+   * The models on offer right now, narrowed by whatever has been typed on the model row.
+   *
+   * Matched over `provider/id` so "openai" and "5.6" both work, and so a filter that matches
+   * nothing returns nothing rather than silently falling back to the full list — an operator who
+   * typed a name that does not exist needs to see that, not to be handed a different model.
+   */
+  function filteredModels(compose: ComposeState): ModelChoice[] {
+    const needle = compose.modelFilter.trim().toLowerCase();
+    if (needle === "") return state.models;
+    return state.models.filter((model) =>
+      `${model.provider}/${model.id}`.toLowerCase().includes(needle),
+    );
+  }
+
+  /** Where the cursor sits in the filtered list. The chosen model *is* the cursor (see `model`). */
+  function modelCursor(compose: ComposeState): number {
+    const list = filteredModels(compose);
+    const at = list.findIndex(
+      (model) => model.provider === compose.model?.provider && model.id === compose.model.id,
+    );
+    return at === -1 ? 0 : at;
+  }
+
+  /**
+   * Fields, then the confirm strip, as one ring.
+   *
+   * `-1` is the strip and sorts last, so `↓` off the final field lands on Confirm/Cancel and `↑`
+   * off the first field reaches it from the other side. One ring rather than a clamp, because a
+   * traversal that silently stops is indistinguishable from a dropped keypress.
+   */
+  function moveComposeField(compose: ComposeState, delta: number): void {
+    const count = fieldCount(compose.kind);
+    const at = compose.field === -1 ? count : compose.field;
+    const next = (at + delta + (count + 1)) % (count + 1);
+    compose.field = next === count ? -1 : next;
+    // Entering the model row: put the window where the cursor already is, so the list opens
+    // showing the selected model rather than scrolled to the top with the selection off-screen.
+    if (compose.field === modelField(compose.kind)) {
+      compose.modelOffset = scrollOffset(
+        compose.modelOffset,
+        modelCursor(compose),
+        filteredModels(compose).length,
+        MODEL_LIST_HEIGHT,
+      );
+    }
+    render();
+  }
+
+  /**
+   * Printable keys and backspace, routed to whichever text the focused row owns.
+   *
+   * The model row's text is its *filter*, not a value — so typing there narrows the list, and the
+   * selection follows the narrowing rather than being left pointing at a row no longer on offer.
+   * Without that follow, filtering to a single entry and confirming would run whatever was chosen
+   * before the filter was typed.
+   */
+  function editComposeText(compose: ComposeState, edit: (text: string) => string): void {
+    if (compose.kind === "feedback") {
+      if (compose.field === 1) compose.comment = edit(compose.comment);
+      render();
+      return;
+    }
+    if (compose.field === 0) {
+      compose.context = edit(compose.context);
+      render();
+      return;
+    }
+    if (compose.field === modelField(compose.kind)) {
+      compose.modelFilter = edit(compose.modelFilter);
+      const list = filteredModels(compose);
+      const stillOffered = list.some(
+        (model) => model.provider === compose.model?.provider && model.id === compose.model.id,
+      );
+      if (!stillOffered && list[0] !== undefined) compose.model = list[0];
+      compose.modelOffset = scrollOffset(
+        compose.modelOffset,
+        modelCursor(compose),
+        list.length,
+        MODEL_LIST_HEIGHT,
+      );
+    }
     render();
   }
 
@@ -1247,14 +1480,14 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     if (compose === undefined || control === undefined) return closeCompose();
     if (!compose.confirm) return closeCompose();
 
-    if (compose.kind === "classification") {
-      void recordClassification(compose);
+    if (compose.kind === "feedback") {
+      void recordFeedback(compose);
       return;
     }
 
     const runId = Bun.randomUUIDv7();
-    const chosen = state.models[compose.modelIndex];
-    const premise = compose.premise.trim();
+    const chosen = compose.model;
+    const context = compose.context.trim();
     const parentRunId = currentRun()?.runId;
 
     control.start({
@@ -1262,8 +1495,8 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       alertId: compose.alertId,
       alertTitle: compose.alertTitle,
       ...(chosen === undefined ? {} : { model: chosen }),
-      ...(premise === "" ? {} : { analystContext: premise }),
-      ...(compose.kind === "extend" && parentRunId !== undefined
+      ...(context === "" ? {} : { analystContext: context }),
+      ...(compose.kind === "rerun" && parentRunId !== undefined
         ? { derivedFrom: { runId: parentRunId, alertId: compose.alertId } }
         : {}),
     });
@@ -1271,7 +1504,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // Take the control's live view immediately rather than waiting for `run_started` to arrive.
     // The console just asked for this run synchronously; making it visible depend on an event it
     // does not control means a control implementation that forgets to emit renders nothing, and
-    // the analyst cannot then select, cancel or extend the run they just started.
+    // the analyst cannot then select, cancel or re-run the run they just started.
     for (const live of control.live()) state.liveRuns.set(live.runId, live);
 
     // Select the new run when it appears rather than letting the analyst's row shift under them.
@@ -1281,7 +1514,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     closeCompose();
   }
 
-  async function recordClassification(compose: ComposeState): Promise<void> {
+  async function recordFeedback(compose: ComposeState): Promise<void> {
     const { writeFeedback } = await import("../drive/feedback.ts");
     const run = currentRun();
     const result = currentResult();
@@ -1416,32 +1649,59 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         closeCompose();
         return;
       }
+      /**
+       * `⏎` acts on the focused row; only the confirm strip's `⏎` confirms.
+       *
+       * It used to call `confirmCompose()` from anywhere, and `confirm` defaults to Cancel — so
+       * pressing it while typing context fell straight through to `closeCompose()` and discarded
+       * everything typed, with no prompt and no way back. Advancing instead means no keystroke
+       * inside the overlay can destroy work, which is worth the deviation from §12.4's flat
+       * "⏎ confirms".
+       */
       if (name === "return") {
-        confirmCompose();
+        if (compose.field === -1) confirmCompose();
+        else moveComposeField(compose, 1);
         return;
       }
       const traversal = composeTraversalKey(key);
       if (traversal !== undefined) {
-        const count = fieldCount(compose.kind);
-        compose.field =
-          traversal === "shift+tab"
-            ? compose.field <= -1
-              ? count - 1
-              : compose.field - 1
-            : compose.field >= count - 1
-              ? -1
-              : compose.field + 1;
-        render();
+        moveComposeField(compose, traversal === "shift+tab" ? -1 : 1);
         return;
       }
+      /**
+       * `↑`/`↓` walk the whole overlay, entering and leaving the model list on the way.
+       *
+       * The model row is a list whenever it has focus, so vertical movement has to mean two things
+       * without a mode: inside the list it moves the cursor, and at either end it hands focus to
+       * the next row. Anything else would need an explicit expand key, which is one more thing to
+       * discover in the overlay whose whole defect was undiscoverable keys.
+       */
+      if (name === "up" || name === "down") {
+        const delta = name === "down" ? 1 : -1;
+        if (compose.field === modelField(compose.kind)) {
+          const list = filteredModels(compose);
+          const next = modelCursor(compose) + delta;
+          if (next < 0 || next >= list.length) moveComposeField(compose, delta);
+          else {
+            const picked = list[next];
+            if (picked !== undefined) compose.model = picked;
+            compose.modelOffset = scrollOffset(
+              compose.modelOffset,
+              next,
+              list.length,
+              MODEL_LIST_HEIGHT,
+            );
+            render();
+          }
+        } else moveComposeField(compose, delta);
+        return;
+      }
+      // `←`/`→` belong to the confirm strip and to the four-way verdict, which are the only two
+      // horizontal choices. The model row deliberately does not answer to them: one mechanism for
+      // choosing a model, not two that can disagree about which is selected.
       if (name === "left" || name === "right") {
         if (compose.field === -1) compose.confirm = name === "right";
-        else if (compose.kind !== "classification" && compose.field === 1) {
-          const total = state.models.length;
-          if (total === 0) return;
-          compose.modelIndex =
-            (compose.modelIndex + (name === "right" ? 1 : total - 1)) % Math.max(1, total);
-        } else if (compose.kind === "classification" && compose.field === 0) {
+        else if (compose.kind === "feedback" && compose.field === 0) {
           compose.classificationIndex =
             (compose.classificationIndex + (name === "right" ? 1 : CLASSIFICATIONS.length - 1)) %
             CLASSIFICATIONS.length;
@@ -1450,21 +1710,11 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         return;
       }
       if (name === "backspace") {
-        if (compose.kind !== "classification" && compose.field === 0) {
-          compose.premise = compose.premise.slice(0, -1);
-        } else if (compose.kind === "classification" && compose.field === 1) {
-          compose.comment = compose.comment.slice(0, -1);
-        }
-        render();
+        editComposeText(compose, (text) => text.slice(0, -1));
         return;
       }
       if (key.sequence.length === 1 && key.sequence >= " " && !key.ctrl && !key.meta) {
-        if (compose.kind !== "classification" && compose.field === 0)
-          compose.premise += key.sequence;
-        else if (compose.kind === "classification" && compose.field === 1) {
-          compose.comment += key.sequence;
-        }
-        render();
+        editComposeText(compose, (text) => text + key.sequence);
       }
       return;
     }
@@ -1582,7 +1832,16 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         state.follow = !state.follow;
         render();
         return;
-      case "r":
+      /**
+       * `R` re-reads from disk; `r` re-runs.
+       *
+       * `r` meant refresh through PRD-3 and PRD-5, and §12.1 forbids rebinding a key an analyst
+       * already uses. It is rebound anyway, deliberately: re-running is the action reached often
+       * enough to deserve the unshifted key, and both pollers already re-read on their own, so a
+       * manual refresh is a rare convenience. What makes the swap safe is not the spacing but the
+       * confirm strip — a stray `r` opens an overlay sitting on Cancel and spends nothing.
+       */
+      case "R":
         key.stopPropagation();
         if (state.focus === 1) void loadAlerts();
         else void refresh();
@@ -1607,13 +1866,23 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         key.stopPropagation();
         openCompose("start");
         return;
-      case "e":
+      case "r":
         key.stopPropagation();
-        openCompose("extend");
+        openCompose("rerun");
         return;
-      case "d":
+      /**
+       * `f`, which §10 ruled out for sitting one shift-key from `F` (follow).
+       *
+       * That objection does not survive `r`/`R` above: the same adjacency now exists on the key
+       * that spends money, and holding the rule here while breaking it there would be incoherent.
+       * The property that actually makes the keymap safe is that every consequential action sits
+       * behind a strip defaulting to Cancel — `f` for `F` opens a modal that writes nothing, `F`
+       * for `f` toggles a view. Neither loses anything. `f` also matches what it writes:
+       * `feedback/`, holding an `AnalystFeedback`.
+       */
+      case "f":
         key.stopPropagation();
-        openCompose("classification");
+        openCompose("feedback");
         return;
       case "x":
         // Cancel. Deliberately not `c`, which is already the configuration screen — rebinding a key
@@ -1722,17 +1991,85 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   }
 
   /**
-   * The compose overlay, drawn into the main pane rather than as a floating Box.
+   * The keys that work on the row that has focus, rather than every key the overlay knows.
    *
-   * `Screen` stays `dashboard | config | help` — this is a mode, not a screen, and drawing it here
-   * means it inherits the pane's width and the existing scroll handling for free.
+   * The overlay's original defect was a hint naming `⇥` in a placeholder that disappeared as soon
+   * as anything was typed, so the one route to the model field was invisible exactly when it was
+   * needed. This line is unconditional and changes with focus.
+   */
+  function composeHint(compose: ComposeState): string {
+    if (compose.field === -1) return "← → choose   ⏎ act   ↑ ⇥ fields   ⎋ close";
+    if (compose.field === modelField(compose.kind))
+      return "↑ ↓ move   type to filter   ⏎ accept   ⎋ close";
+    if (compose.kind === "feedback" && compose.field === 0)
+      return "← → choose   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
+    return "type to fill   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
+  }
+
+  /**
+   * The model list, windowed, shown only while the model row has focus.
+   *
+   * Focus *is* the expansion: there is no separate key to open it, because the overlay's whole
+   * problem was keys nobody could find. Collapsing it when focus leaves keeps the confirm strip on
+   * screen in a short terminal, which matters more than seeing the catalogue while typing context.
+   */
+  function modelListLines(compose: ComposeState): Line[] {
+    const list = filteredModels(compose);
+    if (list.length === 0) {
+      return [
+        [
+          { text: "              " },
+          {
+            text:
+              state.models.length === 0
+                ? "no provider credential configured"
+                : `nothing matches "${compose.modelFilter.trim()}"`,
+            tone: "failed",
+          },
+        ],
+      ];
+    }
+
+    const cursor = modelCursor(compose);
+    const offset = scrollOffset(compose.modelOffset, cursor, list.length, MODEL_LIST_HEIGHT);
+    const rows: Line[] = list.map((model, at) => [
+      { text: "              " },
+      { text: at === cursor ? "▸ " : "  ", tone: "accent" as const },
+      {
+        text: `${model.provider}/${model.id}`,
+        ...(at === cursor ? { bg: "selected" as const } : { tone: "dim" as const }),
+      },
+    ]);
+
+    const shown = windowed(rows, offset, MODEL_LIST_HEIGHT);
+    const more = list.length > MODEL_LIST_HEIGHT || compose.modelFilter.trim() !== "";
+    return more
+      ? [
+          ...shown,
+          [
+            { text: "              " },
+            {
+              text: `  ${cursor + 1} of ${list.length}${
+                compose.modelFilter.trim() === "" ? "" : ` matching "${compose.modelFilter.trim()}"`
+              }`,
+              tone: "dim" as const,
+            },
+          ],
+        ]
+      : shown;
+  }
+
+  /**
+   * The compose overlay's contents. The box it floats in is built once, up with the panes.
+   *
+   * `Screen` stays `dashboard | config | help` — this is a mode, not a screen (§12.4).
    */
   function composeLines(compose: ComposeState, width: number): Line[] {
     const lines: Line[] = [];
     lines.push("");
     lines.push([
       { text: "  alert  ", tone: "label" },
-      { text: truncate(compose.alertTitle, width - 12) },
+      { text: truncate(compose.alertTitle, Math.max(10, width - 12)) },
     ]);
     lines.push([
       { text: "  id     ", tone: "label" },
@@ -1747,8 +2084,30 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
        * failed artifact, is the failure this exists to prevent (PRD-5 §9).
        */
       const runnable = !state.modelsLoaded || state.models.length > 0;
+      /**
+       * What the agent will be able to do, not where its data lives.
+       *
+       * This row was the Sentinel URL (§8). An operator about to spend money cannot act on
+       * `http://localhost:8787` — and the `c` screen already carries it, alongside the Brave key —
+       * whereas the capability surface is what decides whether the run can answer the question.
+       * Named by the harness through `listTools()` so a sixth tool appears here without an edit.
+       */
+      const tools = control?.listTools() ?? [];
+      for (const [at, line] of wrap(tools.join(" · "), Math.max(20, width - 12)).entries()) {
+        lines.push([
+          { text: at === 0 ? "  tools  " : "         ", tone: "label" },
+          { text: line, tone: "dim" },
+        ]);
+      }
+      // Web research degrades silently: the tools stay registered and simply stop finding
+      // anything, which is indistinguishable from "the web had nothing" in the transcript.
+      if (env.BRAVE_API_KEY === undefined) {
+        lines.push([
+          { text: "         " },
+          { text: "web research is unconfigured — BRAVE_API_KEY is not set", tone: "inconclusive" },
+        ]);
+      }
       lines.push(
-        [{ text: "  data   ", tone: "label" }, { text: env.SENTINEL_BASE_URL }],
         "",
         runnable
           ? [{ text: "  This calls a paid provider.", tone: "inconclusive" }]
@@ -1778,21 +2137,24 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       }
     }
 
-    if (compose.kind === "start" || compose.kind === "extend") {
-      const chosen = state.models[compose.modelIndex];
+    if (compose.kind === "start" || compose.kind === "rerun") {
+      const chosen = compose.model;
+      const focusedOnModel = compose.field === modelField(compose.kind);
       lines.push(
         "",
         [
-          { text: compose.field === 0 ? "  ▶ " : "    ", tone: "accent" },
-          { text: "premise  ", tone: "label" },
+          fieldMark(compose, 0),
+          // Padded to the longer of the two labels so the values line up in one column. "context"
+          // alone read as though it were the alert's context rather than something you add.
+          { text: "additional context  ", tone: "label" },
           {
-            text: compose.premise === "" ? "(type; ⇥ switches field)" : compose.premise,
-            tone: compose.premise === "" ? "dim" : undefined,
+            text: compose.context === "" ? "(optional)" : compose.context,
+            tone: compose.context === "" ? "dim" : undefined,
           },
         ],
         [
-          { text: compose.field === 1 ? "  ▶ " : "    ", tone: "accent" },
-          { text: "model    ", tone: "label" },
+          fieldMark(compose, 1),
+          { text: "model               ", tone: "label" },
           chosen === undefined
             ? {
                 text: "no provider credential configured — this run would fail",
@@ -1800,47 +2162,83 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
               }
             : { text: `${chosen.provider}/${chosen.id}` },
           {
-            text: chosen === undefined ? "" : `   ← →  (${state.models.length} available)`,
+            text:
+              chosen === undefined || focusedOnModel ? "" : `   (${state.models.length} offered)`,
             tone: "dim",
           },
-        ],
-        "",
-        [
+          // What was typed, in the same `/needle█` shape the pane filters already use. Without it
+          // the narrowing is visible but its cause is not, which is the hidden-`⇥` defect again.
           {
-            text: "  A premise is context to work with, never a verdict. It is recorded on the run.",
-            tone: "dim",
+            text:
+              focusedOnModel && compose.modelFilter !== ""
+                ? `   /${compose.modelFilter}\u2588`
+                : "",
+            tone: "accent",
           },
         ],
       );
+      if (focusedOnModel) lines.push(...modelListLines(compose));
+      /**
+       * A first run carrying context is not a baseline, and the operator should learn that here.
+       *
+       * `evaluate` skips any run with `analystContext` (AC18) and coverage marks the alert `✓·`
+       * (§4.5), so steering the *first* investigation of an alert leaves it looking investigated
+       * with nothing scoreable behind it. Cheap to say now; invisible later.
+       */
+      if (compose.kind === "start" && compose.context.trim() !== "") {
+        lines.push("", [
+          { text: "  ⚠ ", tone: "inconclusive" },
+          {
+            text: "Not a baseline: evaluate will skip this run, and [1] will mark it ✓·",
+            tone: "inconclusive",
+          },
+        ]);
+      }
     }
 
-    if (compose.kind === "classification") {
+    if (compose.kind === "feedback") {
       lines.push(
         "",
         [
-          { text: compose.field === 0 ? "  ▶ " : "    ", tone: "accent" },
+          fieldMark(compose, 0),
           { text: "verdict  ", tone: "label" },
           { text: CLASSIFICATIONS[compose.classificationIndex] ?? "Undetermined" },
           { text: "   ← →", tone: "dim" },
         ],
         [
-          { text: compose.field === 1 ? "  ▶ " : "    ", tone: "accent" },
+          fieldMark(compose, 1),
           { text: "comment  ", tone: "label" },
           {
-            text: compose.comment === "" ? "(type; ⇥ switches field)" : compose.comment,
+            text: compose.comment === "" ? "(why you disagree, or why you agree)" : compose.comment,
             tone: compose.comment === "" ? "dim" : undefined,
+          },
+        ],
+        "",
+        [
+          {
+            text: `  Written to ${env.FEEDBACK_DIR}/. No provider call, nothing spent, runs/ untouched.`,
+            tone: "dim",
           },
         ],
       );
     }
 
+    // The strip marks its choice only while it holds focus. Painting a highlighted `Cancel` at all
+    // times put a second thing on screen that looked focused, next to the row that actually was.
+    const onStrip = compose.field === -1;
     lines.push("", [
-      { text: compose.field === -1 ? "  ▶ " : "    ", tone: "accent" },
-      { text: "  Cancel  ", ...(compose.confirm ? {} : { bg: "selected" as const }) },
+      fieldMark(compose, -1),
+      {
+        text: "  Cancel  ",
+        ...(onStrip && !compose.confirm ? { bg: "selected" as const } : { tone: "dim" as const }),
+      },
       { text: "  " },
-      { text: "  Confirm  ", ...(compose.confirm ? { bg: "selected" as const } : {}) },
-      { text: "   ← →  ⏎ act  ⎋ close", tone: "dim" },
+      {
+        text: `  ${confirmVerb(compose.kind)}  `,
+        ...(onStrip && compose.confirm ? { bg: "selected" as const } : { tone: "dim" as const }),
+      },
     ]);
+    lines.push("", [{ text: `  ${composeHint(compose)}`, tone: "dim" }]);
     return lines;
   }
 

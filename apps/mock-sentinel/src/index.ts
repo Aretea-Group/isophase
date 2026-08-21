@@ -11,10 +11,18 @@ const kusto = new KustoClient({
   timeoutMs: config.KUSTO_TIMEOUT_MS,
 });
 
+// Two probes, not one: the engine can be up while the database it is supposed to
+// serve does not exist — the state a recreated container is in until
+// `bun run data:bootstrap` runs. Reporting that as healthy is what let the
+// integration suites run against an empty engine and fail on their assertions
+// instead of skipping.
 const app = createApp({
   config,
   kusto,
-  probes: { kusto: async () => ((await kusto.isReachable()) ? "up" : "down") },
+  probes: {
+    kusto: async () => ((await kusto.isReachable()) ? "up" : "down"),
+    database: async () => ((await kusto.hasDatabase(config.KUSTO_DATABASE)) ? "up" : "down"),
+  },
 });
 
 const server = Bun.serve({

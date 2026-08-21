@@ -20,7 +20,7 @@ import {
   InvestigationStepLimitError,
   InvestigationTimeoutError,
 } from "./errors.ts";
-import { createInvestigationTools, TOOL_NAMES } from "./tools/index.ts";
+import { createInvestigationTools, INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
   /**
@@ -207,7 +207,7 @@ export class InvestigationHarness {
 
     // Fixed keys from the start, so "searched zero times" and "not recorded" are different facts.
     const toolCalls: Record<string, number> = Object.fromEntries(
-      TOOL_NAMES.map((name) => [name, 0]),
+      INVESTIGATION_TOOL_NAMES.map((name) => [name, 0]),
     );
 
     const unsubscribe =

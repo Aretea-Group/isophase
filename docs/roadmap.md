@@ -64,7 +64,7 @@ Potential capabilities:
   prose that happens to contain the times. Reconstructing a timeline is a core T2 artefact, and the
   console cannot derive one without interpreting query results, which AGENTS.md §10 forbids.
 * **Benign True Positive.** The TP/FP split cannot express "the detection is correct and the
-  activity was authorised", which is one of the most common real dispositions. Microsoft Sentinel
+  activity was authorised", which is one of the most common real classifications. Microsoft Sentinel
   closes incidents on five classifications (`True Positive – suspicious activity`, `Benign Positive
   – suspicious but expected`, two `False Positive` variants, `Undetermined`); nothing in the current
   contract maps onto them, which also blocks any future write-back.
@@ -110,6 +110,14 @@ So this needs its own PRD, and it owes answers to questions PRD-3 got to avoid:
 Overlaps two items above rather than replacing them: analyst-supplied context is the write half of
 **§2 Human Feedback**, and promoting it to something durable is **§1 Case Memory**. This item is the
 surface; those two are the substance behind it.
+
+**Implemented by PRD-5 — Console as an Operator Surface**, which answers all four questions above:
+the run executes in the console process behind a supervisor (§5.1), the read-only guarantee is
+replaced by an absence-of-primitive claim plus named seams (§14), two consoles are a non-problem
+because no run artifact is ever written by anyone but its own run (§4.3), and `apps/console/src`
+joined the ground-truth isolation `ROOTS` — load-bearing rather than hygienic, since in-process
+execution makes console source agent-side source. The follow-ups formerly left in **§10** are now
+complete as part of PRD-5.
 
 ### 7. Evaluation at Scale
 
@@ -181,3 +189,50 @@ Potential capabilities:
 Depends on **§1 Case Memory** for anything that carries findings between investigations, and is the
 main consumer of **§7 Evaluation at Scale** — grouping is hard to justify until a sweep has shown
 what the duplicate-investigation cost actually is.
+
+### 9. Benchmarking Surface
+
+Turn "run this scenario again" into "compare these runs", on a stable key, in the console.
+
+PRD-5 builds the loop — a queue that marks the fourteen alerts with ground truth behind them, a key
+to start one, `bun run queue:reset` to put it back, and a re-run that can carry analyst context and a
+chosen model. It deliberately builds none of the comparison, and records three things so that this
+work can: the scenario id, `derivedFrom`, and `config.analystContext`.
+
+The gap it leaves is concrete. `evaluate-runs.ts` keys `latestPerScenario` on
+`${model}::${scenario}` last-wins, so a scenario has exactly one row per model and every earlier run
+of it is invisible — which is the wrong shape for a tool whose purpose is repetition. PRD-5 papers
+over the immediate hazard with a three-line skip of runs carrying analyst context, so a steered
+re-run cannot silently displace an honest one. That guard hides information rather than showing it,
+and it is the first thing this work should delete.
+
+Potential capabilities:
+
+* Key on `${model}::${scenario}::${baseline|steered}` rather than dropping rows, so a steered run
+  appears **beside** its baseline instead of in place of it, and the headline `direction N/M` is
+  computed over baselines only
+* Variance across repeats of the same scenario and model. PRD-4 measured one scenario swinging
+  80/15/90 on the same alert and model; with one row per key, that is currently unobservable
+* A benchmark tab in the console — scenarios down, models across, a cell per pair showing direction,
+  impact, spread across repeats and cost. Read-only over the same artifacts `evaluate` reads
+* Lineage rendering: a derived run shown under its parent with the premise that was added and the
+  delta it produced, in both the console and the report
+* Cost and latency as first-class columns. Model-tier comparison is a product question — terra-class
+  reasoning cleared a calibration control that luna failed, at roughly ten times the token price —
+  and it is currently answered by reading two reports side by side
+* Whether analyst context helps. The one experiment nobody can run today: same scenario, same model,
+  with and without a stated premise, scored against the same key
+
+Depends on **PRD-5** for the queue, the reset loop and the recorded fields. Overlaps **§7 Evaluation
+at Scale**, which owns the scoring-band fix and ground-truth expansion — this item assumes those
+land there rather than here, and is about the comparison surface on top of them.
+
+### 10. Completed PRD-5 Follow-Ups
+
+These items shipped with PRD-5 rather than moving to a later console PRD: analyst-facing
+classification terminology, one exported Tab traversal exception list, the
+duplicate-spend warning, `queue:reset --include-feedback`, and a queue-focused `[3] Case` pane that
+follows the active alert. `console --fresh` adds a non-destructive session view that hides existing
+runs but shows newly launched ones. Cancellation was also exercised against a real in-flight
+`openai/gpt-5.6-luna` investigation; the persisted run was `interrupted` and its active result
+failed with `InvestigationAbortedError`. See PRD-5 §19 for the dated live evidence.

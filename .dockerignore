@@ -1,0 +1,10 @@
+# The compose build context is the repository root (infra/docker-compose.yml
+# sets `context: ..`), and this daemon runs the legacy builder, where only a
+# root-level .dockerignore is read.
+
+# The image installs its own dependencies. Copying the host tree in would
+# overlay macOS symlinks onto that install.
+**/node_modules
+
+.git
+runs

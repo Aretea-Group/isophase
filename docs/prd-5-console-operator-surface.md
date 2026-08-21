@@ -384,9 +384,9 @@ mechanically.
 
 ## 8. Flow 2 — start an investigation
 
-`n` on the queue selection. A confirmation overlay names the alert, the model, the Sentinel URL, the
-fact that this calls a paid provider, and a duplicate-spend warning derived from data already on
-screen: *"N other alerts share this `compromisedEntity` within ±1s; M have a run."* The confirm strip
+`n` on the queue selection. A confirmation overlay names the alert, the model, **the tool surface
+the run will have**, the fact that this calls a paid provider, and a duplicate-spend warning derived
+from data already on screen: *"N other alerts share this `compromisedEntity` within ±1s; M have a run."* The confirm strip
 defaults to **Cancel**; ⏎ confirms, ⎋ cancels, and ⎋ is never the only cancel given the ~40 ms
 escape-parser latency documented at `render.test.ts:407`.
 
@@ -454,7 +454,15 @@ roadmap §9, not this PRD.
 
 ## 10. Flow 4 — record a classification
 
-`d`, deliberately not `f`, which sits one shift-key from `F` (follow) on the same screen.
+`f`. This originally read *"`d`, deliberately not `f`, which sits one shift-key from `F` (follow) on
+the same screen"* — a rule since retired, deliberately rather than by oversight (§19).
+
+Two things killed it. `r`/`R` (§12.1) now puts the same adjacency on the key that *spends money*, so
+holding the rule here while breaking it there would be incoherent. And the property that actually
+makes this keymap safe was never key spacing: every consequential action sits behind a confirm strip
+defaulting to Cancel, so `f` for `F` opens a modal that writes nothing and `F` for `f` toggles a
+view. Neither loses anything. `f` also names what it writes — `feedback/`, holding an
+`AnalystFeedback` — where `d` named a word that appears nowhere in the data.
 
 ```ts
 AnalystFeedback = {
@@ -547,15 +555,23 @@ The console's consumed set today is `Ctrl-C`, `q`, `/`, `y`, `1`–`4`, `j`/`↓
 | Key | Where it applies | Action |
 |---|---|---|
 | `s` | `[1]` queue | filter to alerts that have ground truth, and back |
-| `n` | `[1]` queue | start an investigation on the selection — opens the confirm overlay |
-| `e` | `[2]` runs, `[4]` verdict | extend: re-run with an analyst premise and a chosen model |
-| `d` | `[2]` runs, `[4]` verdict | record a classification |
+| `n` | `[1]` queue | start an investigation on the selection — opens the compose overlay |
+| `r` | `[2]` runs, `[4]` verdict | re-run this alert with analyst context and a chosen model |
+| `f` | `[2]` runs, `[4]` verdict | record your feedback on this investigation |
 | `x` | `[2]` runs | cancel the selected running investigation |
+| `R` | anywhere | re-read runs and alerts from disk now — was `r` |
 
 **`c` is not available.** It toggles the configuration screen (`app.ts:886-890`). Cancel is `x`.
-`d` rather than `f`, which sits one shift-key from `F` (follow) on the same screen. No key changes
-meaning, and no key gains a second meaning on a different pane except `e` and `d`, which act on
-"the current run" and are inert when there is none.
+No key gains a second meaning on a different pane except `r` and `f`, which act on "the current run"
+and refuse when there is none.
+
+**One key does change meaning, and it is the single exception this section grants.** `r` meant
+"re-read from disk" through PRD-3 and PRD-5's first cut, and moves to `R`. The unshifted key goes to
+the action reached often enough to deserve it, while both pollers already re-read on their own —
+which makes a manual refresh a convenience rather than a route to something otherwise unreachable.
+What makes the swap safe is the confirm strip, not the spacing: a stray `r` opens an overlay sitting
+on Cancel and spends nothing. Recorded here rather than done quietly, because §12.1's whole purpose
+is that a rebind must be argued for.
 
 `KEY_BAR` (`app.ts:143`) gains `n start` and drops nothing — it is already near a terminal width's
 worth, so `⏎ expand` moves into `?` help. `helpLines()` (`app.ts:91-115`) gains the five keys, and
@@ -612,18 +628,49 @@ One overlay serves flows 2, 3 and 4, because they differ only in fields:
 
 | Flow | Key | Fields | Confirm |
 |---|---|---|---|
-| 2 start | `n` | none — a summary and a confirm strip | `Start` / **`Cancel`** |
-| 3 extend | `e` | premise (textarea), model (select) | `Run` / **`Cancel`** |
-| 4 classification | `d` | classification (select), comment (textarea), analyst (input) | `Save` / **`Cancel`** |
+| 2 start | `n` | additional context, model — a summary above them | `Start` / **`Cancel`** |
+| 3 re-run | `r` | additional context, model | `Run` / **`Cancel`** |
+| 4 feedback | `f` | verdict, comment | `Save` / **`Cancel`** |
+
+The confirm button carries the verb rather than reading `Confirm` in all three: it is the last thing
+read before pressing, and a generic label made the overlay that spends money look identical to the
+one that writes a local file.
+
+**Flow 2 carries the same two fields as flow 3**, which this table originally denied it. Offering
+them only on a re-run meant the first investigation of an alert could not be steered or re-pointed
+without running it once on the defaults first. The cost is recorded on screen rather than in a rule:
+a *first* run carrying context is not a baseline — `evaluate` skips it (AC18) and coverage marks the
+alert `✓·` (§4.5) — so the overlay says so the moment the field is non-empty.
 
 It is a centred `BoxRenderable` over `[4]`, not a fourth pane and not a new `Screen` — `Screen`
-stays `dashboard | config | help`. **The confirm strip defaults to `Cancel` in every case**: a modal
-dismissed by whatever key the analyst was already holding is theatre. `⏎` confirms, `⎋` cancels, and
-`⎋` is never the only cancel, given the ~40 ms escape-parser latency documented at
-`render.test.ts:407`.
+stays `dashboard | config | help`. It floats *over* the pane rather than replacing its contents, so
+the alert or run being acted on stays legible around it and the box's own border carries the
+subject. **The confirm strip defaults to `Cancel` in every case**: a modal dismissed by whatever key
+the analyst was already holding is theatre. `⎋` cancels from anywhere in one press, and `⎋` is never
+the only cancel, given the ~40 ms escape-parser latency documented at `render.test.ts:407`.
 
-For flow 2 the summary names the alert, the model, the Sentinel URL the run will be given, the fact
-that this calls a paid provider, and the duplicate-spend warning from §8.
+**Navigation, and the one place this deviates from "⏎ confirms".** The overlay opens on its first
+*field*, not on the confirm strip — opening on the strip put the `▶` cursor on one row while the
+strip painted a highlighted `Cancel` on another, so two things looked focused and neither was
+obviously taking keys. The strip now marks its choice only while it holds focus. `↑`/`↓` walk the
+rows, with `⇥`/`⇧⇥` kept as aliases; `←`/`→` belong to the strip and to the four-way verdict.
+
+`⏎` acts on the focused row and **only the strip's `⏎` confirms**. It previously confirmed from
+anywhere, and since `confirm` defaults to Cancel, pressing it while typing context fell through to
+`closeCompose()` and discarded everything typed — no prompt, no recovery. Advancing instead means no
+keystroke inside the overlay can destroy work, which is worth the deviation.
+
+**The model field is a list, and focus is what opens it.** A one-line `←`/`→` cycler through the
+offered models was unusable at 38 entries and invisible at any number, since the only hint naming
+`⇥` lived in a placeholder that vanished as soon as anything was typed. The row expands into a
+windowed, type-to-filter list whenever it has focus and collapses when focus leaves; `↑`/`↓` move
+the cursor and hand focus on at either end, so there is no separate expand key to discover. **The
+cursor is the selection** — held by value, not as an index — so filtering can never leave the choice
+pointing at a row no longer on offer. A hint line under the strip names the keys for the row that
+has focus, unconditionally.
+
+For flow 2 the summary names the alert, the model, the tools the run will be given, the fact that
+this calls a paid provider, and the duplicate-spend warning from §8.
 
 **Renderables.** `@opentui/core` 0.5.4 ships `TextareaRenderable`, `InputRenderable`,
 `SelectRenderable` and `TabSelectRenderable` — verified present in the pinned package. No new
@@ -1144,3 +1191,107 @@ The mode was verified live against an isolated directory containing the earlier 
 the console opened with `0 runs` and 154 alerts, then starting Luna run
 `01a01f41-e679-7000-9f9b-c8b36b12f227` changed the view to `1 run` and removed that alert from the
 queue. The pre-existing artifact remained hidden and unchanged.
+
+### 19.1 The overlay, reworked after using it
+
+Everything above shipped and was then driven by someone who had not written it. The overlay
+survived that badly, and four of the five findings were things no test could have asserted because
+the tests encoded the same assumptions the code did.
+
+**Three deviations this section had failed to record.** They are listed first because their absence
+is the more serious defect: §19 exists so the document and the code do not silently diverge, and it
+had already stopped doing that.
+
+1. **`n` carried `context` and `model`**, which §12.4's table said it did not. §12.4 now says it
+   does, with the reason and the cost.
+2. **`⏎` confirmed from any field**, which §12.4 mandates — and which, with the strip defaulting to
+   Cancel, meant pressing it while typing fell through to `closeCompose()` and discarded the text
+   silently. Now `⏎` advances on a field and confirms only on the strip. Recorded as a deliberate
+   deviation from "⏎ confirms" rather than left as a contradiction.
+3. **The overlay was `[4]`'s body, not a box over it.** §12.4 says "a centred `BoxRenderable` over
+   `[4]`"; the implementation returned `composeLines()` from `mainBody()`, so the pane it was meant
+   to cover disappeared underneath it and the modal borrowed the pane's title. It is now an
+   absolutely-positioned box with its own border and title, and `mainTitle()` no longer yields.
+
+**The model picker was a list of 38 things nobody had chosen between.** Credential filtering was
+working as designed and still left `gpt-realtime-2.1`, two `codex` variants, `gpt-4`, `o1` and four
+dated `gpt-4o` snapshots on offer — none of them a security analyst. Google's catalogue is worse:
+robotics, computer-use, image, live, `gemma`. `CURATED_MODELS` (`model.ts`) intersects the
+credentialed catalogue with a hand-maintained list, which on a machine holding only an OpenAI key
+takes the picker from 38 entries to 6.
+
+Hand-maintained rather than rule-based on purpose: nothing on the catalogue distinguishes "can
+investigate" from "can generate audio", so a regex would be a guess that silently admits the next
+specialist model to ship. The intersection is with the credential probe, not a replacement for it —
+a curated id the provider has retired must not be offered either — and a configured provider that
+contributes no curated entry falls back to its whole catalogue, because "your key works and the
+picker is empty" is the one outcome an operator cannot act on.
+
+**The `←`/`→` cycler is a list, and focus is what opens it.** One model at a time behind a hint that
+lived in a placeholder — which vanished the moment anything was typed — meant the only route to the
+field was invisible exactly when it was wanted, and reaching an entry twenty along cost twenty
+keypresses. The row now expands into a windowed, type-to-filter list whenever it holds focus, with
+`↑`/`↓` moving the cursor and handing focus on at either end. **The cursor is the selection**, held
+by value rather than as an index, so narrowing the filter can never leave the choice pointing at a
+row that is no longer offered.
+
+**Two things looked focused at once.** The strip painted a highlighted `Cancel` unconditionally,
+next to a `▶` sitting on a different row, so nothing on screen said which one the next key would
+reach. The strip now marks its choice only while it holds focus, and one function (`fieldMark`)
+decides what focused looks like for every row.
+
+**Opening on the first field was tried, and reverted.** Fixing the double-focus by moving the cursor
+off the strip made the common case — start this alert on the configured model — cost four
+keystrokes instead of two, and put an optional free-text box under the cursor, which reads as
+something that must be filled before you may proceed. The strip is where the overlay opens again;
+the double-focus is fixed where it belonged.
+
+**`r` re-runs and `f` records feedback; `R` re-reads from disk.** §12.1 and §10 carry the argument.
+Both new bindings sit one shift-key from an existing one, which §10 had ruled out — retired
+deliberately, because the property that makes this keymap safe is the confirm strip, not the
+spacing.
+
+**The overlay paints no background at all, after two attempts to choose one.** First `#1c1c1c`,
+picked to sit "a shade off" the terminal so the box would read as raised; then `#000000`, on the
+theory that black would "match". Both are guesses about a background this process cannot read, and
+each landed as a rectangle in the wrong colour against a tinted theme — the second worse than the
+first on a navy one, which is where it was actually looked at. Both contradicted `theme.ts`'s own
+opening rule about inheriting whatever theme the analyst already trusts.
+
+There is no colour that satisfies that rule, so the box sets none and the terminal's own background
+shows through it. That requires nothing underneath to read through the box, so `mainBody()` returns
+empty while composing. The cost is the alert text that remained visible around the modal — already
+worth little once the box grew to the pane's full width, and worth less than an overlay that looks
+native in every terminal. `COLOR.overlay` is gone rather than left unused.
+
+**The summary named a URL instead of a capability.** `data  http://localhost:8787` is not something
+an operator can act on before spending money, and the `c` screen already carries it beside the Brave
+key. It is now `tools`, listing the agent's whole surface — reported through a new
+`control.listTools()` rather than restated by the console, which must not import agent internals
+(ADR 006 §3, as amended by §5.1) and would otherwise never learn about a sixth tool. The names are
+`INVESTIGATION_TOOL_NAMES`, a hand-written copy of what `createInvestigationTools` builds — deriving
+it is not possible, since the factory closes over per-investigation state a name-only caller cannot
+supply — guarded by `tool-surface.test.ts`, which builds the real set and compares. A row beneath it
+says when web research is unconfigured, because that degrades silently: the tools stay registered
+and simply stop finding anything, which in a transcript is indistinguishable from the web having
+had nothing.
+
+**The caption under the fields was removed and `context` became `additional context`.** The caption
+restated §4.4 — *"context is something to work with, never a verdict"* — at the analyst, but §4.4
+binds the *agent* and is enforced by the `<analyst_context>` envelope and the paragraph in
+`instructions.ts`. It explained a rule its reader could not break. The label was widened because
+`context` alone read as the alert's own context rather than something the operator adds.
+
+**Two more found only by rendering it, which is how the first round of overlay defects was found
+too.** Both had passing tests over them, because a test that asserts a string is present cannot see
+what the pane looks like.
+
+- **The filter was invisible while it filtered.** Typing on the model row narrowed the list and
+  showed nothing of what had been typed, so the narrowing was visible and its cause was not — the
+  hidden-`⇥` defect again, one field along. The row now carries `/needle█` in the same shape the
+  pane filters already use, and the list's count line appears whenever a filter is active rather
+  than only when the list overflows its window.
+- **A two-column inset showed one stray character per line of the pane beneath it.** Insetting the
+  box was meant to keep the underlying alert legible around the modal; at that width it produced a
+  column of single letters down each side. The box now spans `[4]` fully, so what shows above and
+  below it are whole lines and the sides show nothing at all.

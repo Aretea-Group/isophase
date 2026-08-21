@@ -9,7 +9,7 @@ import {
   INSTRUCTIONS_LABEL,
   PROVENANCE,
 } from "../src/provenance.ts";
-import { TOOL_NAMES, toolDescriptors } from "../src/tools/index.ts";
+import { INVESTIGATION_TOOL_NAMES, toolDescriptors } from "../src/tools/index.ts";
 
 /**
  * What the artifact claims about the software that produced it (PRD-6 §6.6, ADR 008 §1).
@@ -37,15 +37,18 @@ describe("promptHash", () => {
   });
 
   test("the descriptors are the whole capability surface, in a stable order", () => {
-    expect(TOOL_NAMES).toEqual([
+    // Factory order: this is what the console renders, and it is read by a person.
+    expect(INVESTIGATION_TOOL_NAMES).toEqual([
       "get_security_schema",
       "query_security_data",
-      "submit_investigation",
-      "web_fetch",
       "web_search",
+      "web_fetch",
+      "submit_investigation",
     ]);
-    // Name order, so reordering the array in `createInvestigationTools` cannot move the hash.
-    expect(toolDescriptors().map((tool) => tool.name)).toEqual([...TOOL_NAMES].toSorted());
+    // Name order for the hash, so reordering the factory cannot move it.
+    expect(toolDescriptors().map((tool) => tool.name)).toEqual(
+      [...INVESTIGATION_TOOL_NAMES].toSorted(),
+    );
   });
 });
 
@@ -147,10 +150,14 @@ describe("schema generations", () => {
       }[];
     };
 
+    // Widened deliberately: the export carries a literal union so the console can rely on it, and
+    // the keys read back off an artifact are plain strings.
+    const names: readonly string[] = INVESTIGATION_TOOL_NAMES;
+
     for (const result of run.results) {
       expect(typeof result.turns).toBe("number");
       for (const [name, count] of Object.entries(result.toolCalls ?? {})) {
-        expect(TOOL_NAMES).toContain(name);
+        expect(names).toContain(name);
         expect(typeof count).toBe("number");
       }
       for (const value of Object.values(result.usage ?? {})) {

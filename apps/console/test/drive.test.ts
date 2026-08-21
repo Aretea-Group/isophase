@@ -74,6 +74,7 @@ function fakeControl(): InvestigationControl & {
       for (const listener of listeners) listener(event);
     },
     listAlerts: () => Promise.resolve([alertResource()]),
+    listTools: () => ["get_security_schema", "query_security_data", "submit_investigation"],
     listModels: () =>
       Promise.resolve([
         { provider: "openai", id: "gpt-5.6-luna" },
@@ -121,11 +122,42 @@ async function mount(height = 34) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop -- polling for a condition
     await setup.renderOnce();
-    if (!setup.captureCharFrame().includes("press r to load alerts")) break;
+    if (!setup.captureCharFrame().includes("press R to load alerts")) break;
     // eslint-disable-next-line no-await-in-loop -- polling for a condition
     await Bun.sleep(20);
   }
   return { setup, app, control, frame: () => setup.captureCharFrame() };
+}
+
+/**
+ * Confirm an overlay whose focus is still on the strip, which is where it opens.
+ *
+ * Two keystrokes, and that is the point: starting the selected alert on the configured model is
+ * the common case, and it must not cost a walk through every optional field.
+ */
+async function confirmOverlay(setup: Awaited<ReturnType<typeof mount>>["setup"]): Promise<void> {
+  setup.mockInput.pressArrow("right");
+  await setup.renderOnce();
+  setup.mockInput.pressEnter();
+  await setup.renderOnce();
+}
+
+/**
+ * Put focus on field `index`, counting from the strip the overlay opens on.
+ *
+ * `⇥` from the strip reaches field 0, so this is `index + 1` presses. Expressed relative to the
+ * strip rather than as a literal key count so that a test reads as "focus the model row" instead
+ * of as an arithmetic claim about the form's shape.
+ */
+async function toField(
+  setup: Awaited<ReturnType<typeof mount>>["setup"],
+  index: number,
+): Promise<void> {
+  for (let at = 0; at <= index; at += 1) {
+    setup.mockInput.pressTab();
+    // eslint-disable-next-line no-await-in-loop -- one frame per keystroke, as the analyst types
+    await setup.renderOnce();
+  }
 }
 
 afterEach(async () => {
@@ -166,10 +198,7 @@ describe("starting an investigation with `n` (PRD-5 §8)", () => {
     const { setup, app, control, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     expect(control.started).toHaveLength(1);
     expect(control.started[0]?.alertId).toBe(ALERT_ID);
@@ -192,10 +221,7 @@ describe("a started alert leaves the queue (PRD-5 §7)", () => {
 
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     // The alert is now the run's business. Keeping it in the queue asks the analyst to track one
     // item in two panes.
@@ -294,10 +320,7 @@ describe("regressions found by using it", () => {
     const { setup, app, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     // `.at(-1)` is the empty string after the frame's trailing newline — the key bar is the line
     // before it. Reading the wrong one is why an earlier manual probe reported a blank status.
@@ -309,27 +332,24 @@ describe("regressions found by using it", () => {
     setup.renderer.destroy();
   });
 
-  test("`n` offers a premise and a model, not just the defaults", async () => {
+  test("`n` offers context and a model, not just the defaults", async () => {
     const { setup, app, control, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    expect(frame()).toContain("premise");
+    expect(frame()).toContain("context");
     expect(frame()).toContain(env.INVESTIGATOR_MODEL);
 
-    setup.mockInput.pressTab();
-    await setup.renderOnce();
+    // Both fields are optional, so reaching them is deliberate: ⇥ off the strip onto `context`.
+    await toField(setup, 0);
     await setup.mockInput.typeText("known maintenance window");
     await setup.renderOnce();
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
+    setup.mockInput.pressArrow("down");
     await setup.renderOnce();
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     // The first investigation of an alert can be steered and re-pointed without running it once
     // with the defaults first.
@@ -345,49 +365,43 @@ describe("regressions found by using it", () => {
 });
 
 describe("each action belongs to one subject", () => {
-  test("`d` from the queue refuses instead of filing against some other run", async () => {
+  test("`f` from the queue refuses instead of filing against some other run", async () => {
     const { setup, app, frame } = await mount();
     // Start a run so there *is* something in [2] to mis-target, then go back to reading an alert.
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
     setup.mockInput.pressKey("1");
     await setup.renderOnce();
     setup.mockInput.pressKey("a");
     await setup.renderOnce();
 
-    setup.mockInput.pressKey("d");
+    setup.mockInput.pressKey("f");
     await setup.renderOnce();
 
-    // It used to open the classification overlay for the run selected in [2] — a verdict recorded
+    // It used to open the feedback overlay for the run selected in [2] — a verdict recorded
     // against an investigation the analyst was not looking at.
-    expect(frame()).not.toContain("Record a classification");
+    expect(frame()).not.toContain("Your feedback");
     expect(frame().split("\n").at(-2) ?? "").toContain("select one in [2]");
 
     app.stop();
     setup.renderer.destroy();
   });
 
-  test("`e` from the queue refuses the same way", async () => {
+  test("`r` from the queue refuses the same way", async () => {
     const { setup, app, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
     setup.mockInput.pressKey("1");
     await setup.renderOnce();
     setup.mockInput.pressKey("a");
     await setup.renderOnce();
 
-    setup.mockInput.pressKey("e");
+    setup.mockInput.pressKey("r");
     await setup.renderOnce();
-    expect(frame()).not.toContain("Re-run with analyst context");
-    expect(frame().split("\n").at(-2) ?? "").toContain("e re-runs");
+    expect(frame()).not.toContain("Re-run —");
+    expect(frame().split("\n").at(-2) ?? "").toContain("r re-runs");
 
     app.stop();
     setup.renderer.destroy();
@@ -408,20 +422,17 @@ describe("each action belongs to one subject", () => {
     setup.renderer.destroy();
   });
 
-  test("`d` refuses on an investigation that is still running", async () => {
+  test("`f` refuses on an investigation that is still running", async () => {
     const { setup, app, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     // The run is in flight: there is no verdict yet to agree or disagree with, and
     // `agentAssessment` would freeze an empty one.
-    setup.mockInput.pressKey("d");
+    setup.mockInput.pressKey("f");
     await setup.renderOnce();
-    expect(frame()).not.toContain("Record a classification");
+    expect(frame()).not.toContain("Your feedback");
     expect(frame().split("\n").at(-2) ?? "").toContain("still running");
 
     app.stop();
@@ -436,20 +447,18 @@ describe("the focus trap (PRD-5 §12.5)", () => {
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
 
-    // From the confirmation strip, Shift-Tab wraps backwards to the model selector.
+    // From the strip, Shift-Tab wraps backwards onto the model row — where the list is open,
+    // because focus is what opens it.
     setup.mockInput.pressTab({ shift: true });
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
+    setup.mockInput.pressArrow("down");
     await setup.renderOnce();
     expect(frame()).toContain("openai/gpt-5.6-terra");
 
-    // Forward Tab wraps back to the confirmation strip, where Right selects Confirm.
+    // Forward Tab returns to the confirmation strip, where Right selects Confirm.
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
     expect(frame()).not.toContain("Start an investigation");
 
     app.stop();
@@ -520,44 +529,38 @@ describe("the focus trap (PRD-5 §12.5)", () => {
   });
 });
 
-describe("extending a run with `e` (PRD-5 §9)", () => {
-  test("takes typed premise text and cycles the model, then starts a derived run", async () => {
+describe("re-running with `r` (PRD-5 §9)", () => {
+  test("takes typed context and a model off the list, then starts a derived run", async () => {
     const { setup, app, control, frame } = await mount();
     // Start one run so there is something to derive from.
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
-    setup.mockInput.pressKey("e");
+    setup.mockInput.pressKey("r");
     await setup.renderOnce();
-    expect(frame()).toContain("Re-run with analyst context");
-    // Opens on the configured model, not the alphabetically first one. Defaulting to index 0 meant
-    // confirming without touching the field silently switched provider.
+    expect(frame()).toContain("Re-run —");
+    // Opens on the model the run being re-run used, not on the head of the list. Defaulting to the
+    // first offer meant confirming without touching the field silently switched model.
     expect(frame()).toContain(env.INVESTIGATOR_MODEL);
 
-    // ⇥ moves onto the premise field, which then takes printable keys.
-    setup.mockInput.pressTab();
-    await setup.renderOnce();
+    await toField(setup, 0);
     await setup.mockInput.typeText("scanner");
     await setup.renderOnce();
     expect(frame()).toContain("scanner");
 
-    // ⇥ again to the model field, → cycles it.
+    // ⇥ to the model row. The list is open because focus is what opens it, and ↓ moves the cursor
+    // — which *is* the selection, so no separate accept is needed.
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
+    expect(frame()).toContain("openai/gpt-5.6-luna");
+    setup.mockInput.pressArrow("down");
     await setup.renderOnce();
     expect(frame()).toContain("gpt-5.6-terra");
 
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     expect(control.started).toHaveLength(2);
     const derived = control.started[1];
@@ -565,6 +568,70 @@ describe("extending a run with `e` (PRD-5 §9)", () => {
     expect(derived?.model).toEqual({ provider: "openai", id: "gpt-5.6-terra" });
     // A derived run must get a fresh id: transcripts are keyed <runId>-<alertId> and appended to.
     expect(derived?.runId).not.toBe(control.started[0]?.runId);
+    app.stop();
+    setup.renderer.destroy();
+  });
+
+  test("typing on the model row filters, and the selection follows the filter", async () => {
+    const { setup, app, control, frame } = await mount();
+    setup.mockInput.pressKey("n");
+    await setup.renderOnce();
+    await toField(setup, 1);
+
+    // Both offers are visible before the filter narrows them.
+    expect(frame()).toContain("openai/gpt-5.6-luna");
+    expect(frame()).toContain("openai/gpt-5.6-terra");
+
+    await setup.mockInput.typeText("terra");
+    await setup.renderOnce();
+    expect(frame()).not.toContain("gpt-5.6-luna");
+
+    // The selection followed the narrowing. Without that it would still point at luna, and
+    // confirming would run a model the filter had taken off the screen.
+    setup.mockInput.pressTab();
+    await setup.renderOnce();
+    await confirmOverlay(setup);
+    expect(control.started[0]?.model).toEqual({ provider: "openai", id: "gpt-5.6-terra" });
+
+    app.stop();
+    setup.renderer.destroy();
+  });
+
+  test("⏎ on a text field advances instead of discarding what was typed", async () => {
+    // It used to call `confirmCompose()` from anywhere; with the strip on Cancel that fell through
+    // to `closeCompose()` and threw the text away with no prompt and no way back.
+    const { setup, app, control, frame } = await mount();
+    setup.mockInput.pressKey("n");
+    await setup.renderOnce();
+    await toField(setup, 0);
+    await setup.mockInput.typeText("do not lose this");
+    await setup.renderOnce();
+
+    setup.mockInput.pressEnter();
+    await setup.renderOnce();
+
+    expect(frame()).toContain("Start an investigation");
+    expect(frame()).toContain("do not lose this");
+    expect(control.started).toEqual([]);
+
+    app.stop();
+    setup.renderer.destroy();
+  });
+
+  test("a first run carrying context says it will not be a baseline", async () => {
+    const { setup, app, frame } = await mount();
+    setup.mockInput.pressKey("n");
+    await setup.renderOnce();
+    expect(frame()).not.toContain("Not a baseline");
+
+    await toField(setup, 0);
+    await setup.mockInput.typeText("known scanner");
+    await setup.renderOnce();
+
+    // `evaluate` skips runs carrying analyst context (AC18) and coverage marks the alert `✓·`, so
+    // steering the first investigation leaves it looking investigated with nothing scoreable.
+    expect(frame()).toContain("Not a baseline");
+
     app.stop();
     setup.renderer.destroy();
   });
@@ -590,19 +657,17 @@ describe("the model picker offers only what can run (PRD-5 §9)", () => {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       // eslint-disable-next-line no-await-in-loop -- polling for a condition
       await setup.renderOnce();
-      if (!setup.captureCharFrame().includes("press r to load alerts")) break;
+      if (!setup.captureCharFrame().includes("press R to load alerts")) break;
       // eslint-disable-next-line no-await-in-loop -- polling for a condition
       await Bun.sleep(20);
     }
 
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
+    await confirmOverlay(setup);
+    setup.mockInput.pressKey("r");
     await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
-    setup.mockInput.pressKey("e");
-    await setup.renderOnce();
+    await toField(setup, 1);
 
     // The overlay must name the problem. Offering a blank field, or silently falling back to some
     // provider there is no key for, is how a run dies at `resolveModel` having spent a start.
@@ -630,30 +695,26 @@ describe("the model picker offers only what can run (PRD-5 §9)", () => {
     setup.renderer.destroy();
   });
 
-  test("cycling stays inside the offered list", async () => {
+  test("↓ off the end of the list leaves the field instead of running past it", async () => {
     const { setup, app, control, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await toField(setup, 1);
 
-    setup.mockInput.pressKey("e");
-    await setup.renderOnce();
-    setup.mockInput.pressTab();
-    await setup.renderOnce();
-    setup.mockInput.pressTab();
-    await setup.renderOnce();
-    // Two models offered; three presses wraps back to the first rather than running off the end.
-    for (let i = 0; i < 3; i += 1) {
-      setup.mockInput.pressArrow("right");
+    // Two models offered, cursor on the first. The second ↓ has nowhere to go inside the list, so
+    // it hands focus to the confirm strip rather than clamping — a traversal that silently stops
+    // is indistinguishable from a dropped keypress.
+    for (let i = 0; i < 2; i += 1) {
+      setup.mockInput.pressArrow("down");
       // eslint-disable-next-line no-await-in-loop -- one render per keypress, in order
       await setup.renderOnce();
     }
     expect(frame()).toContain("gpt-5.6-terra");
-    expect(frame()).toContain("(2 available)");
+
+    // Focus is on the strip: → picks Confirm and ⏎ acts on it.
+    await confirmOverlay(setup);
     expect(control.started).toHaveLength(1);
+    expect(control.started[0]?.model).toEqual({ provider: "openai", id: "gpt-5.6-terra" });
     app.stop();
     setup.renderer.destroy();
   });
@@ -664,10 +725,7 @@ describe("cancelling with `x` (PRD-5 §8)", () => {
     const { setup, app, control, frame } = await mount();
     setup.mockInput.pressKey("n");
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
 
     setup.mockInput.pressKey("x");
     await setup.renderOnce();
@@ -688,7 +746,7 @@ describe("cancelling with `x` (PRD-5 §8)", () => {
   });
 });
 
-describe("recording a classification with `d` (PRD-5 §10)", () => {
+describe("recording feedback with `f` (PRD-5 §10)", () => {
   test("writes feedback/<runId>-<alertId>.json outside runs/, with a frozen assessment", async () => {
     scratch = await mkdtemp(join(tmpdir(), "console-disp-"));
     const runsDir = join(scratch, "runs");
@@ -728,14 +786,13 @@ describe("recording a classification with `d` (PRD-5 §10)", () => {
     setup.mockInput.pressKey("2");
     await setup.renderOnce();
 
-    setup.mockInput.pressKey("d");
+    setup.mockInput.pressKey("f");
     await setup.renderOnce();
-    expect(setup.captureCharFrame()).toContain("Record a classification");
+    expect(setup.captureCharFrame()).toContain("Your feedback");
 
-    // → cycles the verdict off the default, ⇥ moves to the comment, then confirm.
+    // ⇥ onto the verdict, which → cycles off the default; ⇥ again to the comment, then confirm.
+    await toField(setup, 0);
     setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressTab();
     await setup.renderOnce();
     setup.mockInput.pressTab();
     await setup.renderOnce();
@@ -743,10 +800,7 @@ describe("recording a classification with `d` (PRD-5 §10)", () => {
     await setup.renderOnce();
     setup.mockInput.pressTab();
     await setup.renderOnce();
-    setup.mockInput.pressArrow("right");
-    await setup.renderOnce();
-    setup.mockInput.pressEnter();
-    await setup.renderOnce();
+    await confirmOverlay(setup);
     await Bun.sleep(60);
     await setup.renderOnce();
 

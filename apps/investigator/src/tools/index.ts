@@ -36,7 +36,37 @@ export interface InvestigationToolDeps {
  * There are deliberately no alert-family-specific tools here. The agent owns the investigative path
  * (PRD-2 §9).
  */
+/**
+ * The five tools as metadata, in the order the factory builds them.
+ *
+ * One source, read by `createInvestigationTools`, by the console's name-only view and by the prompt
+ * hash — so a sixth tool cannot reach the agent without also reaching the overlay that describes it
+ * and the hash that identifies it.
+ *
+ * This used to be a hand-written copy of the names, on the reasoning that deriving them would mean
+ * constructing five closures over per-investigation state a name-only caller cannot supply. That was
+ * true of the *factories* and not of their metadata, so PRD-6 §6.6 hoisted name, description and
+ * parameters into a `const` beside each implementation: the factory spreads it, everything else
+ * reads it, and nothing has to be built.
+ */
+const TOOLS = [
+  GET_SECURITY_SCHEMA,
+  QUERY_SECURITY_DATA,
+  WEB_SEARCH,
+  WEB_FETCH,
+  SUBMIT_INVESTIGATION,
+] as const;
+
+/**
+ * The agent's whole capability surface, by name, in factory order.
+ *
+ * Rendered by the console before an investigation spends money (PRD-5 §8), which is why the order is
+ * the factory's and not alphabetical: it is a description of the agent, read by a person.
+ */
+export const INVESTIGATION_TOOL_NAMES = TOOLS.map((tool) => tool.name);
+
 export function createInvestigationTools(deps: InvestigationToolDeps): AgentTool[] {
+  // Same order as `TOOLS`; `tool-surface.test.ts` asserts it stays that way.
   return [
     createGetSecuritySchemaTool(deps.tables),
     createQuerySecurityDataTool(deps.sentinel, deps.resultMaxChars),
@@ -65,14 +95,9 @@ export interface ToolDescriptor {
  * capabilities without changing its prompt hash, which is why both read the same five constants.
  */
 export function toolDescriptors(): ToolDescriptor[] {
-  return [GET_SECURITY_SCHEMA, QUERY_SECURITY_DATA, WEB_SEARCH, WEB_FETCH, SUBMIT_INVESTIGATION]
-    .map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters as TSchema,
-    }))
-    .toSorted((a, b) => a.name.localeCompare(b.name));
+  return TOOLS.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters as TSchema,
+  })).toSorted((a, b) => a.name.localeCompare(b.name));
 }
-
-/** The five tool names, for a fixed-key tally that cannot grow with an investigation (§5.4). */
-export const TOOL_NAMES = toolDescriptors().map((tool) => tool.name);
