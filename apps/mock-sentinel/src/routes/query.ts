@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 import type { Config } from "../config.ts";
 import { KustoError, KustoUnavailableError, type KustoClient } from "../kusto/client.ts";
+import { referencesInternalTable } from "../telemetry/corpus.ts";
 
 export interface QueryRoutesOptions {
   config: Config;
@@ -54,6 +55,21 @@ export function queryRoutes(options: QueryRoutesOptions): Hono {
           "Control commands are not permitted. POST /query executes read-only KQL; " +
             "commands beginning with '.' modify the workspace and are rejected.",
           { rejected: query.trim().split("\n", 1)[0] },
+        ),
+        400,
+      );
+    }
+
+    const internal = referencesInternalTable(query);
+    if (internal !== undefined) {
+      // Same shape as the control-command rejection: a normal, actionable query error rather than
+      // a special case the caller has to learn about (PRD-1 §4.4).
+      return c.json(
+        apiError(
+          "query_error",
+          `Table ${internal} is internal bookkeeping, not telemetry, and cannot be queried. ` +
+            "GET /schema lists every table that can.",
+          { rejected: internal },
         ),
         400,
       );

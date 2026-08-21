@@ -79,6 +79,9 @@ function sentinelStub(alerts: SecurityAlertResource[]): SentinelApiClient {
       return Promise.resolve(found);
     },
     getSchema: () => Promise.resolve({ tables: [] }),
+    // Degrades to `undefined` on a Mock Sentinel with no corpus manifest, which is the shape a
+    // pre-PRD-6 service presents and the one `executeRun` must not break on.
+    getCorpus: () => Promise.resolve(undefined),
   } as unknown as SentinelApiClient;
 }
 

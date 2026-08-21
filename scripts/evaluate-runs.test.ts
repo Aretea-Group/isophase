@@ -411,6 +411,31 @@ describe("evaluate — gaps", () => {
       await rm(corpus.dir, { recursive: true, force: true });
     }
   });
+
+  test("--condition narrows it to the conditions actually being re-baselined", async () => {
+    const draws = [{ alertId: truePositive.startingAlertId, tpPercent: 99 }];
+    const corpus = await withCorpus([
+      { runId: "current", draws },
+      // A pre-config generation: real, scored, and not something anyone would backfill.
+      { runId: "legacy", model: "old-model", draws },
+    ]);
+    try {
+      const wide = JSON.parse((await evaluate(corpus.runsDir, ["--gaps", "--json"])).out) as {
+        total: number;
+        gaps: { conditionId: string }[];
+      };
+      const target = wide.gaps[0]?.conditionId ?? "";
+      const narrow = JSON.parse(
+        (await evaluate(corpus.runsDir, ["--gaps", "--json", "--condition", target])).out,
+      ) as { total: number; conditions: string[] };
+
+      expect(narrow.conditions).toEqual([target]);
+      // A work list has to be work somebody intends to do, or the total is true and useless.
+      expect(narrow.total).toBeLessThan(wide.total);
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("evaluate — compare", () => {

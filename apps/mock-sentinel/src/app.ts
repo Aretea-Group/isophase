@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import type { Config } from "./config.ts";
 import type { KustoClient } from "./kusto/client.ts";
 import { alertRoutes } from "./routes/alerts.ts";
+import { corpusRoutes } from "./routes/corpus.ts";
 import { healthRoutes, type DependencyProbe } from "./routes/health.ts";
 import { queryRoutes } from "./routes/query.ts";
 import { schemaRoutes } from "./routes/schema.ts";
@@ -29,8 +30,10 @@ export interface CreateAppOptions {
  * Kusto and the alert fixtures are internal implementation details and must
  * never be reachable by a consumer except through these routes (PRD-1 §7).
  *
- * The Sentinel surface is `/alerts`, `/alerts/:id`, `/schema` and `/query`;
- * `/health` is operational only and not part of the domain capability.
+ * The Sentinel surface is `/alerts`, `/alerts/:id`, `/schema`, `/query` and
+ * `/corpus`; `/health` is operational only and not part of the domain
+ * capability. `/corpus` reports which data is loaded (PRD-6 §6.8) and is read
+ * by evaluation tooling through the run artifact, never by the agent.
  */
 export function createApp(options: CreateAppOptions): Hono {
   const { config, kusto, probes } = options;
@@ -44,6 +47,7 @@ export function createApp(options: CreateAppOptions): Hono {
     app.route("/", alertRoutes({ config, kusto }));
     app.route("/", schemaRoutes({ config, kusto }));
     app.route("/", queryRoutes({ config, kusto }));
+    app.route("/", corpusRoutes({ config, kusto }));
   }
 
   app.notFound((c) =>

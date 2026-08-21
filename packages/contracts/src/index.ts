@@ -28,6 +28,7 @@ export {
   SecurityGroupEntity,
   UrlEntity,
 } from "./entities.ts";
+export { CorpusIdentity } from "./corpus.ts";
 export { ApiError, ApiErrorCode, apiError } from "./errors.ts";
 export { DependencyStatus, HealthResponse } from "./health.ts";
 export { QueryColumn, QueryRequest, QueryResponse, QueryTable, QueryTruncation } from "./query.ts";

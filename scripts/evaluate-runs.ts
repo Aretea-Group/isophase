@@ -16,6 +16,7 @@
  *   bun run evaluate --run <id>            # one run
  *   bun run evaluate --compare a b         # two runs, or two condition ids
  *   bun run evaluate --gaps [--json]       # what is missing before the corpus can answer anything
+ *   bun run evaluate --gaps --condition a41f --condition 9c2e     # ...for the ones being rebuilt
  *   bun run evaluate --runs <dir>          # score a different set (implies <dir>/.archive)
  *   bun run evaluate --exclude-archive     # score only what the console would see
  */
@@ -445,10 +446,21 @@ function printGaps(
   scenarios: Scenario[],
   labels: Map<string, string>,
   asJson: boolean,
+  only: string[],
 ): void {
-  const gaps = gapsFor(report, scenarios, labels);
+  // Unfiltered, this totals every condition on disk — including the pre-config generations nobody
+  // would ever backfill. That is a true number and a useless one: a work list has to be a list of
+  // work somebody intends to do, so `--condition` names the ones being re-baselined (§6.12).
+  const all = gapsFor(report, scenarios, labels);
+  const gaps = only.length === 0 ? all : all.filter((gap) => only.includes(gap.conditionId));
   if (asJson) {
-    console.info(JSON.stringify({ readyAt: READY_AT, gaps }, null, 2));
+    console.info(
+      JSON.stringify(
+        { readyAt: READY_AT, conditions: only, total: gaps.reduce((n, g) => n + g.need, 0), gaps },
+        null,
+        2,
+      ),
+    );
     return;
   }
   if (gaps.length === 0) {
@@ -469,8 +481,12 @@ function printGaps(
   }
   console.info(
     `\ntotal: ${gaps.reduce((sum, gap) => sum + gap.need, 0)} investigation(s) across ` +
-      `${byCondition.size} condition(s)\n`,
+      `${byCondition.size} condition(s)` +
+      (only.length === 0
+        ? ` — every condition on disk. Narrow with --condition <id> to the ones being re-baselined.`
+        : ""),
   );
+  console.info("");
 }
 
 const argv = Bun.argv.slice(2);
@@ -512,7 +528,14 @@ if (report.buckets.scored === 0 && report.buckets.failed === 0) {
 }
 
 if (argv.includes("--gaps")) {
-  printGaps(report, scenarios, labels, argv.includes("--json"));
+  const only = argv.flatMap((arg, index) => (arg === "--condition" ? [argv[index + 1] ?? ""] : []));
+  printGaps(
+    report,
+    scenarios,
+    labels,
+    argv.includes("--json"),
+    only.filter((id) => id !== ""),
+  );
 } else {
   const compareIndex = argv.indexOf("--compare");
   const runId = flag("--run");

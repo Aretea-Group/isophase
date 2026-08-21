@@ -8,14 +8,17 @@
  * bootstrap that already completes in ~1.6s for a flaky one.
  */
 
+import type { CorpusIdentity } from "@soc/contracts";
+
 import { generateAlerts } from "../alerts/generate.ts";
 import { SECURITY_ALERT_TABLE } from "../alerts/table.ts";
 import { KustoError, type KustoClient } from "../kusto/client.ts";
+import { alertSetHash, writeCorpusManifest } from "./corpus.ts";
 import { parseCsv } from "./csv.ts";
 import { ingestRows, ingestTable } from "./ingest.ts";
 import type { TelemetryTable } from "./manifest.ts";
 import { applyTimeShift, normalizeTable, type NormalizedTable } from "./normalize.ts";
-import { readTelemetryFile } from "./source.ts";
+import { readTelemetryFile, TELEMETRY_REVISION } from "./source.ts";
 import { TELEMETRY_TABLES } from "./tables.ts";
 import {
   expectedNonEmpty,
@@ -48,6 +51,13 @@ export interface BootstrapOptions {
    * reproducible run.
    */
   timeAnchor?: Date;
+  /**
+   * The row cap `POST /query` will apply, recorded into `_CorpusManifest` (PRD-6 §6.8).
+   *
+   * Passed in rather than read here: bootstrap does not read the environment, and a corpus that
+   * claims a cap the service does not enforce is worse than one that claims nothing.
+   */
+  queryMaxRows?: number;
   log?: (message: string) => void;
 }
 
@@ -59,6 +69,8 @@ export interface BootstrapSummary {
   /** How far the telemetry was moved forward, in milliseconds. */
   timeOffsetMs: number;
   elapsedMs: number;
+  /** What was written into `_CorpusManifest`, so a caller can log it without reading it back. */
+  corpus?: CorpusIdentity;
 }
 
 /** Fails with every issue listed, not just the first, so one run shows the whole picture. */
@@ -224,6 +236,22 @@ export async function bootstrap(options: BootstrapOptions): Promise<BootstrapSum
       `(${generated.fromRules} from rules, ${generated.fromConnectors} from connectors)`,
   );
 
+  // The corpus's own identity, written into the database it describes (PRD-6 §6.8, ADR 008 §5).
+  // A marker table rather than a generated file, because it must not be able to outlive what it
+  // describes: the database is volatile, so this dies with it.
+  const corpus: CorpusIdentity = {
+    anchorUtc: anchor.toISOString(),
+    offsetMs,
+    telemetryRevision: TELEMETRY_REVISION,
+    alertSetHash: alertSetHash(
+      generated.rows.map((row) => row["SystemAlertId"] ?? "").filter((id) => id !== ""),
+    ),
+    queryMaxRows: options.queryMaxRows ?? 500,
+    generatedAt: new Date().toISOString(),
+  };
+  await writeCorpusManifest(client, database, corpus);
+  log(`  corpus ${corpus.alertSetHash} — telemetry ${corpus.telemetryRevision.slice(0, 8)}`);
+
   issues.push(
     ...(await verifySchema(client, database, [...TELEMETRY_TABLES, SECURITY_ALERT_TABLE])),
   );
@@ -232,6 +260,7 @@ export async function bootstrap(options: BootstrapOptions): Promise<BootstrapSum
   if (issues.length > 0) throw new VerificationError(issues);
 
   return {
+    corpus,
     tables: TELEMETRY_TABLES.length + 1,
     rows: totalRows + generated.rows.length,
     columns: totalColumns + SECURITY_ALERT_TABLE.columns.length,

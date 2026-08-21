@@ -6,6 +6,15 @@
  * than fetching anything.
  */
 
+/**
+ * The pinned upstream revision the CSVs were vendored from.
+ *
+ * Duplicated from `fixtures/telemetry/SOURCE.md`, which is prose and cannot be imported, and
+ * asserted equal to it by `telemetry/corpus.test.ts`. Bumping it is a dependency upgrade: re-vendor,
+ * run `bun run data:manifest`, review the generated diff, re-bootstrap (ADR 001).
+ */
+export const TELEMETRY_REVISION = "da6d06ffc59dd3eb1e7a2d58c401c2af2da79eeb";
+
 /** Absolute path to `fixtures/telemetry/`, resolved from this module. */
 export const TELEMETRY_DIR = new URL("../../../../fixtures/telemetry/", import.meta.url).pathname;
 

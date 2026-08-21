@@ -4,7 +4,7 @@ import type { SentinelApiClient } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
-import type { InvestigationResult, InvestigationRun } from "./contracts/run.ts";
+import type { InvestigationResult, InvestigationRun, RunCorpusIdentity } from "./contracts/run.ts";
 import { InvestigationSupervisorError } from "./errors.ts";
 import { InvestigationHarness } from "./harness.ts";
 import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
@@ -115,6 +115,7 @@ export async function executeRun(
   const collected: InvestigationResult[] = [];
   let alerts: SecurityAlertResource[] = [];
   let servedModelId: string | undefined;
+  let corpus: RunCorpusIdentity | undefined;
 
   const build = (
     status: RunStatus,
@@ -149,6 +150,7 @@ export async function executeRun(
       provenance: {
         ...PROVENANCE,
         ...(servedModelId === undefined ? {} : { servedModelId }),
+        ...(corpus === undefined ? {} : { corpus }),
       },
       config: {
         // No `?? "medium"`: an unset thinking level is omitted from the harness options too, so
@@ -220,6 +222,12 @@ export async function executeRun(
       options.alertId === undefined
         ? await deps.sentinel.listAlerts()
         : [await deps.sentinel.getAlert(options.alertId)];
+
+    // Which data this run was actually scored against (PRD-6 §6.8). `undefined` on an older Mock
+    // Sentinel, and that is the point: the artifact records no corpus rather than a fabricated one,
+    // and a bootstrap that re-pins the content-addressed alert ids becomes a visible hash change
+    // instead of a silently empty evaluation report.
+    corpus = await deps.sentinel.getCorpus().catch(() => undefined);
   } catch (error) {
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not

@@ -1,6 +1,7 @@
 import {
   AlertListResponse,
   ApiError,
+  CorpusIdentity,
   QueryResponse,
   SchemaResponse,
   SecurityAlertResource,
@@ -46,6 +47,25 @@ export class SentinelApiClient {
 
   async getSchema(): Promise<SchemaResponse> {
     return SchemaResponse.parse(await this.#request("GET", "/schema"));
+  }
+
+  /**
+   * Which corpus this environment holds, or `undefined` when it cannot say (PRD-6 §6.8).
+   *
+   * `undefined` rather than a throw on 404, deliberately: an older Mock Sentinel, or a database
+   * built before the marker table existed, must not break `bun run investigate`. The artifact then
+   * records no corpus and the report prints `corpus unknown` rather than a fabricated match.
+   *
+   * Every other failure still throws. A Sentinel that is unreachable is not a Sentinel without a
+   * corpus, and collapsing the two would hide an outage behind a missing field.
+   */
+  async getCorpus(): Promise<CorpusIdentity | undefined> {
+    try {
+      return CorpusIdentity.parse(await this.#request("GET", "/corpus"));
+    } catch (error) {
+      if (error instanceof SentinelApiError && error.status === 404) return undefined;
+      throw error;
+    }
   }
 
   async query(kql: string, timespan?: string): Promise<QueryResponse> {

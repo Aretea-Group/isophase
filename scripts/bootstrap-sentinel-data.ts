@@ -39,6 +39,13 @@ try {
           client,
           database: config.KUSTO_DATABASE,
           reset: args.has("--reset"),
+          // Two lines, and they are what stop TELEMETRY_TIME_ANCHOR being dead config (PRD-6 D15).
+          // It was declared, accepted as an option, defaulted to `new Date()` — and never passed,
+          // so the documented way to pin a reproducible corpus was unreachable.
+          ...(config.TELEMETRY_TIME_ANCHOR === undefined
+            ? {}
+            : { timeAnchor: new Date(config.TELEMETRY_TIME_ANCHOR) }),
+          queryMaxRows: config.QUERY_MAX_ROWS,
           log,
         });
 
@@ -46,6 +53,13 @@ try {
     `[bootstrap] ok — ${summary.tables} tables, ${summary.rows.toLocaleString("en-US")} rows, ` +
       `${summary.columns} columns in ${(summary.elapsedMs / 1000).toFixed(1)}s`,
   );
+  if (summary.corpus !== undefined) {
+    log(
+      `[bootstrap] corpus ${summary.corpus.alertSetHash} — anchor ${summary.corpus.anchorUtc}, ` +
+        `telemetry ${summary.corpus.telemetryRevision.slice(0, 8)}, ` +
+        `queryMaxRows ${summary.corpus.queryMaxRows}`,
+    );
+  }
 } catch (error) {
   if (error instanceof VerificationError) {
     console.error(`[bootstrap] ${error.message}`);

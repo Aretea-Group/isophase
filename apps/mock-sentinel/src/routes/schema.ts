@@ -3,6 +3,7 @@ import { Hono } from "hono";
 
 import type { Config } from "../config.ts";
 import { KustoUnavailableError, type KustoClient } from "../kusto/client.ts";
+import { isInternalTable } from "../telemetry/corpus.ts";
 import { clrToKusto } from "../telemetry/verify.ts";
 
 export interface SchemaRoutesOptions {
@@ -35,6 +36,11 @@ export function schemaRoutes(options: SchemaRoutesOptions): Hono {
       for (const row of result.rows) {
         const [, tableName, columnName, columnType] = row as (string | null)[];
         if (!tableName) continue;
+        // Infrastructure, not telemetry (PRD-6 §6.8). The harness puts every name this route
+        // returns into the agent's opening `<available_tables>` block, so a bookkeeping table would
+        // be a table the agent is invited to query — and a benchmarking change that silently alters
+        // turn-0 context is a change to the thing being measured.
+        if (isInternalTable(tableName)) continue;
         const columns = tables.get(tableName) ?? [];
         if (columnName)
           columns.push({ name: columnName, type: clrToKusto(String(columnType ?? "")) });
