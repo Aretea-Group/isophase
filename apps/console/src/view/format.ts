@@ -178,6 +178,49 @@ export function verdictBand(tpPercent: number | undefined): VerdictBand {
 }
 
 /**
+ * Sentinel's four analyst classifications, in the console's own words.
+ *
+ * `TruePositive` is the API's spelling and it was reaching the analyst raw, which left the same
+ * idea spelled three ways in one application: `TRUE POSITIVE` on the verdict band, `true-positive`
+ * as a tone, `TruePositive` on the feedback form. An interface is learned through its vocabulary,
+ * and three spellings is three vocabularies.
+ *
+ * The wire keeps the enum — it is Sentinel's, and `drive/feedback.ts` writes it verbatim. Only the
+ * reading changes. Sentence case rather than the band's capitals because this is a field's value,
+ * not a heading, and a shouting value competes with the heading above it.
+ */
+export function classificationLabel(classification: string): string {
+  switch (classification) {
+    case "TruePositive":
+      return "True positive";
+    case "BenignPositive":
+      return "Benign positive";
+    case "FalsePositive":
+      return "False positive";
+    default:
+      return "Undetermined";
+  }
+}
+
+/**
+ * Which classification a run's own verdict amounts to.
+ *
+ * The feedback form opens on this rather than on the first of four. `inconclusive` maps to
+ * `Undetermined` and an unscored run does too — a run that reached no conclusion cannot pre-fill
+ * one on the analyst's behalf.
+ */
+export function classificationForBand(band: VerdictBand): string {
+  switch (band) {
+    case "true-positive":
+      return "TruePositive";
+    case "false-positive":
+      return "FalsePositive";
+    default:
+      return "Undetermined";
+  }
+}
+
+/**
  * The band as a word.
  *
  * Computed since PRD-3 and rendered nowhere until now, which left `TP 45%` for the analyst to
@@ -232,6 +275,152 @@ export function wrap(text: string, width: number): string[] {
     out.push(line);
   }
   return out;
+}
+
+/**
+ * `**bold**` rendered as bold, rather than as four asterisks.
+ *
+ * Reasoning previews arrive as the model wrote them, and models write markdown. The console has had
+ * a `bold` span since PRD-3 and was printing `**Investigating event logs**` literally, so the one
+ * piece of emphasis the agent actually supplied reached the analyst as punctuation.
+ *
+ * Deliberately not a markdown parser: paired `**` on one line is the only construct these previews
+ * use, and an unpaired marker left by truncation is dropped rather than shown.
+ */
+export function inlineBold(text: string, tone?: Tone): Span[] {
+  const spans: Span[] = [];
+  let at = 0;
+
+  for (;;) {
+    const open = text.indexOf("**", at);
+    if (open === -1) break;
+    const close = text.indexOf("**", open + 2);
+    if (close === -1) break;
+    if (open > at) spans.push({ text: text.slice(at, open), tone });
+    spans.push({ text: text.slice(open + 2, close), tone, bold: true });
+    at = close + 2;
+  }
+
+  if (at < text.length) spans.push({ text: text.slice(at).replaceAll("**", ""), tone });
+  return spans.length === 0 ? [{ text, tone }] : spans;
+}
+
+/**
+ * A money column whose decimal points line up.
+ *
+ * `cost` switches from three decimals to four below a cent, which is right on its own — $0.0004
+ * shown as $0.000 says nothing — and wrong in a column, where `$0.0096` sat under `$0.011` and
+ * neither the point nor the digits aligned. Padding the short one with a space rather than a zero
+ * aligns them without inventing precision the figure does not have.
+ */
+export function alignDecimal(text: string, fractionWidth = 4): string {
+  const point = text.indexOf(".");
+  const fraction = point === -1 ? 0 : text.length - point - 1;
+  return text + " ".repeat(Math.max(0, fractionWidth - fraction));
+}
+
+/**
+ * A model id short enough for a list column, whichever vendor wrote it.
+ *
+ * The column exists to tell two runs of the same alert apart. It was stripping `gpt-<version>-` and
+ * nothing else, so `gpt-5.6-terra` became `terra` while every Anthropic id — `claude-opus-5`,
+ * `claude-sonnet-5` — became `claud…`, which distinguishes two runs only if they used different
+ * vendors. Vendor and date stamp are what two runs of one alert are least likely to differ in, so
+ * they go first; the version follows only if the tier name alone will not fit.
+ */
+export function shortModel(id: string, width: number): string {
+  const stripped = id
+    .replace(/^(?:gpt|claude|gemini|llama|mistral|o)-/, "")
+    .replace(/^[\d.]+-/, "")
+    .replace(/-\d{8}$/, "");
+  const name = stripped === "" ? id : stripped;
+  return pad(name.length > width ? name.replace(/-[\d.]+$/, "") : name, width);
+}
+
+function lineSpans(line: Line): Span[] {
+  return typeof line === "string" ? [{ text: line }] : line;
+}
+
+/**
+ * Blocks of lines set side by side.
+ *
+ * A single column stops being the right shape somewhere past a couple of hundred characters, and
+ * capping it there only moves the problem: the pane is still drawn to the terminal's edge, so the
+ * cap buys readable lines at the price of a wide strip of empty frame. Splitting fills the pane
+ * *and* keeps the lines short, which is the only arrangement that does both.
+ *
+ * Trailing empty cells are dropped rather than padded, so a short block leaves no run of spaces
+ * behind the one beside it.
+ */
+export function columns(blocks: Line[][], columnWidth: number, gutter: number): Line[] {
+  const height = Math.max(0, ...blocks.map((block) => block.length));
+  const out: Line[] = [];
+
+  for (let row = 0; row < height; row += 1) {
+    const cells = blocks.map((block) => block[row] ?? "");
+    // Past the last cell with anything in it there is nothing to align to.
+    const last = cells.findLastIndex((cell) => lineText(cell) !== "");
+    if (last === -1) {
+      out.push("");
+      continue;
+    }
+
+    const spans: Span[] = [];
+    for (const [at, cell] of cells.slice(0, last + 1).entries()) {
+      if (at > 0) {
+        const previous = lineText(cells[at - 1] ?? "");
+        spans.push({ text: " ".repeat(Math.max(1, columnWidth + gutter - previous.length)) });
+      }
+      spans.push(...lineSpans(cell));
+    }
+    out.push(spans);
+  }
+  return out;
+}
+
+/**
+ * A term and its definition, as a row that wraps under the definition rather than under the border.
+ *
+ * The help screen is a definition list — a key, and what pressing it does — and it was drawn as
+ * flat strings padded by hand to a width guessed when they were written. Anything past the guess
+ * soft-wrapped to column 0 and ran under the frame, which is the exact failure `wrap` above exists
+ * to prevent. At 120 columns, a common terminal, the help broke in five places.
+ *
+ * Made structural, the row earns something the flat string could not have: the term and the
+ * definition are separate spans, so the key reads as the thing being looked up rather than as the
+ * first few characters of a sentence.
+ */
+export function definitionRow(
+  term: string,
+  detail: string,
+  width: number,
+  termWidth: number,
+  tone: Tone = "accent",
+): Line[] {
+  const gutter = 2;
+  const body = Math.max(8, width - gutter - termWidth);
+  const hang = " ".repeat(gutter + termWidth);
+  return wrap(detail, body).map((line, at) =>
+    at === 0
+      ? [{ text: `${" ".repeat(gutter)}${pad(term, termWidth)}`, tone }, { text: line }]
+      : [{ text: `${hang}${line}` }],
+  );
+}
+
+/** A wrapped paragraph at the pane's standard indent. */
+export function prose(text: string, width: number, tone?: Tone): Line[] {
+  return wrap(text, Math.max(8, width - 2)).map((line) => [{ text: `  ${line}`, tone }]);
+}
+
+/**
+ * `n thing` / `n things`, without the parenthetical.
+ *
+ * `investigation(s)`, `path(s)`, `turn(s)`, `line(s)` — six sites wrote the plural as a hedge in a
+ * console that is otherwise careful about its words, and the count is nearly always known by the
+ * time the string is built. The header already did this properly and nothing else did.
+ */
+export function plural(count: number, singular: string, plural_ = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural_}`;
 }
 
 /**
