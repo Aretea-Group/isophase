@@ -40,6 +40,8 @@ interface RunSpec {
   analystContext?: string;
   status?: "running" | "completed" | "interrupted" | "failed";
   error?: { name: string; message: string };
+  derivedFrom?: { runId: string; alertId: string };
+  promptHash?: string;
   draws?: DrawSpec[];
 }
 
@@ -84,6 +86,16 @@ function artifact(spec: RunSpec): string {
       webSearchConfigured: true,
       ...(spec.analystContext === undefined ? {} : { analystContext: spec.analystContext }),
     },
+    ...(spec.derivedFrom === undefined ? {} : { derivedFrom: spec.derivedFrom }),
+    ...(spec.promptHash === undefined
+      ? {}
+      : {
+          provenance: {
+            promptHash: spec.promptHash,
+            submissionHash: "aaaaaaaaaaaa",
+            piVersion: "core@0.84.2+ai@0.84.2",
+          },
+        }),
     model: { provider: "openai", id: spec.model ?? "test-model" },
     limits: { maxTurns: 50, timeoutMs: 600_000 },
     results: (spec.draws ?? []).map((draw) => result(draw, at)),
@@ -454,5 +466,98 @@ describe("evaluate — compare", () => {
     } finally {
       await rm(corpus.dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("evaluate — the derived pair", () => {
+  test("prints a steered child beside the run it came from", async () => {
+    const alertId = truePositive.startingAlertId;
+    const corpus = await withCorpus([
+      { runId: "parent", draws: [{ alertId, tpPercent: 90 }] },
+      {
+        runId: "child",
+        analystContext: "this host is a scanner",
+        derivedFrom: { runId: "parent", alertId },
+        draws: [{ alertId, tpPercent: 20 }],
+      },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir);
+      expect(report.out).toContain("DERIVED PAIRS");
+      expect(report.out).toContain("child ← parent");
+      // Matched by construction: the premise is the only thing that moved.
+      expect(report.out).not.toContain("unmatched");
+      expect(report.out).toContain(truePositive.id);
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("marks a pair that changed more than the premise", async () => {
+    const alertId = truePositive.startingAlertId;
+    const corpus = await withCorpus([
+      { runId: "parent", model: "model-a", draws: [{ alertId, tpPercent: 90 }] },
+      {
+        runId: "child",
+        model: "model-b",
+        analystContext: "a premise",
+        derivedFrom: { runId: "parent", alertId },
+        draws: [{ alertId, tpPercent: 20 }],
+      },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir);
+      // The console stays free to re-run anything; the benchmark is the thing that notices.
+      expect(report.out).toContain("unmatched — changed beyond the premise");
+      expect(report.out).toContain("model");
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("says so when the parent is not in the scored set", async () => {
+    const alertId = truePositive.startingAlertId;
+    const corpus = await withCorpus([
+      {
+        runId: "orphan-child",
+        analystContext: "a premise",
+        derivedFrom: { runId: "purged-parent", alertId },
+        draws: [{ alertId, tpPercent: 20 }],
+      },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir);
+      expect(report.out).toContain("is not in this run set");
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("evaluate — the legend", () => {
+  test("names every recorded field, and marks an inferred submission shape", async () => {
+    const corpus = await withCorpus([
+      { runId: "one", draws: [{ alertId: truePositive.startingAlertId, tpPercent: 99 }] },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir);
+      expect(report.out).toContain("LEGEND");
+      // The axes a label omits because they happen to agree today are exactly the ones a reader
+      // needs when they stop agreeing.
+      expect(report.out).toContain("sentinelBaseUrl");
+      expect(report.out).toContain("timeoutMs");
+      // Pre-provenance artifacts have their submission shape inferred from field presence.
+      expect(report.out).toContain("(inferred)");
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("two runs differing only in promptHash are two conditions", () => {
+    const a = conditionOf(JSON.parse(artifact({ runId: "a", promptHash: "111111111111" })));
+    const b = conditionOf(JSON.parse(artifact({ runId: "b", promptHash: "222222222222" })));
+    // The prompt axis is the one steering and case memory both arrive on (PRD-6 §6.6).
+    expect(a.id).not.toBe(b.id);
+    expect(a.fields.promptHash).toBe("111111111111");
   });
 });
