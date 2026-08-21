@@ -38,7 +38,7 @@ export function createApp(options: CreateAppOptions): Hono {
 
   const app = new Hono();
 
-  app.route("/", healthRoutes({ config, startedAt, probes, declared: ["kusto"] }));
+  app.route("/", healthRoutes({ config, startedAt, probes, declared: ["kusto", "database"] }));
 
   if (kusto !== undefined) {
     app.route("/", alertRoutes({ config, kusto }));

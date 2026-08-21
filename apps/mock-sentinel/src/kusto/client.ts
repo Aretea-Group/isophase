@@ -104,6 +104,25 @@ export class KustoClient {
     }
   }
 
+  /**
+   * Whether `database` exists and answers queries. Never throws.
+   *
+   * `isReachable` is not a substitute: `.show version` is cluster-scoped, so it
+   * answers `true` against an engine holding no databases at all — which is
+   * exactly what a freshly recreated container is. Everything a consumer can do
+   * needs the database, so `GET /health` probes both. Deliberately `print 1`
+   * rather than a row count: the failure this catches is an absent database, and
+   * counting rows on every poll would flap while a fresh ingest settles.
+   */
+  async hasDatabase(database: string): Promise<boolean> {
+    try {
+      await this.query(database, "print 1");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private first(tables: KustoResult[]): KustoResult {
     return tables[0] ?? { columns: [], rows: [] };
   }
