@@ -251,9 +251,12 @@ function capped(rows: Line[], limit: number): Line[] {
  */
 export function alertLines(facts: AlertFacts, width: number): Line[] {
   const lines: Line[] = [
+    // `severityTag` is blank-padded when nothing was recorded, so `trim` left this one field
+    // showing nothing at all while every other absent field showed an em dash — which reads as a
+    // rendering fault rather than as a fact the alert does not carry.
     labelled(
       "severity",
-      `${facts.severityTag.trim()}${facts.alertType === undefined ? "" : `  ${facts.alertType}`}`,
+      `${facts.severityTag.trim() === "" ? "—" : facts.severityTag.trim()}${facts.alertType === undefined ? "" : `  ${facts.alertType}`}`,
       width,
     ),
     labelled("incident", facts.window, width),

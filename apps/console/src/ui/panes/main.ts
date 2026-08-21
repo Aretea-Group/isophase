@@ -6,14 +6,19 @@ import { summariseArgs, toActivityView, type ActivityRow } from "../../view/acti
 import { entityPairs, remediationLines, type AlertFacts } from "../../view/alert.ts";
 import { DATA_SOURCES, toConfigRows } from "../../view/config.ts";
 import {
+  alignDecimal,
   bandLabel,
   bandTone,
+  columns,
   severityTone,
   chars,
   clockTime,
   cost,
   duration,
+  inlineBold,
   pad,
+  prose,
+  plural,
   tokens,
   tpBar,
   truncate,
@@ -21,11 +26,22 @@ import {
   type Line,
   type Tone,
 } from "../../view/format.ts";
+import { COLUMN_GUTTER, balancedCuts, columnCount } from "../../view/layout.ts";
 import { toVerdictView, type VerdictView } from "../../view/verdict.ts";
 
 /** The bar never shrinks past being readable, nor grows past being scannable. */
 const MIN_BAR_WIDTH = 12;
 const MAX_BAR_WIDTH = 40;
+
+/**
+ * One cell of the configuration table, with a column of its own kept clear.
+ *
+ * `pad` fills to exactly its width, so a value the length of its column touched the next one:
+ * `total spend, all ru…$0.053` read as a single token rather than as a label and a figure.
+ */
+function cell(text: string, width: number): string {
+  return pad(truncate(text, width - 1), width);
+}
 
 /** A labelled, wrapped row — the shape `ENTITIES` and `MITRE ATT&CK` share. */
 function labelledBlock(label: string, value: string, width: number, tone?: Tone): Line[] {
@@ -80,17 +96,40 @@ function verdictHead(view: VerdictView, width: number): Line[] {
  * Severity, when it happened and what it hit, repeated from pane [1] — which is hidden below 100
  * columns, where the main pane is all there is (PRD-3 §9.6).
  */
-function factsHead(facts: AlertFacts | undefined): Line[] {
+function factsHead(facts: AlertFacts | undefined, width: number): Line[] {
   if (facts === undefined) return [];
+  const asset = facts.compromisedEntity ?? "—";
+  // The same em dash every other absent field uses. `severityTag` is blank-padded when nothing was
+  // recorded, so trimming it opened this line with a gap and no explanation for it.
+  const tag = facts.severityTag.trim();
+  const severity: Line[number] = {
+    text: `  ${tag === "" ? "—" : tag}`,
+    tone: severityTone(facts.severity),
+    bold: true,
+  };
+
+  // One line if it fits, stacked if it does not. It was a single unbreakable row, so on a narrow
+  // main pane the asset wrapped to column 0 and sat under the border — the exact failure `wrap`
+  // exists to prevent, in the three facts an analyst reads first.
+  const inline = `  ${tag === "" ? "—" : tag}   incident ${facts.window}   asset ${asset}`;
+  if (inline.length <= width) {
+    return [
+      "",
+      [
+        severity,
+        { text: "   incident ", tone: "label" },
+        { text: facts.window },
+        { text: "   asset ", tone: "label" },
+        { text: asset },
+      ],
+      "",
+    ];
+  }
   return [
     "",
-    [
-      { text: `  ${facts.severityTag.trim()}`, tone: severityTone(facts.severity), bold: true },
-      { text: "   incident ", tone: "label" },
-      { text: facts.window },
-      { text: "   asset ", tone: "label" },
-      { text: facts.compromisedEntity ?? "—" },
-    ],
+    [severity],
+    [{ text: "  incident  ", tone: "label" }, { text: facts.window }],
+    [{ text: "  asset     ", tone: "label" }, { text: truncate(asset, Math.max(8, width - 12)) }],
     "",
   ];
 }
@@ -109,7 +148,7 @@ export function progressBody(
   traced: boolean,
   width: number,
 ): Line[] {
-  const lines: Line[] = [...factsHead(facts)];
+  const lines: Line[] = [...factsHead(facts, width)];
 
   lines.push([
     { text: "  ● INVESTIGATING", tone: "running", bold: true },
@@ -157,21 +196,91 @@ export function progressBody(
   return lines;
 }
 
+/**
+ * The verdict body, as the ordered sections it is made of.
+ *
+ * Sections rather than one list of lines, because the column layout needs to know where it may cut
+ * without splitting a heading off its paragraph or a numbered list in half.
+ */
+function verdictSections(
+  view: VerdictView,
+  facts: AlertFacts | undefined,
+  width: number,
+): Line[][] {
+  const sections: Line[][] = [];
+
+  if (facts?.description !== undefined && facts.description.trim() !== "") {
+    sections.push([
+      [{ text: "  WHY THE ALERT FIRED", tone: "heading", bold: true }],
+      ...wrap(facts.description, width - 4).map((line) => `  ${line}`),
+      "",
+    ]);
+  }
+
+  const narrative = view.blocks.find((block) => block.key === "what");
+  if (narrative !== undefined) {
+    sections.push([
+      [{ text: "  WHAT HAPPENED", tone: "heading", bold: true }],
+      ...(facts === undefined
+        ? []
+        : labelledBlock(
+            "MITRE ATT&CK",
+            [...facts.tactics, ...facts.techniques].join(" · "),
+            width,
+            "accent",
+          )),
+      ...narrative.lines.flatMap((paragraph) =>
+        wrap(paragraph, width - 4).map((line) => `  ${line}`),
+      ),
+      "",
+    ]);
+  }
+
+  for (const block of view.blocks) {
+    if (block.key === "what") continue;
+    const lines: Line[] = [
+      [{ text: `  ${block.heading.toUpperCase()}`, tone: "heading", bold: true }],
+    ];
+
+    if (block.list) {
+      for (const [at, item] of block.lines.entries()) {
+        const wrapped = wrap(item, width - 7);
+        lines.push(`  ${String(at + 1).padStart(2)}  ${wrapped[0] ?? ""}`);
+        lines.push(...wrapped.slice(1).map((line) => `      ${line}`));
+      }
+    } else {
+      for (const paragraph of block.lines) {
+        lines.push(...wrap(paragraph, width - 4).map((line) => `  ${line}`));
+      }
+    }
+    lines.push("");
+    sections.push(lines);
+  }
+
+  if (facts !== undefined) {
+    const remediation = remediationLines(facts, width);
+    if (remediation.length > 0) sections.push([...remediation, ""]);
+  }
+  return sections;
+}
+
 export function verdictBody(
   result: RunResult,
   facts: AlertFacts | undefined,
   width: number,
 ): Line[] {
   const view = toVerdictView(result);
-  const lines: Line[] = [];
 
   if (view.failed && view.error !== undefined) {
-    lines.push("", [{ text: `  FAILED — ${view.error.name}`, tone: "failed", bold: true }], "");
-    lines.push(...wrap(view.error.message, width - 4).map((l) => `  ${l}`));
-    return lines;
+    return [
+      "",
+      [{ text: `  FAILED — ${view.error.name}`, tone: "failed", bold: true }],
+      "",
+      ...wrap(view.error.message, width - 4).map((l) => `  ${l}`),
+    ];
   }
 
-  lines.push(...factsHead(facts));
+  const head: Line[] = [...factsHead(facts, width)];
 
   // The verdict leads, then what it is a verdict about, then the case for and against it.
   //
@@ -179,67 +288,51 @@ export function verdictBody(
   // is stand alone above the evidence — leading with a confidence score and nothing else is the
   // shape practitioner critiques of AI triage blame for analysts ratifying a number rather than
   // weighing it. So the narrative sits between the score and the argument that produced it.
-  lines.push(...verdictHead(view, width));
+  head.push(...verdictHead(view, width));
 
   // Entities directly under the classification: they are what the verdict is *about*, and the
   // pair reads as one header block. Below 100 columns panes [1] and [3] are hidden and this is
   // the only place the pivot identifiers appear at all (PRD-3 §9.6).
   if (facts !== undefined) {
     const entities = labelledBlock("ENTITIES", entityPairs(facts).join(" · "), width);
-    if (entities.length > 0) lines.push(...entities);
+    if (entities.length > 0) head.push(...entities);
   }
 
-  // …and the rule under all of it. Suppressed when nothing follows, so it never trails the pane.
-  const described = facts?.description !== undefined && facts.description.trim() !== "";
-  if (described || view.blocks.length > 0 || (facts?.remediationSteps.length ?? 0) > 0) {
-    lines.push(sectionRule(width), "");
-  }
+  /**
+   * One column, or several.
+   *
+   * The header stays full width whichever it is — the band, the bar and the entities are about the
+   * case as a whole, and splitting them would suggest a division that is not there. Only the body
+   * is columned, and where it is cut is decided by how tall the sections are rather than by what
+   * they mean: cutting by meaning put a short narrative beside a tall stack of evidence, which
+   * reads as a rendering fault rather than as a column.
+   */
+  const count = columnCount(width);
+  const columnWidth =
+    count === 1 ? width : Math.floor((width - COLUMN_GUTTER * (count - 1)) / count);
+  const sections = verdictSections(view, facts, columnWidth);
 
-  if (described && facts?.description !== undefined) {
-    lines.push([{ text: "  WHY THE ALERT FIRED", tone: "heading", bold: true }]);
-    lines.push(...wrap(facts.description, width - 4).map((l) => `  ${l}`));
-    lines.push("");
-  }
+  // …and the rule under the header. Suppressed when nothing follows, so it never trails the pane.
+  if (sections.length > 0) head.push(sectionRule(width), "");
 
-  const narrative = view.blocks.find((block) => block.key === "what");
-  if (narrative !== undefined) {
-    lines.push([{ text: "  WHAT HAPPENED", tone: "heading", bold: true }]);
-    if (facts !== undefined) {
-      lines.push(
-        ...labelledBlock(
-          "MITRE ATT&CK",
-          [...facts.tactics, ...facts.techniques].join(" · "),
-          width,
-          "accent",
-        ),
-      );
+  let body: Line[];
+  if (count <= 1 || sections.length <= 1) {
+    body = sections.flat();
+  } else {
+    const cuts = balancedCuts(
+      sections.map((section) => section.length),
+      count,
+    );
+    let from = 0;
+    const laid: Line[][] = [];
+    for (const cut of cuts) {
+      laid.push(sections.slice(from, cut).flat());
+      from = cut;
     }
-    for (const paragraph of narrative.lines) {
-      lines.push(...wrap(paragraph, width - 4).map((l) => `  ${l}`));
-    }
-    lines.push("");
+    body = columns(laid, columnWidth, COLUMN_GUTTER);
   }
 
-  for (const block of view.blocks) {
-    if (block.key === "what") continue;
-    lines.push([{ text: `  ${block.heading.toUpperCase()}`, tone: "heading", bold: true }]);
-
-    if (block.list) {
-      for (const [i, item] of block.lines.entries()) {
-        const wrapped = wrap(item, width - 7);
-        lines.push(`  ${String(i + 1).padStart(2)}  ${wrapped[0] ?? ""}`);
-        lines.push(...wrapped.slice(1).map((l) => `      ${l}`));
-      }
-    } else {
-      for (const paragraph of block.lines) {
-        lines.push(...wrap(paragraph, width - 4).map((l) => `  ${l}`));
-      }
-    }
-    lines.push("");
-  }
-
-  if (facts !== undefined) lines.push(...remediationLines(facts, width), "");
-
+  const lines = [...head, ...body];
   if (view.absent.length > 0) {
     lines.push([{ text: `  not recorded by this run: ${view.absent.join(", ")}`, tone: "label" }]);
   }
@@ -276,7 +369,7 @@ export function activityBody(index: TraceIndex, width: number, selected: number)
     }
     const isSelected = selectable.length === selected;
     lines.push([
-      { text: isSelected ? "▶" : " ", tone: "accent" },
+      { text: isSelected ? "▶ " : "  ", tone: "accent" },
       { text: `${String(row.seq).padStart(2)} `, tone: "dim" },
       { text: `${row.at} `, tone: "dim" },
       { text: row.isError ? "✗" : " ", tone: "failed" },
@@ -304,7 +397,9 @@ export function activityBody(index: TraceIndex, width: number, selected: number)
     { text: " web     ", tone: "label" },
     view.searches.length === 0 && view.fetches.length === 0
       ? { text: "no web_search / web_fetch calls in this investigation", tone: "dim" }
-      : { text: `${view.searches.length} search(es), ${view.fetches.length} fetch(es)` },
+      : {
+          text: `${plural(view.searches.length, "search", "searches")}, ${plural(view.fetches.length, "fetch", "fetches")}`,
+        },
   ]);
   for (const query of view.searches) {
     lines.push([{ text: "         search: ", tone: "dim" }, { text: truncate(query, width - 18) }]);
@@ -317,18 +412,12 @@ export function activityBody(index: TraceIndex, width: number, selected: number)
   // rendered as a thinner investigation rather than as one the console could not fully read.
   if (index.unparsed > 0) {
     lines.push(
-      [
-        {
-          text: ` ! ${index.unparsed} line(s) of this transcript were not understood — it may predate the`,
-          tone: "inconclusive",
-        },
-      ],
-      [
-        {
-          text: "   current trace format, so what is above may be incomplete",
-          tone: "inconclusive",
-        },
-      ],
+      ...prose(
+        `! ${plural(index.unparsed, "line")} of this transcript were not understood — it may ` +
+          "predate the current trace format, so what is above may be incomplete",
+        width,
+        "inconclusive",
+      ),
     );
   }
 
@@ -382,8 +471,14 @@ export function callDetail(row: ActivityRow, width: number): Line[] {
 /**
  * The live feed.
  *
- * One line per turn and one per tool call, which is the same shape `trace.ts` narrates to stdout,
- * so the console and the terminal log agree rather than competing (PRD-3 §8.4).
+ * One line per turn and one per tool call, which is the shape `trace.ts` narrates to stdout, so the
+ * console and the terminal log agree rather than competing (PRD-3 §8.4).
+ *
+ * One deliberate divergence: `trace.ts:108` prints `← <tool> <n> chars`, and this prints `← <n> ch`
+ * without the name. stdout scrolls and has no right edge to run out of; this pane is fixed-width,
+ * and the name is already on the `→` line directly above, so repeating it spent the widest column
+ * on the row to say nothing new. If §8.4 is meant to be literal parity rather than the same shape,
+ * this is the line to change back.
  */
 export function streamBody(index: TraceIndex, width: number): Line[] {
   const lines: Line[] = [
@@ -401,7 +496,7 @@ export function streamBody(index: TraceIndex, width: number): Line[] {
         { text: `turn ${String(row.index).padEnd(3)} `, tone: "heading", bold: true },
         { text: row.tokens.padStart(9), tone: "label" },
         {
-          text: `  ${row.pending === true ? "in progress…" : row.cost}`,
+          text: `  ${row.pending === true ? "in progress…" : alignDecimal(row.cost)}`,
           tone: row.pending === true ? "running" : "dim",
         },
       ]);
@@ -409,7 +504,7 @@ export function streamBody(index: TraceIndex, width: number): Line[] {
       if (turn?.thinkingPreview !== undefined && turn.thinkingPreview.trim() !== "") {
         lines.push([
           { text: "  │  · ", tone: "dim" },
-          { text: truncate(turn.thinkingPreview, width - 8), tone: "dim" },
+          ...inlineBold(truncate(turn.thinkingPreview, width - 8), "dim"),
         ]);
       }
       continue;
@@ -426,17 +521,18 @@ export function streamBody(index: TraceIndex, width: number): Line[] {
             { text: pad(row.toolName, 22), tone: "failed" },
             { text: " ERROR", tone: "failed" },
           ]
-        : [
+        : // The name is on the → line directly above, so repeating it here spent the widest
+          // column on the row to say nothing new. What is new is how much came back.
+          [
             { text: "  │  ← ", tone: "dim" },
-            { text: pad(row.toolName, 22), tone: "label" },
-            { text: ` ${row.size}`, tone: "dim" },
+            { text: row.size, tone: "dim" },
           ],
     );
   }
 
   lines.push(
     index.complete
-      ? [{ text: `  └─ finished after ${index.turns.length} turn(s)`, tone: "ok" }]
+      ? [{ text: `  └─ finished after ${plural(index.turns.length, "turn")}`, tone: "ok" }]
       : [{ text: "  ├─ …", tone: "running" }],
   );
   return lines;
@@ -449,38 +545,54 @@ export function configBody(
   totals: RunTotals | undefined,
   width: number,
 ): Line[] {
+  /**
+   * Three columns that share the pane, rather than two fixed ones and whatever is left.
+   *
+   * The label was pinned at 26 and THIS RUN at 30, so CURRENT ENV got `width - 58` — twelve
+   * characters at a 120-column terminal. `openai / gpt-5.6-terra` arrived as `openai / gp…` and
+   * the sentinel URL as `http://loca…`, while the label column carried slack and the pane had
+   * empty space to the right of both. The two value columns hold the same kind of thing and are
+   * read against each other, so they get the same width.
+   */
+  const labelWidth = Math.min(26, Math.max(22, Math.round(width * 0.24)));
+  const valueWidth = Math.max(10, Math.floor((width - labelWidth - 2) / 2));
+
   const lines: Line[] = [
     "",
     [
-      { text: `  ${pad("", 26)}` },
-      { text: pad(`THIS RUN  ${run?.runId.slice(0, 8) ?? "—"}`, 30), tone: "heading", bold: true },
+      { text: `  ${pad("", labelWidth)}` },
+      {
+        text: cell(`THIS RUN  ${run?.runId.slice(0, 8) ?? "—"}`, valueWidth),
+        tone: "heading",
+        bold: true,
+      },
       { text: "CURRENT ENV", tone: "heading", bold: true },
     ],
   ];
   for (const row of toConfigRows(run, env)) {
-    // The last column is truncated rather than left to soft-wrap: an over-long value wrapped to
-    // column 0 and read as a broken row rather than as a long one.
+    // Values are truncated rather than left to soft-wrap: an over-long one wrapped to column 0 and
+    // read as a broken row rather than as a long one.
     lines.push([
-      { text: `  ${pad(row.label, 26)}`, tone: "label" },
-      { text: pad(row.thisRun, 30) },
-      { text: truncate(row.currentEnv, Math.max(8, width - 58)), tone: "dim" },
+      { text: `  ${cell(row.label, labelWidth)}`, tone: "label" },
+      { text: cell(row.thisRun, valueWidth) },
+      { text: truncate(row.currentEnv, valueWidth), tone: "dim" },
     ]);
   }
 
   lines.push("", [{ text: "  DATA SOURCES", tone: "heading", bold: true }]);
   for (const source of DATA_SOURCES) {
     lines.push([
-      { text: `  ${pad(source.label, 26)}`, tone: "label" },
-      { text: truncate(source.detail, width - 30) },
+      { text: `  ${cell(source.label, labelWidth)}`, tone: "label" },
+      { text: truncate(source.detail, Math.max(8, width - labelWidth - 4)) },
     ]);
   }
 
   if (totals !== undefined) {
     lines.push("", [{ text: "  THIS RUN", tone: "heading", bold: true }]);
     lines.push(
-      `  ${pad("tokens", 26)}${tokens(totals.tokens)}${totals.partial ? `  partial — ${totals.tracedAlerts} of ${totals.totalAlerts} alerts traced` : ""}`,
+      `  ${cell("tokens", labelWidth)}${tokens(totals.tokens)}${totals.partial ? `  partial — ${totals.tracedAlerts} of ${totals.totalAlerts} alerts traced` : ""}`,
     );
-    lines.push(`  ${pad("cost", 26)}${cost(totals.cost)}`);
+    lines.push(`  ${cell("cost", labelWidth)}${cost(totals.cost)}`);
   }
 
   lines.push("", [
@@ -489,40 +601,42 @@ export function configBody(
       text:
         aggregate === undefined
           ? ""
-          : `   over ${aggregate.traced} traced investigation(s) of ${aggregate.total}`,
+          : `   over ${plural(aggregate.traced, "traced investigation")} of ${aggregate.total}`,
       tone: "label",
     },
   ]);
   if (aggregate?.tokens !== undefined) {
     lines.push(
-      `  ${pad("billed tokens / inv", 26)}avg ${pad(tokens(Math.round(aggregate.tokens.avg)), 10)}min ${pad(tokens(aggregate.tokens.min), 10)}max ${tokens(aggregate.tokens.max)}`,
+      `  ${cell("billed tokens / inv", labelWidth)}avg ${pad(tokens(Math.round(aggregate.tokens.avg)), 10)}min ${pad(tokens(aggregate.tokens.min), 10)}max ${tokens(aggregate.tokens.max)}`,
     );
   }
   if (aggregate?.cost !== undefined) {
     lines.push(
-      `  ${pad("cost / inv", 26)}avg ${pad(cost(aggregate.cost.avg), 10)}min ${pad(cost(aggregate.cost.min), 10)}max ${cost(aggregate.cost.max)}`,
+      `  ${cell("cost / inv", labelWidth)}avg ${pad(cost(aggregate.cost.avg), 10)}min ${pad(cost(aggregate.cost.min), 10)}max ${cost(aggregate.cost.max)}`,
     );
   }
   if (aggregate?.turns !== undefined) {
     lines.push(
-      `  ${pad("turns / inv", 26)}avg ${pad(aggregate.turns.avg.toFixed(1), 10)}min ${pad(String(aggregate.turns.min), 10)}max ${aggregate.turns.max}`,
+      `  ${cell("turns / inv", labelWidth)}avg ${pad(aggregate.turns.avg.toFixed(1), 10)}min ${pad(String(aggregate.turns.min), 10)}max ${aggregate.turns.max}`,
     );
   }
   if (aggregate?.calls !== undefined) {
     lines.push(
-      `  ${pad("tool calls / inv", 26)}avg ${pad(aggregate.calls.avg.toFixed(1), 10)}min ${pad(String(aggregate.calls.min), 10)}max ${aggregate.calls.max}`,
+      `  ${cell("tool calls / inv", labelWidth)}avg ${pad(aggregate.calls.avg.toFixed(1), 10)}min ${pad(String(aggregate.calls.min), 10)}max ${aggregate.calls.max}`,
     );
   }
   if (aggregate !== undefined) {
-    lines.push(`  ${pad("total spend, all runs", 26)}${cost(aggregate.totalSpend)}`);
+    lines.push(`  ${cell("total spend, all runs", labelWidth)}${cost(aggregate.totalSpend)}`);
     const untraced = aggregate.total - aggregate.traced;
     if (untraced > 0) {
-      lines.push([
-        {
-          text: `  ! ${untraced} investigation(s) have no transcript — their tokens are not counted (INVESTIGATOR_TRACE was off)`,
-          tone: "inconclusive",
-        },
-      ]);
+      lines.push(
+        ...prose(
+          `! ${plural(untraced, "investigation")} have no transcript, so their tokens are not ` +
+            "counted here. INVESTIGATOR_TRACE was off when they ran.",
+          width,
+          "inconclusive",
+        ),
+      );
     }
     if (!aggregate.complete) lines.push("  … still indexing transcripts; figures are partial");
   }

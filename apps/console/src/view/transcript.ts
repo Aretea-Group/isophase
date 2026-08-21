@@ -1,6 +1,17 @@
 import type { ByteRange, ToolCall, TraceIndex } from "../data/trace-index.ts";
 import { summariseArgs } from "./activity.ts";
-import { chars, clockTime, cost, tokens, truncate, wrap, type Line, type Tone } from "./format.ts";
+import {
+  chars,
+  clockTime,
+  cost,
+  inlineBold,
+  plural,
+  tokens,
+  truncate,
+  wrap,
+  type Line,
+  type Tone,
+} from "./format.ts";
 
 /**
  * The investigation as a readable conversation.
@@ -163,7 +174,10 @@ export function transcriptLines(
   for (const [position, block] of blocks.entries()) {
     const isOpen = position === selected;
     lines.push([
-      { text: isOpen ? "▶" : " ", tone: "accent" },
+      // A space between the two. The selection marker and the context glyph are both small right
+      // triangles, and set flush they read as one smeared character rather than as "this row is
+      // selected, and it is a context block".
+      { text: isOpen ? "▶ " : "  ", tone: "accent" },
       { text: `${blockGlyph(block.kind)} `, tone: blockTone(block.kind) },
       { text: `${block.at}  `, tone: "dim" },
       {
@@ -179,9 +193,11 @@ export function transcriptLines(
         : block.body;
     const shown = isOpen ? body : body.slice(0, 2);
 
-    for (const line of shown) lines.push(`    ${line}`);
+    // Reasoning is written by the model, and models write markdown; the emphasis it puts on its
+    // own headings was reaching the analyst as literal asterisks.
+    for (const line of shown) lines.push([{ text: "    " }, ...inlineBold(line)]);
     if (!isOpen && body.length > 2) {
-      lines.push([{ text: `    … ${body.length - 2} more line(s)`, tone: "dim" }]);
+      lines.push([{ text: `    … ${plural(body.length - 2, "more line")}`, tone: "dim" }]);
     }
     if (isOpen && block.truncated && expandedText === undefined) {
       lines.push([{ text: "    ⏎ to load the full text", tone: "accent" }]);

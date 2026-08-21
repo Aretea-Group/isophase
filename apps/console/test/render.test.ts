@@ -188,6 +188,146 @@ when("dashboard", () => {
   });
 });
 
+when("at every terminal size", () => {
+  /**
+   * One frame at each of the three shapes the layout has — stacked, squeezed, and wide. The layout
+   * arithmetic is checked in `layout.test.ts`; this is here because only a real frame shows a
+   * border landing on the key bar.
+   */
+  for (const [width, height] of [
+    [72, 20],
+    [100, 24],
+    [200, 40],
+  ] as [number, number][]) {
+    test(`${width}x${height} draws inside its own frame`, async () => {
+      const { setup, app, frame } = await mount(width, height);
+      const rows = frame()
+        .split("\n")
+        .filter((row) => row !== "");
+
+      for (const row of rows) expect(row.length).toBeLessThanOrEqual(width);
+      // The key bar is the bottom row and belongs to nothing else. It used to carry box-drawing
+      // characters from the run list's border whenever the height budget over-allocated.
+      const keyBar = rows.at(-1) ?? "";
+      expect(keyBar).toContain("q quit");
+      expect(keyBar).not.toMatch(/[─│╭╮╰╯]/);
+      // And pane [4] is on screen, stacked or side by side.
+      expect(frame()).toContain("[4]");
+      unmount(setup, app);
+    });
+  }
+});
+
+when("the filter", () => {
+  test("survives the poll tick that used to walk the selection down the corpus", async () => {
+    const { setup, app, frame } = await mount(120, 32);
+    setup.mockInput.pressKey("2");
+    await setup.renderOnce();
+
+    // Filter to the RDP runs and move to the last of them. The row matters: the bug wrote back an
+    // offset from the unfiltered list, which only differs from the filtered one below the first
+    // match — so a test that stays on row zero passes against the bug.
+    setup.mockInput.pressKey("/");
+    for (const char of "rdp") setup.mockInput.pressKey(char);
+    setup.mockInput.pressEnter();
+    setup.mockInput.pressArrow("down");
+    setup.mockInput.pressArrow("down");
+    await setup.renderOnce();
+    const selected = (): string => frame().split("\n")[1] ?? "";
+    const before = selected();
+    // The selection is on a real run, and [4] is describing it. Without this the assertion below
+    // would hold trivially by comparing two empty panes.
+    expect(before).toContain("cc6430ca");
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await Bun.sleep(1_100);
+      // eslint-disable-next-line no-await-in-loop
+      await setup.renderOnce();
+    }
+
+    // `applyRuns` re-found the selection in the unfiltered list and wrote that offset back, so the
+    // selection moved to a different run once a second and the filter appeared to do nothing.
+    expect(selected()).toBe(before);
+    expect(frame()).toContain("/rdp");
+    unmount(setup, app);
+  });
+
+  test("keeps the selected run selected while the list narrows under it", async () => {
+    const { setup, app, frame } = await mount(120, 32);
+    setup.mockInput.pressKey("2");
+    // Row three deliberately. "multiple" matches rows three and four, so the anchored selection
+    // lands on the first of them and a bare clamp lands on the second — with any other starting
+    // row the two agree by accident and this asserts nothing.
+    for (let step = 0; step < 3; step += 1) setup.mockInput.pressArrow("down");
+    await setup.renderOnce();
+    // The sidebar's share of the row only: a frame line spans both columns, and pane [4] scrolls
+    // independently of what is selected.
+    const row = (): string =>
+      (
+        frame()
+          .split("\n")
+          .find((line) => line.includes("▶")) ?? ""
+      ).slice(0, 46);
+    const before = row();
+    expect(before).toContain("terra");
+
+    // Every keystroke narrows the list. The index alone pointed at whatever now sat at that
+    // offset, so the selection slid from run to run as the query was typed — and each slide read
+    // a transcript for a run nobody had chosen.
+    setup.mockInput.pressKey("/");
+    for (const char of "multiple") setup.mockInput.pressKey(char);
+    await setup.renderOnce();
+
+    expect(row()).toBe(before);
+    unmount(setup, app);
+  });
+
+  test("the arrows pick a match without closing the input", async () => {
+    const { setup, app, frame } = await mount(120, 32);
+    setup.mockInput.pressKey("2");
+    setup.mockInput.pressKey("/");
+    for (const char of "multiple") setup.mockInput.pressKey(char);
+    await setup.renderOnce();
+    const row = (): string =>
+      (
+        frame()
+          .split("\n")
+          .find((line) => line.includes("▶")) ?? ""
+      ).slice(0, 46);
+    expect(row()).toContain("terra");
+
+    // `↑`/`↓` fell through every branch of the filter handler and did nothing, and `j`/`k` are
+    // printable so they went into the query — there was no way to reach a match but `⏎` then `j`,
+    // which nothing said. The caret proves the input is still open.
+    setup.mockInput.pressArrow("down");
+    await setup.renderOnce();
+    expect(row()).toContain("luna");
+    expect(frame()).toContain("/multiple█");
+    unmount(setup, app);
+  });
+
+  test("filtering the queue does not empty the pane describing the selected run", async () => {
+    const { setup, app, frame } = await mount(120, 32);
+    setup.mockInput.pressKey("1");
+    setup.mockInput.pressKey("/");
+    for (const char of "zzz") setup.mockInput.pressKey(char);
+    setup.mockInput.pressEnter();
+    await setup.renderOnce();
+
+    setup.mockInput.pressKey("2");
+    await setup.renderOnce();
+    await Bun.sleep(150);
+    await setup.renderOnce();
+
+    // The queue and the selected run's own alerts shared one needle while being different lists,
+    // so a query that no alert of this run matched emptied [4] — for a run still selected in [2],
+    // with nothing on screen saying why.
+    expect(frame()).toContain("[4] cccccccc");
+    unmount(setup, app);
+  });
+});
+
 when("selection", () => {
   test("moving on before a transcript has loaded never leaves the previous alert on screen", async () => {
     const { setup, app, frame } = await mount();
@@ -277,7 +417,15 @@ when("tabs", () => {
     expect(output).toContain("turn 1");
     // One line per turn and one per tool call — the shape trace.ts prints to stdout.
     expect(output).toContain("→ get_security_schema");
-    expect(output).toContain("← query_security_data");
+    // The result line reports what came back, not the name of the call it came back from — that is
+    // on the → line directly above and was costing the widest column on the row to repeat. This is
+    // the one place the pane deliberately differs from what `trace.ts` prints to stdout, which has
+    // no right edge to run out of; see the note on `streamBody`.
+    expect(output).toContain("← 168 ch");
+    expect(output).not.toContain("← query_security_data");
+    // Models write markdown in their reasoning; the preview renders the emphasis rather than the
+    // asterisks that carried it.
+    expect(output).not.toContain("**");
     unmount(setup, app);
   });
 
