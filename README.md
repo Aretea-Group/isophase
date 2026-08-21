@@ -196,6 +196,40 @@ Sentinel fixture repositories.
 
 ## Architecture
 
+The system is a one-directional chain, and each hop is the *only* path to the next:
+
+```text
+   fixtures/telemetry/          pinned Training Lab CSVs, at a fixed revision
+            │
+            │  scripts/bootstrap-sentinel-data.ts
+            ▼
+   ┌───────────────────┐
+   │  Kusto Emulator   │        internal — nothing downstream may address it
+   └───────────────────┘
+            │  KQL
+            ▼
+   ┌───────────────────┐        GET  /alerts  /alerts/:id  /schema
+   │   Mock Sentinel   │ :8787  POST /query   (read-only KQL)
+   └───────────────────┘        owns the entire domain surface; /health is operational
+            │
+            │  packages/sentinel-client — typed, over packages/contracts
+            ▼
+   ┌───────────────────┐
+   │   Investigator    │        harness.ts is the only Pi boundary; five tools
+   └───────────────────┘
+            │
+            │  writes runs/<run-id>.json, flushed after every alert
+            ▼
+   ┌───────────────────┐
+   │   run artifact    │        the join point — both readers, neither writes
+   └───────────────────┘
+            │
+      ┌─────┴──────┐
+      ▼            ▼
+   Console      scripts/evaluate-runs.ts ◄─── fixtures/scenarios/
+   read-only    scores against ground truth    hidden from the agent
+```
+
 The repository is a Bun/TypeScript monorepo:
 
 ```text
@@ -220,8 +254,38 @@ Important boundaries:
 - Web content is untrusted data and is returned to the model in a provenance envelope.
 - Run artifacts contain structured outcomes, not hidden chain-of-thought.
 
-The scenario metadata keeps verdict and impact separate: malicious activity can be real while
-achieving no impact. More details about the answer key and fixture hazards live in the
+## Benchmarking and ground truth
+
+Scenarios are the answer key. Each one is a small metadata file in `fixtures/scenarios/`, layered
+over the shared telemetry rather than duplicating it, recording four things:
+
+| | |
+|---|---|
+| `verdict` | was the detected activity real and malicious? |
+| `impact` | did it achieve anything? |
+| `discriminatingEvidence` | the queries that settle it — an investigation skipping these can only be right by luck |
+| `trap` | the wrong conclusion the scenario is built to catch |
+
+`verdict` and `impact` are separate on purpose: a detection can be entirely correct about real
+malicious activity that nonetheless achieved nothing, and conflating the two is the most common
+triage error these scenarios expose.
+
+**Ground truth flows one way.** The agent can never reach those files — not by import, and not by
+reading them at runtime. Two guards enforce it, because either alone is insufficient: an oxlint
+rule blocks static imports, and a test scans agent-side source *text* for the realistic leak, a
+runtime `Bun.file(...)` no import rule can see. `scripts/` is the single exempt tree, which is why
+both the evaluator and the benchmark-map generator live there. The console's `◆` marker comes from
+a generated map holding ids and nothing else: knowing an alert has an answer behind it is not
+knowing the answer.
+
+**Scoring grades direction, not a target.** The investigator reports true- and false-positive
+percentages; `bun run evaluate` joins those to the hidden verdict outside the agent boundary and
+bands them generously — true positive at 60% or above, false positive at 40% or below, with 30–70%
+read as inconclusive. Different valid investigations reach different numbers, so what is measured
+is whether the agent leaned the correct way. The inconclusive band is the interesting one: it is
+the only case where a confident answer in *either* direction is wrong.
+
+The answer key and the fixture hazards that look like evidence but are not are documented in the
 [scenario reference](./fixtures/scenarios/README.md).
 
 ## Configuration
