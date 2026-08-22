@@ -215,6 +215,54 @@ describe("executeRun — the artifact records the configuration that applied (PR
     expect(run.limits.maxTurns).toBe(7);
   });
 
+  test("the resolver and artifact receive the same safe endpoint configuration", async () => {
+    const { write } = recorder();
+    const controller = new AbortController();
+    controller.abort();
+    const llamaServer = {
+      baseUrl: "https://host.example/v1",
+      modelId: "local-model",
+      contextWindow: 65_536,
+      maxTokens: 4_096,
+    };
+    const llamaServerAuth = { bearerToken: "test-bearer-token" };
+    const seen: unknown[] = [];
+    const deps: InvestigatorDeps = {
+      sentinel: sentinelStub([]),
+      webSearch: {} as unknown as InvestigatorDeps["webSearch"],
+      webFetch: {} as unknown as InvestigatorDeps["webFetch"],
+      write,
+      resolveModel: (_provider, _id, endpoint, auth) => {
+        seen.push({ endpoint, auth });
+        return Promise.resolve({
+          model: {},
+          streamFn: () => undefined,
+        } as unknown as ResolvedModel);
+      },
+    };
+
+    const run = await executeRun(
+      {
+        ...CONFIG,
+        provider: "llamacpp",
+        modelId: "local-model",
+        thinkingLevel: "off",
+        llamaServer,
+        llamaServerAuth,
+      },
+      deps,
+      { runId: "run-local", signal: controller.signal },
+    );
+
+    expect(seen).toEqual([{ endpoint: llamaServer, auth: llamaServerAuth }]);
+    expect(run.config).toMatchObject({
+      modelBaseUrl: llamaServer.baseUrl,
+      modelContextWindow: llamaServer.contextWindow,
+      modelMaxTokens: llamaServer.maxTokens,
+    });
+    expect(JSON.stringify(run)).not.toContain(llamaServerAuth.bearerToken);
+  });
+
   test("an unconfigured thinking level is absent, never fabricated (PRD-6 D12)", async () => {
     const { write } = recorder();
     const controller = new AbortController();

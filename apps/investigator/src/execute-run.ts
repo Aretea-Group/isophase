@@ -9,7 +9,7 @@ import { InvestigationSupervisorError } from "./errors.ts";
 import { InvestigationHarness } from "./harness.ts";
 import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
-import type { ResolvedModel } from "./model.ts";
+import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
 import { PROVENANCE } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
@@ -43,6 +43,9 @@ export interface InvestigatorConfig {
   trace: boolean;
   traceDir: string;
   traceStream: boolean;
+  llamaServer?: LlamaServerConfig;
+  /** In-memory request credential. Never copy this into an artifact or configuration view. */
+  llamaServerAuth?: LlamaServerAuth;
 }
 
 export interface InvestigatorDeps {
@@ -59,7 +62,12 @@ export interface InvestigatorDeps {
    * Resolved in here rather than handed in, so `config.modelId` is the single source for both the
    * model that executes and the model the artifact records. Overridden only by tests.
    */
-  resolveModel?: (provider: string, id: string) => Promise<ResolvedModel>;
+  resolveModel?: (
+    provider: string,
+    id: string,
+    llamaServer?: LlamaServerConfig,
+    llamaServerAuth?: LlamaServerAuth,
+  ) => Promise<ResolvedModel>;
 }
 
 /** Everything that varies per invocation. The standing half is `InvestigatorConfig`. */
@@ -165,6 +173,13 @@ export async function executeRun(
         // Raw, not the sanitised copy that reached the model — that is what makes the
         // sanitisation auditable, and what lets `evaluate` recognise a steered run.
         ...(options.analystContext === undefined ? {} : { analystContext: options.analystContext }),
+        ...(config.provider !== "llamacpp" || config.llamaServer === undefined
+          ? {}
+          : {
+              modelBaseUrl: config.llamaServer.baseUrl,
+              modelContextWindow: config.llamaServer.contextWindow,
+              modelMaxTokens: config.llamaServer.maxTokens,
+            }),
       },
       model: { provider: config.provider, id: config.modelId },
       limits: { maxTurns: config.maxTurns, timeoutMs: config.timeoutMs },
@@ -203,7 +218,12 @@ export async function executeRun(
 
   let harness: InvestigationHarness;
   try {
-    const { model, streamFn } = await resolve(config.provider, config.modelId);
+    const { model, streamFn } = await resolve(
+      config.provider,
+      config.modelId,
+      config.llamaServer,
+      config.llamaServerAuth,
+    );
 
     harness = new InvestigationHarness({
       sentinel: deps.sentinel,

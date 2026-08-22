@@ -1,8 +1,119 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai";
+import { createModels, createProvider } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { z } from "zod";
+
+export interface LlamaServerConfig {
+  baseUrl: string;
+  modelId: string;
+  contextWindow: number;
+  maxTokens: number;
+}
+
+/** Request credential kept separate from the endpoint configuration persisted in run artifacts. */
+export interface LlamaServerAuth {
+  bearerToken: string;
+}
+
+const LlamaServerEnvironment = z.object({
+  LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
+  LLAMA_SERVER_MODEL: z.string().min(1).optional(),
+  LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
+  LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+  LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
+});
+
+type LlamaServerEnvironment = z.infer<typeof LlamaServerEnvironment>;
+
+function normalizeBaseUrl(value: string): string {
+  const baseUrl = value.endsWith("/") ? value.slice(0, -1) : value;
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("LLAMA_SERVER_BASE_URL must be an absolute http or https URL ending in /v1.");
+  }
+
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || !baseUrl.endsWith("/v1")) {
+    throw new Error("LLAMA_SERVER_BASE_URL must be an absolute http or https URL ending in /v1.");
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new Error("LLAMA_SERVER_BASE_URL must not contain a username or password.");
+  }
+  if (parsed.search !== "" || parsed.hash !== "") {
+    throw new Error("LLAMA_SERVER_BASE_URL must not contain a query string or fragment.");
+  }
+  return baseUrl;
+}
+
+/** Build the one safe, persistable endpoint configuration from its all-or-nothing env group. */
+export function llamaServerConfigFromEnv(
+  source: LlamaServerEnvironment,
+): LlamaServerConfig | undefined {
+  const input = LlamaServerEnvironment.parse(source);
+  const keys = [
+    "LLAMA_SERVER_BASE_URL",
+    "LLAMA_SERVER_MODEL",
+    "LLAMA_SERVER_CONTEXT_WINDOW",
+    "LLAMA_SERVER_MAX_TOKENS",
+  ] as const;
+  const present = keys.filter((key) => input[key] !== undefined);
+  if (present.length === 0) return undefined;
+
+  const missing = keys.filter((key) => input[key] === undefined);
+  if (missing.length > 0) {
+    throw new Error(
+      `Incomplete llama-server configuration. Set ${missing.join(", ")} together with the other LLAMA_SERVER_* values.`,
+    );
+  }
+
+  const complete = LlamaServerEnvironment.pick({
+    LLAMA_SERVER_BASE_URL: true,
+    LLAMA_SERVER_MODEL: true,
+    LLAMA_SERVER_CONTEXT_WINDOW: true,
+    LLAMA_SERVER_MAX_TOKENS: true,
+  })
+    .required()
+    .parse(input);
+  const baseUrl = normalizeBaseUrl(complete.LLAMA_SERVER_BASE_URL);
+  const modelId = complete.LLAMA_SERVER_MODEL;
+  const contextWindow = complete.LLAMA_SERVER_CONTEXT_WINDOW;
+  const maxTokens = complete.LLAMA_SERVER_MAX_TOKENS;
+  if (maxTokens > contextWindow) {
+    throw new Error("LLAMA_SERVER_MAX_TOKENS must not exceed LLAMA_SERVER_CONTEXT_WINDOW.");
+  }
+  return { baseUrl, modelId, contextWindow, maxTokens };
+}
+
+/** Read optional authentication only after a complete endpoint configuration has been validated. */
+export function llamaServerAuthFromEnv(
+  source: LlamaServerEnvironment,
+  llamaServer: LlamaServerConfig | undefined,
+): LlamaServerAuth | undefined {
+  const { LLAMA_SERVER_BEARER_TOKEN: bearerToken } = LlamaServerEnvironment.parse(source);
+  if (bearerToken === undefined) return undefined;
+  if (llamaServer === undefined) {
+    throw new Error(
+      "LLAMA_SERVER_BEARER_TOKEN requires the complete LLAMA_SERVER_* endpoint configuration.",
+    );
+  }
+  return { bearerToken };
+}
+
+/** This first slice records no model-specific reasoning contract, so only Pi's off mode is honest. */
+export function assertLlamaServerThinkingLevel(
+  provider: string,
+  thinkingLevel: string | undefined,
+): void {
+  if (provider === "llamacpp" && thinkingLevel !== undefined && thinkingLevel !== "off") {
+    throw new Error(
+      'INVESTIGATOR_THINKING_LEVEL must be "off" when INVESTIGATOR_PROVIDER is "llamacpp".',
+    );
+  }
+}
 
 export interface ModelChoice {
   provider: string;
@@ -15,13 +126,54 @@ export interface ResolvedModel {
   streamFn: ReturnType<typeof buildModels>["streamSimple"];
 }
 
-function buildModels() {
+function buildModels(llamaServer?: LlamaServerConfig, llamaServerAuth?: LlamaServerAuth) {
   const models = createModels();
   // Registered together so the provider is a configuration choice, not a code change. API keys are
   // resolved by pi-ai from the ambient environment; a provider with no key simply fails at call time.
   models.setProvider(openaiProvider());
   models.setProvider(anthropicProvider());
   models.setProvider(googleProvider());
+  if (llamaServer !== undefined) {
+    const model: Model<"openai-completions"> = {
+      id: llamaServer.modelId,
+      name: llamaServer.modelId,
+      api: "openai-completions",
+      provider: "llamacpp",
+      baseUrl: llamaServer.baseUrl,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: llamaServer.contextWindow,
+      maxTokens: llamaServer.maxTokens,
+      samplingParams: { chat_template_kwargs: { enable_thinking: false } },
+      compat: {
+        supportsDeveloperRole: false,
+        supportsStrictMode: false,
+        supportsStore: false,
+        maxTokensField: "max_tokens",
+      },
+    };
+    models.setProvider(
+      createProvider({
+        id: "llamacpp",
+        name: "llama.cpp",
+        baseUrl: llamaServer.baseUrl,
+        auth: {
+          apiKey: {
+            name: llamaServerAuth === undefined ? "Keyless llama-server" : "llama-server token",
+            resolve: () =>
+              Promise.resolve({
+                auth: { apiKey: llamaServerAuth?.bearerToken ?? "unused" },
+                source:
+                  llamaServerAuth === undefined ? "keyless endpoint" : "LLAMA_SERVER_BEARER_TOKEN",
+              }),
+          },
+        },
+        models: [model],
+        api: openAICompletionsApi(),
+      }),
+    );
+  }
   return models;
 }
 
@@ -32,15 +184,23 @@ function buildModels() {
  * single most likely startup mistake and `getModel` returns `undefined` for both an unknown model
  * and an unknown provider.
  */
-export async function resolveModel(provider: string, id: string): Promise<ResolvedModel> {
-  const models = buildModels();
+export async function resolveModel(
+  provider: string,
+  id: string,
+  llamaServer?: LlamaServerConfig,
+  llamaServerAuth?: LlamaServerAuth,
+): Promise<ResolvedModel> {
+  const models = buildModels(llamaServer, llamaServerAuth);
   const model = models.getModel(provider, id);
 
   if (!model) {
     const available = models.getModels(provider).map((m) => m.id);
     const detail =
       available.length === 0
-        ? `Provider "${provider}" is not registered. Known providers: openai, anthropic, google.`
+        ? `Provider "${provider}" is not registered. Known providers: ${models
+            .getProviders()
+            .map((registered) => registered.id)
+            .join(", ")}.`
         : `Available ${provider} models: ${available.join(", ")}`;
     throw new Error(`Unknown model "${provider}/${id}". ${detail}`);
   }
@@ -57,8 +217,6 @@ export async function resolveModel(provider: string, id: string): Promise<Resolv
 
   return { model, streamFn: models.streamSimple.bind(models) };
 }
-
-const PROVIDERS = ["openai", "anthropic", "google"] as const;
 
 /**
  * The models worth pointing at an investigation, newest first within each provider.
@@ -112,15 +270,18 @@ const CURATED_MODELS: readonly ModelChoice[] = [
  * entry yields its whole catalogue rather than nothing, because "your key works and the picker is
  * empty" is the one outcome an operator cannot act on.
  */
-export async function listAvailableModels(): Promise<ModelChoice[]> {
-  const models = buildModels();
+export async function listAvailableModels(
+  llamaServer?: LlamaServerConfig,
+  llamaServerAuth?: LlamaServerAuth,
+): Promise<ModelChoice[]> {
+  const models = buildModels(llamaServer, llamaServerAuth);
   const available: ModelChoice[] = [];
 
-  for (const provider of PROVIDERS) {
+  for (const provider of models.getProviders().map((registered) => registered.id)) {
     const catalogue = models.getModels(provider);
     const probe = catalogue[0];
     if (probe === undefined) continue;
-    // eslint-disable-next-line no-await-in-loop -- three providers, and each probe is independent
+    // eslint-disable-next-line no-await-in-loop -- small provider set; each probe is independent
     const auth = await models.getAuth(probe).catch(() => undefined);
     if (!auth) continue;
 

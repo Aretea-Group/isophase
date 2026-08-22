@@ -23,6 +23,12 @@ export const env = createEnv({
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
       .default("medium"),
 
+    LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
+    LLAMA_SERVER_MODEL: z.string().min(1).optional(),
+    LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
+
     /** Ceiling on completed agent turns. Guards against runaway reasoning (PRD-2 §17). */
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     /** Ceiling on elapsed time for one investigation. A different failure mode to max turns. */
@@ -34,9 +40,9 @@ export const env = createEnv({
      */
     INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
 
-    // Provider API keys are deliberately absent here. pi-ai reads them straight from the ambient
-    // environment, so declaring them would imply this object supplies them. The provider-aware
-    // check lives in model.ts, which can ask pi-ai which variable it would actually look for.
+    // Hosted-provider API keys are deliberately absent here. pi-ai reads them straight from the
+    // ambient environment, so declaring them would imply this object supplies them. The custom
+    // llama-server credential is declared above because model.ts supplies it to that provider.
 
     BRAVE_API_KEY: z.string().min(1).optional(),
     BRAVE_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),

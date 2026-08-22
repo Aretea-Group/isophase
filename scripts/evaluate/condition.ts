@@ -30,6 +30,9 @@ export interface ConditionFields {
   maxTurns: string;
   timeoutMs: string;
   sentinelBaseUrl: string;
+  modelBaseUrl: string;
+  modelContextWindow: string;
+  modelMaxTokens: string;
   /** `baseline`, or `ctx=<hash6>` of the raw premise. Never the premise text itself. */
   analystContext: string;
   /** `researchDone`, `nextAction` or `?`, inferred from field presence when unrecorded. */
@@ -148,6 +151,10 @@ export function conditionOf(run: InvestigationRun): Condition {
     maxTurns: String(run.limits.maxTurns),
     timeoutMs: String(run.limits.timeoutMs),
     sentinelBaseUrl: config?.sentinelBaseUrl ?? UNKNOWN,
+    modelBaseUrl: config?.modelBaseUrl ?? UNKNOWN,
+    modelContextWindow:
+      config?.modelContextWindow === undefined ? UNKNOWN : String(config.modelContextWindow),
+    modelMaxTokens: config?.modelMaxTokens === undefined ? UNKNOWN : String(config.modelMaxTokens),
     analystContext:
       config?.analystContext === undefined || config.analystContext === ""
         ? "baseline"

@@ -97,6 +97,35 @@ describe("artifact shapes", () => {
     expect(result?.error?.name).toBe("InvestigationStepLimitError");
   });
 
+  test("reads optional model endpoint settings without requiring them on legacy artifacts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "console-runs-"));
+    const path = join(root, "endpoint.json");
+    try {
+      await Bun.write(
+        path,
+        JSON.stringify({
+          runId: "endpoint-run",
+          config: {
+            modelBaseUrl: "https://host.example/v1",
+            modelContextWindow: 65_536,
+            modelMaxTokens: 4_096,
+          },
+          results: [],
+        }),
+      );
+      const run = await readRun(path);
+      expect("issue" in run).toBe(false);
+      if ("issue" in run) return;
+      expect(run.config).toMatchObject({
+        modelBaseUrl: "https://host.example/v1",
+        modelContextWindow: 65_536,
+        modelMaxTokens: 4_096,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("names the file and the problem when one will not parse", async () => {
     const run = await readRun(join(FIXTURES, "corrupt.json"));
     expect("issue" in run).toBe(true);

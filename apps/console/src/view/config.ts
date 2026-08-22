@@ -20,6 +20,38 @@ const ABSENT = "—";
 export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): ConfigRow[] {
   const config = run?.config;
   const model = run?.model;
+  const endpointRows: ConfigRow[] =
+    config?.modelBaseUrl === undefined && env.LLAMA_SERVER_BASE_URL === undefined
+      ? []
+      : [
+          {
+            label: "model base url",
+            thisRun: config?.modelBaseUrl ?? ABSENT,
+            currentEnv: env.LLAMA_SERVER_BASE_URL ?? ABSENT,
+          },
+          {
+            label: "model context window",
+            thisRun:
+              config?.modelContextWindow === undefined
+                ? ABSENT
+                : config.modelContextWindow.toLocaleString("en"),
+            currentEnv:
+              env.LLAMA_SERVER_CONTEXT_WINDOW === undefined
+                ? ABSENT
+                : env.LLAMA_SERVER_CONTEXT_WINDOW.toLocaleString("en"),
+          },
+          {
+            label: "model max tokens",
+            thisRun:
+              config?.modelMaxTokens === undefined
+                ? ABSENT
+                : config.modelMaxTokens.toLocaleString("en"),
+            currentEnv:
+              env.LLAMA_SERVER_MAX_TOKENS === undefined
+                ? ABSENT
+                : env.LLAMA_SERVER_MAX_TOKENS.toLocaleString("en"),
+          },
+        ];
 
   return [
     {
@@ -56,6 +88,7 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
       thisRun: config?.sentinelBaseUrl ?? ABSENT,
       currentEnv: env.SENTINEL_BASE_URL,
     },
+    ...endpointRows,
     {
       label: "brave web search",
       thisRun:
