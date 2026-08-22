@@ -1,6 +1,6 @@
 import type { SecurityAlertResource } from "@soc/contracts";
 import { SentinelApiError } from "@soc/sentinel-client";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 import { z } from "zod";
 
 /**
@@ -14,11 +14,11 @@ import { z } from "zod";
 /**
  * Narrowed on purpose, and load-bearing rather than tidy.
  *
- * `SentinelApiClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole client
+ * `SentinelClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole client
  * would compile ad-hoc KQL execution into the console from the first increment — which PRD-3 §14
  * excludes by name, and which this PRD does not reopen. The queue needs two reads and gets two.
  */
-export type AlertReader = Pick<SentinelApiClient, "listAlerts" | "getAlert">;
+export type AlertReader = Pick<SentinelClient, "listAlerts" | "getAlert">;
 
 /** One entry of the generated ids-only scenario map (PRD-5 §7). */
 const BenchmarkMapEntry = z.object({

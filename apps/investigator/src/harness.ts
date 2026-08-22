@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -79,7 +79,7 @@ export interface InvestigationMetrics {
 }
 
 export interface InvestigationHarnessOptions {
-  sentinel: SentinelApiClient;
+  sentinel: SentinelClient;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   model: Model<Api>;

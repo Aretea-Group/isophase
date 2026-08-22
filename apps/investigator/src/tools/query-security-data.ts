@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import type { QueryResponse } from "@soc/contracts";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 
 const Params = Type.Object(
   {
@@ -90,7 +90,7 @@ export const QUERY_SECURITY_DATA = {
 } as const;
 
 export function createQuerySecurityDataTool(
-  sentinel: SentinelApiClient,
+  sentinel: SentinelClient,
   maxChars: number = DEFAULT_RESULT_MAX_CHARS,
 ): AgentTool<typeof Params> {
   return {

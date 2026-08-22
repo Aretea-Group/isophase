@@ -9,6 +9,15 @@ import {
 
 import { SentinelApiError } from "./errors.ts";
 
+/** The complete Sentinel capability consumed by investigator and console code. */
+export interface SentinelClient {
+  listAlerts(top?: number): Promise<SecurityAlertResource[]>;
+  getAlert(id: string): Promise<SecurityAlertResource>;
+  getSchema(): Promise<SchemaResponse>;
+  query(kql: string, timespan?: string): Promise<QueryResponse>;
+  getCorpus(): Promise<CorpusIdentity | undefined>;
+}
+
 export interface SentinelApiClientOptions {
   /** Base URL of the Mock Sentinel REST facade, e.g. `http://localhost:8787`. */
   baseUrl: string;
@@ -26,7 +35,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * through the shared `@soc/contracts` schema so a drift in the service fails here rather than
  * silently downstream.
  */
-export class SentinelApiClient {
+export class SentinelApiClient implements SentinelClient {
   readonly #baseUrl: string;
   readonly #timeoutMs: number;
 
