@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
+import type { AccessToken, TokenCredential } from "@azure/identity";
+
 import {
   AzureSentinelClient,
-  SentinelApiError,
   assertAzureArtifactDirectories,
   createSentinelClient,
   sentinelClientConfigFromEnv,
@@ -39,15 +40,30 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
-const options = {
+const servicePrincipal = {
   tenantId: "tenant-id",
   clientId: "client-id",
   clientSecret: "secret&value",
-  workspaceId: "workspace-id",
 };
+const workspaceId = "workspace-id";
+
+function accessToken(value = "access-token", expiresInMs = 3_600_000): AccessToken {
+  return { token: value, expiresOnTimestamp: Date.now() + expiresInMs };
+}
+
+function credential(
+  getToken: (scopes: string | string[]) => AccessToken | null | Promise<AccessToken | null> = () =>
+    accessToken(),
+): TokenCredential {
+  return { getToken: async (scopes) => getToken(scopes) };
+}
+
+function azureOptions(tokenCredential: TokenCredential = credential()) {
+  return { credential: tokenCredential, workspaceId };
+}
 
 const workspace = {
-  id: options.workspaceId,
+  id: workspaceId,
   name: "sentinel-prod",
   resourceId:
     "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-prod",
@@ -66,22 +82,22 @@ const metadata = {
   workspaces: [workspace],
 };
 
-function token(value = "access-token", expiresIn = 3600): Response {
-  return json({ token_type: "Bearer", expires_in: expiresIn, access_token: value });
-}
-
 function queryResult(rows: unknown[][], columns = [{ name: "value", type: "long" }]): Response {
   return json({ tables: [{ name: "PrimaryResult", columns, rows }] });
 }
 
 describe("AzureSentinelClient authentication and metadata", () => {
-  test("uses client credentials, shares token and metadata requests, and caches both", async () => {
+  test("requests the Logs scope, shares token and metadata requests, and caches both", async () => {
+    const scopes: (string | string[])[] = [];
+    const tokenCredential = credential((scope) => {
+      scopes.push(scope);
+      return accessToken();
+    });
     const requests = captureFetch((request) => {
-      if (request.url.includes("/oauth2/v2.0/token")) return token();
       expect(request.init?.headers).toMatchObject({ authorization: "Bearer access-token" });
       return json(metadata);
     });
-    const client = new AzureSentinelClient(options);
+    const client = new AzureSentinelClient(azureOptions(tokenCredential));
 
     const [first, second] = await Promise.all([client.getSchema(), client.getSchema()]);
     expect(first).toEqual(second);
@@ -90,35 +106,26 @@ describe("AzureSentinelClient authentication and metadata", () => {
       tables: metadata.tables,
     });
     expect(await client.getCorpus()).toBeUndefined();
-    expect(requests).toHaveLength(2);
-
-    const tokenRequest = requests[0];
-    expect(tokenRequest?.url).toBe("https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token");
-    const form = new URLSearchParams(String(tokenRequest?.init?.body));
-    expect(form.get("client_id")).toBe(options.clientId);
-    expect(form.get("client_secret")).toBe(options.clientSecret);
-    expect(form.get("scope")).toBe("https://api.loganalytics.io/.default");
-    expect(form.get("grant_type")).toBe("client_credentials");
-    expect(requests[1]?.url).toBe(
+    expect(scopes).toEqual(["https://api.loganalytics.io/.default"]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(
       "https://api.loganalytics.azure.com/v1/workspaces/workspace-id/metadata",
     );
   });
 
   test("refreshes a token that is inside the expiry safety window", async () => {
     let tokenNumber = 0;
-    const requests = captureFetch((request) => {
-      if (request.url.includes("/oauth2/v2.0/token")) {
-        tokenNumber += 1;
-        return token(`token-${tokenNumber}`, 1);
-      }
-      return queryResult([[1]]);
+    const tokenCredential = credential(() => {
+      tokenNumber += 1;
+      return accessToken(`token-${tokenNumber}`, 30_000);
     });
-    const client = new AzureSentinelClient(options);
+    captureFetch(() => queryResult([[1]]));
+    const client = new AzureSentinelClient(azureOptions(tokenCredential));
 
     await client.query("SecurityAlert | count");
     await client.query("SecurityAlert | count");
 
-    expect(requests.filter((request) => request.url.includes("/token"))).toHaveLength(2);
+    expect(tokenNumber).toBe(2);
   });
 
   test("shares an in-flight token request across independent calls", async () => {
@@ -126,14 +133,14 @@ describe("AzureSentinelClient authentication and metadata", () => {
     const tokenReady = new Promise<void>((resolve) => {
       releaseToken = resolve;
     });
-    const requests = captureFetch(async (request) => {
-      if (request.url.includes("/oauth2/v2.0/token")) {
-        await tokenReady;
-        return token();
-      }
-      return queryResult([[1]]);
+    let tokenRequests = 0;
+    const tokenCredential = credential(async () => {
+      tokenRequests += 1;
+      await tokenReady;
+      return accessToken();
     });
-    const client = new AzureSentinelClient(options);
+    const requests = captureFetch(() => queryResult([[1]]));
+    const client = new AzureSentinelClient(azureOptions(tokenCredential));
 
     const first = client.query("SecurityAlert | count");
     const second = client.query("SecurityAlert | count");
@@ -142,13 +149,26 @@ describe("AzureSentinelClient authentication and metadata", () => {
     releaseToken();
     await Promise.all([first, second]);
 
-    expect(requests.filter((request) => request.url.includes("/token"))).toHaveLength(1);
-    expect(requests.filter((request) => request.url.endsWith("/query"))).toHaveLength(2);
+    expect(tokenRequests).toBe(1);
+    expect(requests).toHaveLength(2);
   });
 
-  test("maps network failures and request timeouts", async () => {
+  test("maps credential, network, and timeout failures without leaking credential output", async () => {
+    const credentialError = await new AzureSentinelClient(
+      azureOptions(
+        credential(() => {
+          throw new Error(`credential ${servicePrincipal.clientSecret} private-token failed`);
+        }),
+      ),
+    )
+      .getSchema()
+      .catch((error: unknown) => error);
+    expect(credentialError).toMatchObject({ code: "authentication_error", status: 0 });
+    expect(String(credentialError)).not.toContain(servicePrincipal.clientSecret);
+    expect(String(credentialError)).not.toContain("private-token");
+
     captureFetch(() => Promise.reject(new TypeError("network unavailable")));
-    const networkError = await new AzureSentinelClient(options)
+    const networkError = await new AzureSentinelClient(azureOptions())
       .getSchema()
       .catch((error: unknown) => error);
     expect(networkError).toMatchObject({ code: "unreachable", status: 0 });
@@ -164,53 +184,42 @@ describe("AzureSentinelClient authentication and metadata", () => {
           signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         }),
     );
-    const timeoutError = await new AzureSentinelClient({ ...options, timeoutMs: 1 })
+    const timeoutError = await new AzureSentinelClient({ ...azureOptions(), timeoutMs: 1 })
       .getSchema()
       .catch((error: unknown) => error);
     expect(timeoutError).toMatchObject({ code: "unreachable", status: 0 });
     expect(String(timeoutError)).toContain("timed out");
   });
 
-  test("rejects malformed authentication and metadata responses", async () => {
-    captureFetch(() => new Response("{", { status: 200 }));
-    const authError = await new AzureSentinelClient(options)
+  test.each([
+    null,
+    { token: " ", expiresOnTimestamp: Date.now() + 60_000 },
+    { token: "access-token", expiresOnTimestamp: Date.now() - 1 },
+  ])("rejects an invalid token", async (invalidToken) => {
+    const authError = await new AzureSentinelClient(azureOptions(credential(() => invalidToken)))
       .getSchema()
       .catch((error: unknown) => error);
     expect(authError).toMatchObject({ code: "authentication_error", status: 0 });
+  });
 
-    captureFetch((request) =>
-      request.url.includes("/token") ? token() : json({ tables: "not-an-array" }),
-    );
-    const metadataError = await new AzureSentinelClient(options)
+  test("rejects malformed metadata responses", async () => {
+    captureFetch(() => json({ tables: "not-an-array" }));
+    const metadataError = await new AzureSentinelClient(azureOptions())
       .getSchema()
       .catch((error: unknown) => error);
     expect(metadataError).toMatchObject({ code: "unreachable", status: 200 });
   });
 
-  test("never includes the client secret or bearer token in errors", async () => {
-    captureFetch(() =>
-      json(
-        {
-          error: "invalid_client",
-          error_description: `credential ${options.clientSecret} was rejected`,
-        },
-        401,
-      ),
-    );
-    const client = new AzureSentinelClient(options);
-
-    const authError = await client.getSchema().catch((error: unknown) => error);
-    expect(authError).toBeInstanceOf(SentinelApiError);
-    expect(String(authError)).not.toContain(options.clientSecret);
-
-    captureFetch((request) => {
-      if (request.url.includes("/token")) return token("private-token");
+  test("never includes the bearer token in service errors", async () => {
+    captureFetch(() => {
       return json(
         { error: { code: "BadArgumentError", message: "private-token is invalid" } },
         400,
       );
     });
-    const queryError = await new AzureSentinelClient(options)
+    const queryError = await new AzureSentinelClient(
+      azureOptions(credential(() => accessToken("private-token"))),
+    )
       .query("missing | count")
       .catch((error: unknown) => error);
     expect(String(queryError)).not.toContain("private-token");
@@ -219,17 +228,16 @@ describe("AzureSentinelClient authentication and metadata", () => {
 
 describe("AzureSentinelClient query boundary", () => {
   test("sends timespan and bearer auth, then reports the 501st row as truncation", async () => {
-    const requests = captureFetch((request) => {
-      if (request.url.includes("/token")) return token();
-      return queryResult(Array.from({ length: 501 }, (_, index) => [index]));
-    });
-    const client = new AzureSentinelClient(options);
+    const requests = captureFetch(() =>
+      queryResult(Array.from({ length: 501 }, (_, index) => [index])),
+    );
+    const client = new AzureSentinelClient(azureOptions());
 
     const result = await client.query("SecurityAlert | project value", "PT12H");
 
     expect(result.tables[0]?.rows).toHaveLength(500);
     expect(result.truncation).toEqual({ truncated: true, returnedRows: 500, maxRows: 500 });
-    const request = requests[1];
+    const request = requests[0];
     expect(request?.url).toEndWith("/v1/workspaces/workspace-id/query");
     expect(request?.init?.headers).toMatchObject({ authorization: "Bearer access-token" });
     expect(JSON.parse(String(request?.init?.body))).toEqual({
@@ -239,24 +247,20 @@ describe("AzureSentinelClient query boundary", () => {
   });
 
   test("does not report exactly 500 rows as truncated", async () => {
-    captureFetch((request) =>
-      request.url.includes("/token")
-        ? token()
-        : queryResult(Array.from({ length: 500 }, (_, index) => [index])),
-    );
+    captureFetch(() => queryResult(Array.from({ length: 500 }, (_, index) => [index])));
 
-    const result = await new AzureSentinelClient(options).query("SecurityAlert | project value");
+    const result = await new AzureSentinelClient(azureOptions()).query(
+      "SecurityAlert | project value",
+    );
 
     expect(result.tables[0]?.rows).toHaveLength(500);
     expect(result.truncation).toEqual({ truncated: false, returnedRows: 500, maxRows: 500 });
   });
 
   test("rejects a malformed successful query response", async () => {
-    captureFetch((request) =>
-      request.url.includes("/token") ? token() : json({ tables: "not-an-array" }),
-    );
+    captureFetch(() => json({ tables: "not-an-array" }));
 
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .query("SecurityAlert | count")
       .catch((caught: unknown) => caught);
 
@@ -273,11 +277,9 @@ describe("AzureSentinelClient query boundary", () => {
         cancelled = true;
       },
     });
-    captureFetch((request) =>
-      request.url.includes("/token") ? token() : new Response(body, { status: 400 }),
-    );
+    captureFetch(() => new Response(body, { status: 400 }));
 
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .query("SecurityAlert | count")
       .catch((caught: unknown) => caught);
 
@@ -289,7 +291,7 @@ describe("AzureSentinelClient query boundary", () => {
     const requests = captureFetch(() => {
       throw new Error("fetch must not run");
     });
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .query(" // comment\n.drop table SecurityAlert")
       .catch((caught: unknown) => caught);
 
@@ -298,8 +300,7 @@ describe("AzureSentinelClient query boundary", () => {
   });
 
   test("rejects a 200 PartialError with its diagnostic", async () => {
-    captureFetch((request) => {
-      if (request.url.includes("/token")) return token();
+    captureFetch(() => {
       return json({
         tables: [{ name: "PrimaryResult", columns: [], rows: [] }],
         error: {
@@ -310,7 +311,7 @@ describe("AzureSentinelClient query boundary", () => {
       });
     });
 
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .query("SecurityAlert")
       .catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code: "query_error", status: 200 });
@@ -323,12 +324,11 @@ describe("AzureSentinelClient query boundary", () => {
     [429, "rate_limited"],
     [503, "upstream_unavailable"],
   ] as const)("maps HTTP %i to %s", async (status, code) => {
-    captureFetch((request) => {
-      if (request.url.includes("/token")) return token();
+    captureFetch(() => {
       return json({ error: { code: "RequestFailed", message: "upstream diagnostic" } }, status);
     });
 
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .query("SecurityAlert | count")
       .catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code, status });
@@ -398,12 +398,11 @@ function alertRow(systemAlertId: string): unknown[] {
 describe("AzureSentinelClient alerts", () => {
   test("lists the requested number of newest alerts in service order", async () => {
     const requests = captureFetch((request) => {
-      if (request.url.includes("/token")) return token();
       if (request.url.endsWith("/metadata")) return json(metadata);
       return queryResult([alertRow("newest"), alertRow("older")], alertColumns);
     });
 
-    const alerts = await new AzureSentinelClient(options).listAlerts(2);
+    const alerts = await new AzureSentinelClient(azureOptions()).listAlerts(2);
 
     expect(alerts.map((alert) => alert.name)).toEqual(["newest", "older"]);
     const queryRequest = requests.find((request) => request.url.endsWith("/query"));
@@ -415,11 +414,10 @@ describe("AzureSentinelClient alerts", () => {
   test("escapes an alert id and projects a real SecurityAlert row", async () => {
     const requestedId = 'alert"with\\slashes';
     const requests = captureFetch((request) => {
-      if (request.url.includes("/token")) return token();
       if (request.url.endsWith("/metadata")) return json(metadata);
       return queryResult([alertRow(requestedId)], alertColumns);
     });
-    const client = new AzureSentinelClient(options);
+    const client = new AzureSentinelClient(azureOptions());
 
     const alert = await client.getAlert(requestedId);
 
@@ -436,30 +434,26 @@ describe("AzureSentinelClient alerts", () => {
       additionalData: { source: "test" },
       entities: [{ $id: "1", type: "account", name: "alice", ntDomain: "CONTOSO" }],
     });
-    const queryBody = JSON.parse(String(requests[1]?.init?.body)) as { query: string };
+    const queryBody = JSON.parse(String(requests[0]?.init?.body)) as { query: string };
     expect(queryBody.query).toContain('where SystemAlertId == "alert\\"with\\\\slashes"');
   });
 
   test("returns not_found when a targeted alert query has no row", async () => {
-    captureFetch((request) =>
-      request.url.includes("/token") ? token() : queryResult([], alertColumns),
-    );
-    const error = await new AzureSentinelClient(options)
+    captureFetch(() => queryResult([], alertColumns));
+    const error = await new AzureSentinelClient(azureOptions())
       .getAlert("missing")
       .catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code: "not_found", status: 404 });
   });
 
   test("fails visibly when the unbounded alert list exceeds 500", async () => {
-    const requests = captureFetch((request) =>
-      request.url.includes("/token")
-        ? token()
-        : queryResult(
-            Array.from({ length: 501 }, () => alertRow("alert")),
-            alertColumns,
-          ),
+    const requests = captureFetch(() =>
+      queryResult(
+        Array.from({ length: 501 }, () => alertRow("alert")),
+        alertColumns,
+      ),
     );
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .listAlerts()
       .catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code: "bad_request", status: 400 });
@@ -470,7 +464,7 @@ describe("AzureSentinelClient alerts", () => {
     const requests = captureFetch(() => {
       throw new Error("fetch must not run");
     });
-    const error = await new AzureSentinelClient(options)
+    const error = await new AzureSentinelClient(azureOptions())
       .listAlerts(501)
       .catch((caught: unknown) => caught);
     expect(error).toMatchObject({ code: "bad_request", status: 400 });
@@ -482,9 +476,20 @@ test("factory selects Mock and Azure implementations", () => {
   expect(createSentinelClient({ connector: "mock", baseUrl: "http://localhost:8787" })).not.toBe(
     undefined,
   );
-  expect(createSentinelClient({ connector: "azure", ...options })).toBeInstanceOf(
-    AzureSentinelClient,
-  );
+  expect(
+    createSentinelClient({
+      connector: "azure",
+      authentication: { kind: "developer" },
+      workspaceId,
+    }),
+  ).toBeInstanceOf(AzureSentinelClient);
+  expect(
+    createSentinelClient({
+      connector: "azure",
+      authentication: { kind: "service-principal", ...servicePrincipal },
+      workspaceId,
+    }),
+  ).toBeInstanceOf(AzureSentinelClient);
 });
 
 describe("shared connector configuration", () => {
@@ -507,48 +512,74 @@ describe("shared connector configuration", () => {
   const azureEnvironment = {
     ...base,
     SENTINEL_CONNECTOR: "azure" as const,
-    AZURE_TENANT_ID: options.tenantId,
-    AZURE_CLIENT_ID: options.clientId,
-    AZURE_CLIENT_SECRET: options.clientSecret,
-    AZURE_LOG_ANALYTICS_WORKSPACE_ID: options.workspaceId,
+    AZURE_TENANT_ID: servicePrincipal.tenantId,
+    AZURE_CLIENT_ID: servicePrincipal.clientId,
+    AZURE_CLIENT_SECRET: servicePrincipal.clientSecret,
+    AZURE_LOG_ANALYTICS_WORKSPACE_ID: workspaceId,
   };
 
-  test("requires every Azure value", () => {
-    for (const name of [
-      "AZURE_TENANT_ID",
-      "AZURE_CLIENT_ID",
-      "AZURE_CLIENT_SECRET",
-      "AZURE_LOG_ANALYTICS_WORKSPACE_ID",
-    ] as const) {
+  test("requires a workspace and rejects partial service-principal configuration", () => {
+    expect(() =>
+      sentinelClientConfigFromEnv({
+        ...base,
+        SENTINEL_CONNECTOR: "azure",
+      }),
+    ).toThrow("AZURE_LOG_ANALYTICS_WORKSPACE_ID");
+
+    for (const name of ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"] as const) {
       expect(() => sentinelClientConfigFromEnv({ ...azureEnvironment, [name]: undefined })).toThrow(
         name,
       );
     }
 
     const config = sentinelClientConfigFromEnv(azureEnvironment);
+    expect(config).toMatchObject({
+      connector: "azure",
+      authentication: { kind: "service-principal", ...servicePrincipal },
+      workspaceId,
+    });
     expect(sentinelClientTarget(config)).toBe(
       "https://api.loganalytics.azure.com/v1/workspaces/workspace-id",
     );
+  });
+
+  test("uses developer credentials when the service-principal group is absent", () => {
+    const config = sentinelClientConfigFromEnv({
+      ...base,
+      SENTINEL_CONNECTOR: "azure",
+      AZURE_LOG_ANALYTICS_WORKSPACE_ID: workspaceId,
+    });
+
+    expect(config).toEqual({
+      connector: "azure",
+      authentication: { kind: "developer" },
+      workspaceId,
+      timeoutMs: base.SENTINEL_TIMEOUT_MS,
+    });
   });
 
   test("serializes only the non-secret Azure target into artifact configuration", () => {
     const config = sentinelClientConfigFromEnv({
       ...base,
       SENTINEL_CONNECTOR: "azure",
-      AZURE_TENANT_ID: options.tenantId,
-      AZURE_CLIENT_ID: options.clientId,
-      AZURE_CLIENT_SECRET: options.clientSecret,
-      AZURE_LOG_ANALYTICS_WORKSPACE_ID: options.workspaceId,
+      AZURE_TENANT_ID: servicePrincipal.tenantId,
+      AZURE_CLIENT_ID: servicePrincipal.clientId,
+      AZURE_CLIENT_SECRET: servicePrincipal.clientSecret,
+      AZURE_LOG_ANALYTICS_WORKSPACE_ID: workspaceId,
     });
     const artifactConfiguration = JSON.stringify({ sentinelBaseUrl: sentinelClientTarget(config) });
 
     expect(artifactConfiguration).toContain("workspace-id");
-    expect(artifactConfiguration).not.toContain(options.clientSecret);
+    expect(artifactConfiguration).not.toContain(servicePrincipal.clientSecret);
     expect(artifactConfiguration).not.toContain("access-token");
   });
 
   test("allows Azure artifacts only under the ignored data root", () => {
-    const config = { connector: "azure" as const, ...options };
+    const config = {
+      connector: "azure" as const,
+      authentication: { kind: "developer" as const },
+      workspaceId,
+    };
     expect(() =>
       assertAzureArtifactDirectories(config, [".data/azure-runs", ".data/azure-runs/traces"]),
     ).not.toThrow();

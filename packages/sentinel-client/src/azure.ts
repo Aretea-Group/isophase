@@ -1,3 +1,4 @@
+import type { TokenCredential } from "@azure/identity";
 import {
   AlertEntity,
   AlertSeverity,
@@ -21,17 +22,6 @@ const LOGS_SCOPE = "https://api.loganalytics.io/.default";
 const QUERY_MAX_ROWS = 500;
 const TOKEN_EXPIRY_SKEW_MS = 60_000;
 const ERROR_BODY_MAX_BYTES = 32 * 1024;
-
-const TokenResponse = z.object({
-  token_type: z.string().min(1),
-  expires_in: z.coerce.number().positive(),
-  access_token: z.string().min(1),
-});
-
-const OAuthError = z.object({
-  error: z.string().min(1),
-  error_description: z.string().min(1).optional(),
-});
 
 const ErrorInfo = z.object({
   code: z.string().min(1),
@@ -67,9 +57,7 @@ const MetadataResponse = z.object({
 type Metadata = z.infer<typeof MetadataResponse>;
 
 export interface AzureSentinelClientOptions {
-  tenantId: string;
-  clientId: string;
-  clientSecret: string;
+  credential: TokenCredential;
   workspaceId: string;
   timeoutMs?: number;
 }
@@ -287,9 +275,7 @@ function namedRows(table: z.infer<typeof QueryTable>): Record<string, unknown>[]
 }
 
 export class AzureSentinelClient implements SentinelClient {
-  readonly #tenantId: string;
-  readonly #clientId: string;
-  readonly #clientSecret: string;
+  readonly #credential: TokenCredential;
   readonly #workspaceId: string;
   readonly #timeoutMs: number;
 
@@ -299,9 +285,7 @@ export class AzureSentinelClient implements SentinelClient {
   #metadataRequest: Promise<Metadata> | undefined;
 
   constructor(options: AzureSentinelClientOptions) {
-    this.#tenantId = options.tenantId;
-    this.#clientId = options.clientId;
-    this.#clientSecret = options.clientSecret;
+    this.#credential = options.credential;
     this.#workspaceId = options.workspaceId;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
@@ -469,39 +453,36 @@ export class AzureSentinelClient implements SentinelClient {
   }
 
   async #acquireToken(): Promise<string> {
-    const form = new URLSearchParams({
-      client_id: this.#clientId,
-      client_secret: this.#clientSecret,
-      scope: LOGS_SCOPE,
-      grant_type: "client_credentials",
-    });
-    const url = `https://login.microsoftonline.com/${encodeURIComponent(this.#tenantId)}/oauth2/v2.0/token`;
-    const payload = await this.#request(
-      "POST",
-      url,
-      {
-        headers: {
-          accept: "application/json",
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      },
-      "token",
-    );
-    const parsed = TokenResponse.safeParse(payload);
-    if (!parsed.success) {
+    let token;
+    try {
+      token = await this.#credential.getToken(LOGS_SCOPE, {
+        abortSignal: AbortSignal.timeout(this.#timeoutMs),
+      });
+    } catch {
       throw new SentinelApiError(
         "authentication_error",
         0,
-        "Microsoft identity returned an invalid token response.",
+        "Azure Identity could not acquire a Log Analytics token. Check the configured service principal or sign in with Azure CLI or Azure PowerShell.",
+      );
+    }
+    if (
+      token === null ||
+      token.token.trim() === "" ||
+      !Number.isFinite(token.expiresOnTimestamp) ||
+      token.expiresOnTimestamp <= Date.now()
+    ) {
+      throw new SentinelApiError(
+        "authentication_error",
+        0,
+        "Azure Identity returned an invalid Log Analytics token.",
       );
     }
 
     this.#token = {
-      value: parsed.data.access_token,
-      expiresAt: Date.now() + parsed.data.expires_in * 1000,
+      value: token.token,
+      expiresAt: token.expiresOnTimestamp,
     };
-    return parsed.data.access_token;
+    return token.token;
   }
 
   async #authenticatedRequest(
@@ -527,7 +508,7 @@ export class AzureSentinelClient implements SentinelClient {
     method: "GET" | "POST",
     url: string,
     init: RequestInit,
-    purpose: "token" | "metadata" | "query",
+    purpose: "metadata" | "query",
     token?: string,
   ): Promise<unknown> {
     let response: Response;
@@ -556,12 +537,9 @@ export class AzureSentinelClient implements SentinelClient {
 
     if (!response.ok) {
       const oneApi = ErrorResponse.safeParse(payload);
-      const oauth = OAuthError.safeParse(payload);
       const message = oneApi.success
         ? diagnostic(oneApi.data.error)
-        : oauth.success
-          ? (oauth.data.error_description ?? oauth.data.error)
-          : `${method} ${url} returned ${response.status} ${response.statusText}`.trim();
+        : `${method} ${url} returned ${response.status} ${response.statusText}`.trim();
       throw new SentinelApiError(
         this.#errorCode(response.status, purpose),
         response.status,
@@ -572,18 +550,17 @@ export class AzureSentinelClient implements SentinelClient {
     return payload;
   }
 
-  #errorCode(status: number, purpose: "token" | "metadata" | "query"): SentinelApiErrorCode {
+  #errorCode(status: number, purpose: "metadata" | "query"): SentinelApiErrorCode {
     if (status === 401) return "authentication_error";
     if (status === 403) return "authorization_error";
     if (status === 429) return "rate_limited";
     if (status >= 500) return "upstream_unavailable";
-    if (purpose === "token") return "authentication_error";
     if (purpose === "query") return "query_error";
     return "bad_request";
   }
 
   #sanitize(message: string, token?: string): string {
-    return [this.#clientSecret, token]
+    return [token]
       .filter((value): value is string => value !== undefined && value !== "")
       .reduce((safe, value) => safe.replaceAll(value, "[redacted]"), message);
   }
