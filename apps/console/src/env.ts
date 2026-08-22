@@ -9,8 +9,8 @@ import { z } from "zod";
  * (ADR 005 §6); reusing it here would make the console refuse to open a two-week-old run because a
  * key for a model it is never going to call is absent (ADR 006 §3, PRD-3 §6.3).
  *
- * The investigator settings below are read for display only, so the configuration view can show
- * what this machine is set up to do beside what a given run actually did (PRD-3 §8.6).
+ * The investigator settings below supply console-started runs. The configuration view selects only
+ * non-secret fields to show beside what a given run actually did (PRD-3 §8.6).
  */
 export const env = createEnv({
   server: {
@@ -24,7 +24,7 @@ export const env = createEnv({
     /** Ceiling on concurrent in-process runs — the only cost ceiling in the repo (PRD-5 §8). */
     CONSOLE_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
 
-    // Display only. The console never acts on any of these.
+    // Used by console-started investigations; the configuration view exposes only safe fields.
     SENTINEL_BASE_URL: z.string().min(1).default("http://localhost:8787"),
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
@@ -36,6 +36,7 @@ export const env = createEnv({
     LLAMA_SERVER_MODEL: z.string().min(1).optional(),
     LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
     LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
     BRAVE_API_KEY: z.string().min(1).optional(),
     INVESTIGATOR_TRACE: z
       .enum(["true", "false"])

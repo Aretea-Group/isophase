@@ -1,6 +1,11 @@
 #!/usr/bin/env bun
 import { InProcessControl, type InvestigationControl } from "@soc/investigator/control";
-import { type LlamaServerConfig, llamaServerConfigFromEnv } from "@soc/investigator/model";
+import {
+  type LlamaServerAuth,
+  type LlamaServerConfig,
+  llamaServerAuthFromEnv,
+  llamaServerConfigFromEnv,
+} from "@soc/investigator/model";
 import { SentinelApiClient } from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
@@ -18,6 +23,7 @@ import { runApp } from "./ui/app.ts";
 function buildControl(
   runsDir: string,
   llamaServer: LlamaServerConfig | undefined,
+  llamaServerAuth: LlamaServerAuth | undefined,
 ): InvestigationControl {
   return new InProcessControl({
     config: {
@@ -35,6 +41,7 @@ function buildControl(
       traceDir: env.INVESTIGATOR_TRACE_DIR,
       traceStream: false,
       ...(llamaServer === undefined ? {} : { llamaServer }),
+      ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     },
     deps: { sentinel: new SentinelApiClient({ baseUrl: env.SENTINEL_BASE_URL }) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
@@ -120,6 +127,7 @@ async function main(): Promise<void> {
     throw new Error("--fresh requires the alert queue and cannot be combined with --read-only.");
   }
   const llamaServer = llamaServerConfigFromEnv(env);
+  const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
   const app = await runApp({
     runsDir: args.runsDir ?? env.RUNS_DIR,
     tracesDir: args.tracesDir ?? env.INVESTIGATOR_TRACE_DIR,
@@ -127,7 +135,9 @@ async function main(): Promise<void> {
     fresh: args.fresh === true,
     ...(args.readOnly === true
       ? {}
-      : { control: buildControl(args.runsDir ?? env.RUNS_DIR, llamaServer) }),
+      : {
+          control: buildControl(args.runsDir ?? env.RUNS_DIR, llamaServer, llamaServerAuth),
+        }),
   });
   await app.ready;
 }

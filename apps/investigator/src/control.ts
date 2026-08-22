@@ -190,7 +190,7 @@ export class InProcessControl implements InvestigationControl {
   }
 
   listModels(): Promise<ModelChoice[]> {
-    return listAvailableModels(this.#config.llamaServer);
+    return listAvailableModels(this.#config.llamaServer, this.#config.llamaServerAuth);
   }
 
   listTools(): readonly string[] {

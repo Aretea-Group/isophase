@@ -13,11 +13,17 @@ export interface LlamaServerConfig {
   maxTokens: number;
 }
 
+/** Request credential kept separate from the endpoint configuration persisted in run artifacts. */
+export interface LlamaServerAuth {
+  bearerToken: string;
+}
+
 const LlamaServerEnvironment = z.object({
   LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
   LLAMA_SERVER_MODEL: z.string().min(1).optional(),
   LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
   LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+  LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
 });
 
 type LlamaServerEnvironment = z.infer<typeof LlamaServerEnvironment>;
@@ -64,7 +70,14 @@ export function llamaServerConfigFromEnv(
     );
   }
 
-  const complete = LlamaServerEnvironment.required().parse(input);
+  const complete = LlamaServerEnvironment.pick({
+    LLAMA_SERVER_BASE_URL: true,
+    LLAMA_SERVER_MODEL: true,
+    LLAMA_SERVER_CONTEXT_WINDOW: true,
+    LLAMA_SERVER_MAX_TOKENS: true,
+  })
+    .required()
+    .parse(input);
   const baseUrl = normalizeBaseUrl(complete.LLAMA_SERVER_BASE_URL);
   const modelId = complete.LLAMA_SERVER_MODEL;
   const contextWindow = complete.LLAMA_SERVER_CONTEXT_WINDOW;
@@ -73,6 +86,21 @@ export function llamaServerConfigFromEnv(
     throw new Error("LLAMA_SERVER_MAX_TOKENS must not exceed LLAMA_SERVER_CONTEXT_WINDOW.");
   }
   return { baseUrl, modelId, contextWindow, maxTokens };
+}
+
+/** Read optional authentication only after a complete endpoint configuration has been validated. */
+export function llamaServerAuthFromEnv(
+  source: LlamaServerEnvironment,
+  llamaServer: LlamaServerConfig | undefined,
+): LlamaServerAuth | undefined {
+  const { LLAMA_SERVER_BEARER_TOKEN: bearerToken } = LlamaServerEnvironment.parse(source);
+  if (bearerToken === undefined) return undefined;
+  if (llamaServer === undefined) {
+    throw new Error(
+      "LLAMA_SERVER_BEARER_TOKEN requires the complete LLAMA_SERVER_* endpoint configuration.",
+    );
+  }
+  return { bearerToken };
 }
 
 /** This first slice records no model-specific reasoning contract, so only Pi's off mode is honest. */
@@ -98,7 +126,7 @@ export interface ResolvedModel {
   streamFn: ReturnType<typeof buildModels>["streamSimple"];
 }
 
-function buildModels(llamaServer?: LlamaServerConfig) {
+function buildModels(llamaServer?: LlamaServerConfig, llamaServerAuth?: LlamaServerAuth) {
   const models = createModels();
   // Registered together so the provider is a configuration choice, not a code change. API keys are
   // resolved by pi-ai from the ambient environment; a provider with no key simply fails at call time.
@@ -132,9 +160,13 @@ function buildModels(llamaServer?: LlamaServerConfig) {
         baseUrl: llamaServer.baseUrl,
         auth: {
           apiKey: {
-            name: "Keyless llama-server",
+            name: llamaServerAuth === undefined ? "Keyless llama-server" : "llama-server token",
             resolve: () =>
-              Promise.resolve({ auth: { apiKey: "unused" }, source: "keyless endpoint" }),
+              Promise.resolve({
+                auth: { apiKey: llamaServerAuth?.bearerToken ?? "unused" },
+                source:
+                  llamaServerAuth === undefined ? "keyless endpoint" : "LLAMA_SERVER_BEARER_TOKEN",
+              }),
           },
         },
         models: [model],
@@ -156,8 +188,9 @@ export async function resolveModel(
   provider: string,
   id: string,
   llamaServer?: LlamaServerConfig,
+  llamaServerAuth?: LlamaServerAuth,
 ): Promise<ResolvedModel> {
-  const models = buildModels(llamaServer);
+  const models = buildModels(llamaServer, llamaServerAuth);
   const model = models.getModel(provider, id);
 
   if (!model) {
@@ -237,8 +270,11 @@ const CURATED_MODELS: readonly ModelChoice[] = [
  * entry yields its whole catalogue rather than nothing, because "your key works and the picker is
  * empty" is the one outcome an operator cannot act on.
  */
-export async function listAvailableModels(llamaServer?: LlamaServerConfig): Promise<ModelChoice[]> {
-  const models = buildModels(llamaServer);
+export async function listAvailableModels(
+  llamaServer?: LlamaServerConfig,
+  llamaServerAuth?: LlamaServerAuth,
+): Promise<ModelChoice[]> {
+  const models = buildModels(llamaServer, llamaServerAuth);
   const available: ModelChoice[] = [];
 
   for (const provider of models.getProviders().map((registered) => registered.id)) {

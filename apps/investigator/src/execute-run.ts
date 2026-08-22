@@ -9,7 +9,7 @@ import { InvestigationSupervisorError } from "./errors.ts";
 import { InvestigationHarness } from "./harness.ts";
 import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
-import type { LlamaServerConfig, ResolvedModel } from "./model.ts";
+import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
 import { PROVENANCE } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
@@ -44,6 +44,8 @@ export interface InvestigatorConfig {
   traceDir: string;
   traceStream: boolean;
   llamaServer?: LlamaServerConfig;
+  /** In-memory request credential. Never copy this into an artifact or configuration view. */
+  llamaServerAuth?: LlamaServerAuth;
 }
 
 export interface InvestigatorDeps {
@@ -64,6 +66,7 @@ export interface InvestigatorDeps {
     provider: string,
     id: string,
     llamaServer?: LlamaServerConfig,
+    llamaServerAuth?: LlamaServerAuth,
   ) => Promise<ResolvedModel>;
 }
 
@@ -215,7 +218,12 @@ export async function executeRun(
 
   let harness: InvestigationHarness;
   try {
-    const { model, streamFn } = await resolve(config.provider, config.modelId, config.llamaServer);
+    const { model, streamFn } = await resolve(
+      config.provider,
+      config.modelId,
+      config.llamaServer,
+      config.llamaServerAuth,
+    );
 
     harness = new InvestigationHarness({
       sentinel: deps.sentinel,

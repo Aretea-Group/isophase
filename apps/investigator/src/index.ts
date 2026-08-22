@@ -5,7 +5,11 @@ import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
 import { env } from "./env.ts";
 import { executeRun, type InvestigatorConfig } from "./execute-run.ts";
-import { assertLlamaServerThinkingLevel, llamaServerConfigFromEnv } from "./model.ts";
+import {
+  assertLlamaServerThinkingLevel,
+  llamaServerAuthFromEnv,
+  llamaServerConfigFromEnv,
+} from "./model.ts";
 
 export interface CliArgs {
   alertId?: string;
@@ -49,6 +53,7 @@ function log(message: string): void {
 /** The CLI's whole configuration contract: `env` in, a `InvestigatorConfig` out (PRD-5 §5.2). */
 export function configFromEnv(): InvestigatorConfig {
   const llamaServer = llamaServerConfigFromEnv(env);
+  const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
   assertLlamaServerThinkingLevel(env.INVESTIGATOR_PROVIDER, env.INVESTIGATOR_THINKING_LEVEL);
   return {
     provider: env.INVESTIGATOR_PROVIDER,
@@ -64,6 +69,7 @@ export function configFromEnv(): InvestigatorConfig {
     traceDir: env.INVESTIGATOR_TRACE_DIR,
     traceStream: env.INVESTIGATOR_TRACE_STREAM,
     ...(llamaServer === undefined ? {} : { llamaServer }),
+    ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
   };
 }
 

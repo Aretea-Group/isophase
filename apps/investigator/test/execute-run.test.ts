@@ -225,14 +225,15 @@ describe("executeRun — the artifact records the configuration that applied (PR
       contextWindow: 65_536,
       maxTokens: 4_096,
     };
+    const llamaServerAuth = { bearerToken: "test-bearer-token" };
     const seen: unknown[] = [];
     const deps: InvestigatorDeps = {
       sentinel: sentinelStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
-      resolveModel: (_provider, _id, endpoint) => {
-        seen.push(endpoint);
+      resolveModel: (_provider, _id, endpoint, auth) => {
+        seen.push({ endpoint, auth });
         return Promise.resolve({
           model: {},
           streamFn: () => undefined,
@@ -247,17 +248,19 @@ describe("executeRun — the artifact records the configuration that applied (PR
         modelId: "local-model",
         thinkingLevel: "off",
         llamaServer,
+        llamaServerAuth,
       },
       deps,
       { runId: "run-local", signal: controller.signal },
     );
 
-    expect(seen).toEqual([llamaServer]);
+    expect(seen).toEqual([{ endpoint: llamaServer, auth: llamaServerAuth }]);
     expect(run.config).toMatchObject({
       modelBaseUrl: llamaServer.baseUrl,
       modelContextWindow: llamaServer.contextWindow,
       modelMaxTokens: llamaServer.maxTokens,
     });
+    expect(JSON.stringify(run)).not.toContain(llamaServerAuth.bearerToken);
   });
 
   test("an unconfigured thinking level is absent, never fabricated (PRD-6 D12)", async () => {

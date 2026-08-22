@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   assertLlamaServerThinkingLevel,
+  type LlamaServerAuth,
   type LlamaServerConfig,
+  llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
   listAvailableModels,
   resolveModel,
@@ -15,9 +17,57 @@ const CONFIG: LlamaServerConfig = {
   maxTokens: 4_096,
 };
 
+async function sendTestRequest(llamaServerAuth?: LlamaServerAuth): Promise<{
+  requestUrl: string | undefined;
+  authorization: string | null | undefined;
+  payload: unknown;
+}> {
+  const { model, streamFn } = await resolveModel(
+    "llamacpp",
+    "local-model",
+    CONFIG,
+    llamaServerAuth,
+  );
+  let requestUrl: string | undefined;
+  let authorization: string | null | undefined;
+  let payload: unknown;
+  const fetchStub: typeof fetch = Object.assign(
+    async (input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
+      requestUrl = input instanceof Request ? input.url : input.toString();
+      authorization =
+        input instanceof Request
+          ? input.headers.get("authorization")
+          : new Headers(init?.headers).get("authorization");
+      const body =
+        input instanceof Request
+          ? await input.clone().text()
+          : typeof init?.body === "string"
+            ? init.body
+            : "";
+      payload = body === "" ? undefined : JSON.parse(body);
+      return new Response(
+        'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}\n\n' +
+          'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"local-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' +
+          "data: [DONE]\n\n",
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    },
+    { preconnect: fetch.preconnect },
+  );
+  const stream = streamFn(
+    model,
+    { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] },
+    { fetch: fetchStub },
+  );
+
+  await stream.result();
+  return { requestUrl, authorization, payload };
+}
+
 describe("llama-server configuration", () => {
   test("is absent when the complete group is absent", () => {
     expect(llamaServerConfigFromEnv({})).toBeUndefined();
+    expect(llamaServerAuthFromEnv({}, undefined)).toBeUndefined();
   });
 
   test("normalizes one trailing slash and preserves the declared limits", () => {
@@ -35,6 +85,15 @@ describe("llama-server configuration", () => {
     expect(() =>
       llamaServerConfigFromEnv({ LLAMA_SERVER_BASE_URL: "https://host.example/v1" }),
     ).toThrow("LLAMA_SERVER_MODEL");
+  });
+
+  test("accepts an optional bearer token only with a complete endpoint", () => {
+    expect(
+      llamaServerAuthFromEnv({ LLAMA_SERVER_BEARER_TOKEN: "test-bearer-token" }, CONFIG),
+    ).toEqual({ bearerToken: "test-bearer-token" });
+    expect(() =>
+      llamaServerAuthFromEnv({ LLAMA_SERVER_BEARER_TOKEN: "test-bearer-token" }, undefined),
+    ).toThrow("requires the complete LLAMA_SERVER_* endpoint configuration");
   });
 
   test.each([
@@ -115,44 +174,14 @@ describe("llama-server model registration", () => {
   });
 
   test("uses the adapter's minimum placeholder authorization for a keyless request", async () => {
-    const { model, streamFn } = await resolveModel("llamacpp", "local-model", CONFIG);
-    let requestUrl: string | undefined;
-    let authorization: string | null | undefined;
-    let payload: unknown;
-    const fetchStub: typeof fetch = Object.assign(
-      async (input: string | URL | Request, init?: RequestInit | BunFetchRequestInit) => {
-        requestUrl = input instanceof Request ? input.url : input.toString();
-        authorization =
-          input instanceof Request
-            ? input.headers.get("authorization")
-            : new Headers(init?.headers).get("authorization");
-        const body =
-          input instanceof Request
-            ? await input.clone().text()
-            : typeof init?.body === "string"
-              ? init.body
-              : "";
-        payload = body === "" ? undefined : JSON.parse(body);
-        return new Response(
-          'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}\n\n' +
-            'data: {"id":"1","object":"chat.completion.chunk","created":1,"model":"local-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' +
-            "data: [DONE]\n\n",
-          { headers: { "content-type": "text/event-stream" } },
-        );
-      },
-      { preconnect: fetch.preconnect },
-    );
-    const stream = streamFn(
-      model,
-      { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] },
-      {
-        fetch: fetchStub,
-      },
-    );
-
-    await stream.result();
+    const { requestUrl, authorization, payload } = await sendTestRequest();
     expect(requestUrl).toBe("https://host.example/v1/chat/completions");
     expect(authorization).toBe("Bearer unused");
     expect(payload).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
+  });
+
+  test("sends the configured bearer token through the existing adapter", async () => {
+    const { authorization } = await sendTestRequest({ bearerToken: "test-bearer-token" });
+    expect(authorization).toBe("Bearer test-bearer-token");
   });
 });
