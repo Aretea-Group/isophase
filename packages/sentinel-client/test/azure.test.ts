@@ -121,6 +121,72 @@ describe("AzureSentinelClient authentication and metadata", () => {
     expect(requests.filter((request) => request.url.includes("/token"))).toHaveLength(2);
   });
 
+  test("shares an in-flight token request across independent calls", async () => {
+    let releaseToken: (() => void) | undefined;
+    const tokenReady = new Promise<void>((resolve) => {
+      releaseToken = resolve;
+    });
+    const requests = captureFetch(async (request) => {
+      if (request.url.includes("/oauth2/v2.0/token")) {
+        await tokenReady;
+        return token();
+      }
+      return queryResult([[1]]);
+    });
+    const client = new AzureSentinelClient(options);
+
+    const first = client.query("SecurityAlert | count");
+    const second = client.query("SecurityAlert | count");
+    await Promise.resolve();
+    if (releaseToken === undefined) throw new Error("token request did not start");
+    releaseToken();
+    await Promise.all([first, second]);
+
+    expect(requests.filter((request) => request.url.includes("/token"))).toHaveLength(1);
+    expect(requests.filter((request) => request.url.endsWith("/query"))).toHaveLength(2);
+  });
+
+  test("maps network failures and request timeouts", async () => {
+    captureFetch(() => Promise.reject(new TypeError("network unavailable")));
+    const networkError = await new AzureSentinelClient(options)
+      .getSchema()
+      .catch((error: unknown) => error);
+    expect(networkError).toMatchObject({ code: "unreachable", status: 0 });
+
+    captureFetch(
+      (request) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = request.init?.signal;
+          if (signal === undefined || signal === null) {
+            reject(new Error("request signal missing"));
+            return;
+          }
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }),
+    );
+    const timeoutError = await new AzureSentinelClient({ ...options, timeoutMs: 1 })
+      .getSchema()
+      .catch((error: unknown) => error);
+    expect(timeoutError).toMatchObject({ code: "unreachable", status: 0 });
+    expect(String(timeoutError)).toContain("timed out");
+  });
+
+  test("rejects malformed authentication and metadata responses", async () => {
+    captureFetch(() => new Response("{", { status: 200 }));
+    const authError = await new AzureSentinelClient(options)
+      .getSchema()
+      .catch((error: unknown) => error);
+    expect(authError).toMatchObject({ code: "authentication_error", status: 0 });
+
+    captureFetch((request) =>
+      request.url.includes("/token") ? token() : json({ tables: "not-an-array" }),
+    );
+    const metadataError = await new AzureSentinelClient(options)
+      .getSchema()
+      .catch((error: unknown) => error);
+    expect(metadataError).toMatchObject({ code: "unreachable", status: 200 });
+  });
+
   test("never includes the client secret or bearer token in errors", async () => {
     captureFetch(() =>
       json(
@@ -170,6 +236,53 @@ describe("AzureSentinelClient query boundary", () => {
       query: "SecurityAlert | project value\n| take 501",
       timespan: "PT12H",
     });
+  });
+
+  test("does not report exactly 500 rows as truncated", async () => {
+    captureFetch((request) =>
+      request.url.includes("/token")
+        ? token()
+        : queryResult(Array.from({ length: 500 }, (_, index) => [index])),
+    );
+
+    const result = await new AzureSentinelClient(options).query("SecurityAlert | project value");
+
+    expect(result.tables[0]?.rows).toHaveLength(500);
+    expect(result.truncation).toEqual({ truncated: false, returnedRows: 500, maxRows: 500 });
+  });
+
+  test("rejects a malformed successful query response", async () => {
+    captureFetch((request) =>
+      request.url.includes("/token") ? token() : json({ tables: "not-an-array" }),
+    );
+
+    const error = await new AzureSentinelClient(options)
+      .query("SecurityAlert | count")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: "unreachable", status: 200 });
+  });
+
+  test("bounds oversized error responses", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(100_000).fill(65));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    captureFetch((request) =>
+      request.url.includes("/token") ? token() : new Response(body, { status: 400 }),
+    );
+
+    const error = await new AzureSentinelClient(options)
+      .query("SecurityAlert | count")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: "query_error", status: 400 });
+    expect(cancelled).toBeTrue();
   });
 
   test("rejects control commands before authentication", async () => {
@@ -283,6 +396,22 @@ function alertRow(systemAlertId: string): unknown[] {
 }
 
 describe("AzureSentinelClient alerts", () => {
+  test("lists the requested number of newest alerts in service order", async () => {
+    const requests = captureFetch((request) => {
+      if (request.url.includes("/token")) return token();
+      if (request.url.endsWith("/metadata")) return json(metadata);
+      return queryResult([alertRow("newest"), alertRow("older")], alertColumns);
+    });
+
+    const alerts = await new AzureSentinelClient(options).listAlerts(2);
+
+    expect(alerts.map((alert) => alert.name)).toEqual(["newest", "older"]);
+    const queryRequest = requests.find((request) => request.url.endsWith("/query"));
+    const queryBody = JSON.parse(String(queryRequest?.init?.body)) as { query: string };
+    expect(queryBody.query).toContain("order by TimeGenerated desc");
+    expect(queryBody.query).toContain("take 2");
+  });
+
   test("escapes an alert id and projects a real SecurityAlert row", async () => {
     const requestedId = 'alert"with\\slashes';
     const requests = captureFetch((request) => {
@@ -375,11 +504,34 @@ describe("shared connector configuration", () => {
     expect(sentinelClientTarget(config)).toBe("http://localhost:8787");
   });
 
-  test("requires every Azure value", () => {
-    expect(() => sentinelClientConfigFromEnv({ ...base, SENTINEL_CONNECTOR: "azure" })).toThrow(
-      "AZURE_CLIENT_SECRET",
-    );
+  const azureEnvironment = {
+    ...base,
+    SENTINEL_CONNECTOR: "azure" as const,
+    AZURE_TENANT_ID: options.tenantId,
+    AZURE_CLIENT_ID: options.clientId,
+    AZURE_CLIENT_SECRET: options.clientSecret,
+    AZURE_LOG_ANALYTICS_WORKSPACE_ID: options.workspaceId,
+  };
 
+  test("requires every Azure value", () => {
+    for (const name of [
+      "AZURE_TENANT_ID",
+      "AZURE_CLIENT_ID",
+      "AZURE_CLIENT_SECRET",
+      "AZURE_LOG_ANALYTICS_WORKSPACE_ID",
+    ] as const) {
+      expect(() => sentinelClientConfigFromEnv({ ...azureEnvironment, [name]: undefined })).toThrow(
+        name,
+      );
+    }
+
+    const config = sentinelClientConfigFromEnv(azureEnvironment);
+    expect(sentinelClientTarget(config)).toBe(
+      "https://api.loganalytics.azure.com/v1/workspaces/workspace-id",
+    );
+  });
+
+  test("serializes only the non-secret Azure target into artifact configuration", () => {
     const config = sentinelClientConfigFromEnv({
       ...base,
       SENTINEL_CONNECTOR: "azure",
@@ -388,9 +540,11 @@ describe("shared connector configuration", () => {
       AZURE_CLIENT_SECRET: options.clientSecret,
       AZURE_LOG_ANALYTICS_WORKSPACE_ID: options.workspaceId,
     });
-    expect(sentinelClientTarget(config)).toBe(
-      "https://api.loganalytics.azure.com/v1/workspaces/workspace-id",
-    );
+    const artifactConfiguration = JSON.stringify({ sentinelBaseUrl: sentinelClientTarget(config) });
+
+    expect(artifactConfiguration).toContain("workspace-id");
+    expect(artifactConfiguration).not.toContain(options.clientSecret);
+    expect(artifactConfiguration).not.toContain("access-token");
   });
 
   test("allows Azure artifacts only under the ignored data root", () => {

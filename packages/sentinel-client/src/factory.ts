@@ -1,6 +1,10 @@
 import { isAbsolute, relative, resolve } from "node:path";
 
-import { AzureSentinelClient, type AzureSentinelClientOptions } from "./azure.ts";
+import {
+  AzureSentinelClient,
+  azureWorkspaceUrl,
+  type AzureSentinelClientOptions,
+} from "./azure.ts";
 import { SentinelApiClient, type SentinelApiClientOptions, type SentinelClient } from "./client.ts";
 
 export type SentinelClientConfig =
@@ -60,7 +64,7 @@ export function sentinelClientConfigFromEnv(env: SentinelClientEnvironment): Sen
 export function sentinelClientTarget(config: SentinelClientConfig): string {
   return config.connector === "mock"
     ? config.baseUrl.replace(/\/+$/, "")
-    : `https://api.loganalytics.azure.com/v1/workspaces/${encodeURIComponent(config.workspaceId)}`;
+    : azureWorkspaceUrl(config.workspaceId);
 }
 
 /** Real tenant artifacts stay under the repository's ignored `.data/` root. */

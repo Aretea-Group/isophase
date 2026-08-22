@@ -20,6 +20,7 @@ const LOGS_ENDPOINT = "https://api.loganalytics.azure.com";
 const LOGS_SCOPE = "https://api.loganalytics.io/.default";
 const QUERY_MAX_ROWS = 500;
 const TOKEN_EXPIRY_SKEW_MS = 60_000;
+const ERROR_BODY_MAX_BYTES = 32 * 1024;
 
 const TokenResponse = z.object({
   token_type: z.string().min(1),
@@ -127,6 +128,38 @@ function kqlString(value: string): string {
 function diagnostic(error: z.infer<typeof ErrorInfo>): string {
   const details = error.details?.map((detail) => detail.message).filter(Boolean) ?? [];
   return [error.message, ...details].join("; ");
+}
+
+async function boundedErrorText(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) return "";
+
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (size < ERROR_BODY_MAX_BYTES) {
+      // eslint-disable-next-line no-await-in-loop -- a response body stream must be read in order
+      const { done, value } = await reader.read();
+      if (done) break;
+      const kept = value.subarray(0, ERROR_BODY_MAX_BYTES - size);
+      chunks.push(kept);
+      size += kept.length;
+      if (kept.length < value.length || size === ERROR_BODY_MAX_BYTES) {
+        void reader.cancel().catch(() => undefined);
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function recaseEntity(value: unknown): unknown {
@@ -513,7 +546,7 @@ export class AzureSentinelClient implements SentinelClient {
       );
     }
 
-    const body = await response.text();
+    const body = response.ok ? await response.text() : await boundedErrorText(response);
     let payload: unknown;
     try {
       payload = body === "" ? undefined : JSON.parse(body);
