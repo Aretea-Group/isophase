@@ -13,9 +13,14 @@ import { z } from "zod";
  */
 export const env = createEnv({
   server: {
-    /** Mock Sentinel REST facade. The investigator never talks to Kusto directly (PRD-1 §7). */
+    SENTINEL_CONNECTOR: z.enum(["mock", "azure"]).default("mock"),
+    /** Mock Sentinel REST facade. Ignored by the Azure branch. */
     SENTINEL_BASE_URL: z.url().default("http://localhost:8787"),
     SENTINEL_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    AZURE_TENANT_ID: z.string().min(1).optional(),
+    AZURE_CLIENT_ID: z.string().min(1).optional(),
+    AZURE_CLIENT_SECRET: z.string().min(1).optional(),
+    AZURE_LOG_ANALYTICS_WORKSPACE_ID: z.string().min(1).optional(),
 
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),

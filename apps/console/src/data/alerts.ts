@@ -53,8 +53,11 @@ export interface AlertsSnapshot {
  * Today 100% of console sessions run with no Sentinel at all, so this is the common path rather
  * than the exceptional one and deserves better than a stack trace (PRD-5 §7).
  */
-export function describeAlertError(error: unknown): string {
+export function describeAlertError(error: unknown, connector: "mock" | "azure" = "mock"): string {
   if (error instanceof SentinelApiError) {
+    if (connector === "azure") {
+      return `Azure Sentinel returned ${error.code}: ${error.message}`;
+    }
     if (error.code === "unreachable") {
       return "Mock Sentinel is not reachable — start it with `bun run dev:mock-sentinel`.";
     }
@@ -115,12 +118,13 @@ function toQueueAlert(resource: SecurityAlertResource, scenarios: Map<string, st
 export async function readAlerts(
   client: AlertReader,
   benchmarkMapPath: string,
+  connector: "mock" | "azure" = "mock",
 ): Promise<AlertsSnapshot> {
   const scenarios = await readBenchmarkMap(benchmarkMapPath);
   try {
     const resources = await client.listAlerts();
     return { alerts: resources.map((resource) => toQueueAlert(resource, scenarios)) };
   } catch (error) {
-    return { alerts: [], error: describeAlertError(error) };
+    return { alerts: [], error: describeAlertError(error, connector) };
   }
 }

@@ -2596,6 +2596,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         getAlert: () => Promise.reject(new Error("unused")),
       },
       env.BENCHMARK_MAP_PATH,
+      env.SENTINEL_CONNECTOR,
     );
     state.alerts = snapshot.alerts;
     if (snapshot.error === undefined) delete state.alertsError;

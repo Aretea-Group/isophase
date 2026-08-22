@@ -25,7 +25,14 @@ export const env = createEnv({
     CONSOLE_MAX_CONCURRENT_RUNS: z.coerce.number().int().positive().default(2),
 
     // Used by console-started investigations; the configuration view exposes only safe fields.
+    SENTINEL_CONNECTOR: z.enum(["mock", "azure"]).default("mock"),
     SENTINEL_BASE_URL: z.string().min(1).default("http://localhost:8787"),
+    SENTINEL_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    AZURE_TENANT_ID: z.string().min(1).optional(),
+    AZURE_CLIENT_ID: z.string().min(1).optional(),
+    AZURE_CLIENT_SECRET: z.string().min(1).optional(),
+    AZURE_LOG_ANALYTICS_WORKSPACE_ID: z.string().min(1).optional(),
+
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
     INVESTIGATOR_THINKING_LEVEL: z.string().min(1).default("medium"),

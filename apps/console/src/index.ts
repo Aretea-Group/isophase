@@ -6,7 +6,12 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "@soc/investigator/model";
-import { SentinelApiClient } from "@soc/sentinel-client";
+import {
+  assertAzureArtifactDirectories,
+  createSentinelClient,
+  sentinelClientConfigFromEnv,
+  sentinelClientTarget,
+} from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
 import { runApp } from "./ui/app.ts";
@@ -22,9 +27,13 @@ import { runApp } from "./ui/app.ts";
  */
 function buildControl(
   runsDir: string,
+  tracesDir: string,
   llamaServer: LlamaServerConfig | undefined,
   llamaServerAuth: LlamaServerAuth | undefined,
 ): InvestigationControl {
+  const sentinelConfig = sentinelClientConfigFromEnv(env);
+  assertAzureArtifactDirectories(sentinelConfig, [runsDir, tracesDir]);
+
   return new InProcessControl({
     config: {
       provider: env.INVESTIGATOR_PROVIDER,
@@ -32,18 +41,18 @@ function buildControl(
       maxTurns: env.INVESTIGATOR_MAX_TURNS,
       timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
       resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-      sentinelBaseUrl: env.SENTINEL_BASE_URL,
+      sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
       webSearchConfigured: env.BRAVE_API_KEY !== undefined,
       runsDir,
       // Console-started runs always trace. Without it the Transcript and Stream tabs are empty for
       // exactly the run the analyst just started and is watching (PRD-5 §18, question 2).
       trace: true,
-      traceDir: env.INVESTIGATOR_TRACE_DIR,
+      traceDir: tracesDir,
       traceStream: false,
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     },
-    deps: { sentinel: new SentinelApiClient({ baseUrl: env.SENTINEL_BASE_URL }) },
+    deps: { sentinel: createSentinelClient(sentinelConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
   });
@@ -65,7 +74,7 @@ export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] 
   --read-only      open without a control: no queue, no starting runs (PRD-3 behaviour)
   --help           this message
 
-The console reads Mock Sentinel for the alert queue and can start investigations in this process.
+The console reads the selected Sentinel connector for the alert queue and can start investigations in this process.
 It never writes to runs/ — the investigator remains the sole writer of run artifacts and
 transcripts. Analyst classifications are written under "${env.FEEDBACK_DIR}/".`;
 
@@ -128,15 +137,17 @@ async function main(): Promise<void> {
   }
   const llamaServer = llamaServerConfigFromEnv(env);
   const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
+  const runsDir = args.runsDir ?? env.RUNS_DIR;
+  const tracesDir = args.tracesDir ?? env.INVESTIGATOR_TRACE_DIR;
   const app = await runApp({
-    runsDir: args.runsDir ?? env.RUNS_DIR,
-    tracesDir: args.tracesDir ?? env.INVESTIGATOR_TRACE_DIR,
+    runsDir,
+    tracesDir,
     env,
     fresh: args.fresh === true,
     ...(args.readOnly === true
       ? {}
       : {
-          control: buildControl(args.runsDir ?? env.RUNS_DIR, llamaServer, llamaServerAuth),
+          control: buildControl(runsDir, tracesDir, llamaServer, llamaServerAuth),
         }),
   });
   await app.ready;

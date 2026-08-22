@@ -5,4 +5,11 @@ export {
   azureWorkspaceUrl,
   type AzureSentinelClientOptions,
 } from "./azure.ts";
-export { createSentinelClient, type SentinelClientConfig } from "./factory.ts";
+export {
+  assertAzureArtifactDirectories,
+  createSentinelClient,
+  sentinelClientConfigFromEnv,
+  sentinelClientTarget,
+  type SentinelClientConfig,
+  type SentinelClientEnvironment,
+} from "./factory.ts";

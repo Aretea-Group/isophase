@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { AzureSentinelClient, SentinelApiError, createSentinelClient } from "../src/index.ts";
+import {
+  AzureSentinelClient,
+  SentinelApiError,
+  assertAzureArtifactDirectories,
+  createSentinelClient,
+  sentinelClientConfigFromEnv,
+  sentinelClientTarget,
+} from "../src/index.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -349,4 +356,51 @@ test("factory selects Mock and Azure implementations", () => {
   expect(createSentinelClient({ connector: "azure", ...options })).toBeInstanceOf(
     AzureSentinelClient,
   );
+});
+
+describe("shared connector configuration", () => {
+  const base = {
+    SENTINEL_CONNECTOR: "mock" as const,
+    SENTINEL_BASE_URL: "http://localhost:8787/",
+    SENTINEL_TIMEOUT_MS: 12_000,
+  };
+
+  test("keeps Mock Sentinel as the zero-credential default", () => {
+    const config = sentinelClientConfigFromEnv(base);
+    expect(config).toEqual({
+      connector: "mock",
+      baseUrl: "http://localhost:8787/",
+      timeoutMs: 12_000,
+    });
+    expect(sentinelClientTarget(config)).toBe("http://localhost:8787");
+  });
+
+  test("requires every Azure value", () => {
+    expect(() => sentinelClientConfigFromEnv({ ...base, SENTINEL_CONNECTOR: "azure" })).toThrow(
+      "AZURE_CLIENT_SECRET",
+    );
+
+    const config = sentinelClientConfigFromEnv({
+      ...base,
+      SENTINEL_CONNECTOR: "azure",
+      AZURE_TENANT_ID: options.tenantId,
+      AZURE_CLIENT_ID: options.clientId,
+      AZURE_CLIENT_SECRET: options.clientSecret,
+      AZURE_LOG_ANALYTICS_WORKSPACE_ID: options.workspaceId,
+    });
+    expect(sentinelClientTarget(config)).toBe(
+      "https://api.loganalytics.azure.com/v1/workspaces/workspace-id",
+    );
+  });
+
+  test("allows Azure artifacts only under the ignored data root", () => {
+    const config = { connector: "azure" as const, ...options };
+    expect(() =>
+      assertAzureArtifactDirectories(config, [".data/azure-runs", ".data/azure-runs/traces"]),
+    ).not.toThrow();
+    expect(() => assertAzureArtifactDirectories(config, ["runs"])).toThrow("inside .data/");
+    expect(() => assertAzureArtifactDirectories(config, [".data/../runs"])).toThrow(
+      "inside .data/",
+    );
+  });
 });
