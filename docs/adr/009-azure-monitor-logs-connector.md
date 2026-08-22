@@ -32,14 +32,18 @@ only selection mechanism.
 
 No base class, registry, plugin protocol or provider package is introduced.
 
-### 3. Authentication and transport use platform HTTP primitives
+### 3. Azure Identity supplies credentials; transport stays direct
 
-The Azure client uses `fetch`, `URLSearchParams`, `AbortSignal.timeout` and Zod. It requests a token
-from the tenant-specific Microsoft identity v2 endpoint with the Log Analytics `.default` scope,
-caches it in memory until shortly before expiry, and shares one in-flight token request.
+The Azure client asks an Azure Identity `TokenCredential` for the Log Analytics `.default` scope,
+caches the result in memory until shortly before expiry, and shares one in-flight token request.
+Metadata and query calls continue to use `fetch`, `AbortSignal.timeout` and Zod directly.
 
-An Azure SDK is rejected because this boundary needs one token request, metadata and query calls.
-Refresh tokens, background renewal and automatic retries are not needed for client credentials.
+A complete service-principal triple creates a standalone `ClientSecretCredential`. With no triple,
+an explicit chain tries `AzureCliCredential` and then `AzurePowerShellCredential`. The two modes are
+separate so an invalid deployment credential cannot silently fall back to a personal login.
+`DefaultAzureCredential` is rejected because managed identity, environment variants and interactive
+developer credentials are outside this slice. Azure Monitor and ARM client SDKs are also rejected;
+one Azure Identity dependency covers the observed authentication need.
 
 ### 4. Azure responses retain existing contracts
 
@@ -60,6 +64,8 @@ existing `sentinelBaseUrl` artifact field.
 
 - Investigator and console depend on a capability rather than either transport.
 - Mock Sentinel stays the zero-configuration default.
-- The connector supports one public-cloud workspace and one client-secret credential mode.
+- The connector supports one public-cloud workspace through a service principal or an existing
+  Azure CLI/Azure PowerShell session.
+- Workspace shared keys remain ingestion-only and are not offered as query credentials.
 - Workspaces with more than 500 alerts require targeted operation until pagination has a real
   product requirement.

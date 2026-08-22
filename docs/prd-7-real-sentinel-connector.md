@@ -17,9 +17,9 @@ its alert-first strategy or five tools. Mock Sentinel remains the default.
 
 ## 2. Product goal
 
-An operator selects `SENTINEL_CONNECTOR=azure` and supplies a Microsoft Entra tenant ID, client ID,
-client secret and Log Analytics workspace ID. The investigator and console then use Azure Monitor
-Logs for alerts, schema and read-only KQL.
+An operator selects `SENTINEL_CONNECTOR=azure`, supplies a Log Analytics workspace ID, and uses
+either a service principal or an existing Azure CLI/Azure PowerShell login. The investigator and
+console then use Azure Monitor Logs for alerts, schema and read-only KQL.
 
 The connector implements the existing Sentinel capability:
 
@@ -30,7 +30,8 @@ The connector implements the existing Sentinel capability:
 
 ## 3. Requirements
 
-- Authenticate with the OAuth 2.0 client-credentials flow and an in-memory access-token cache.
+- Acquire tokens through Azure Identity. A complete service-principal configuration uses only that
+  identity; otherwise try Azure CLI, then Azure PowerShell. Cache access tokens in memory.
 - Use only Azure Monitor Logs data-plane reads.
 - Validate remote payloads with Zod and preserve useful authentication, transport and KQL errors.
 - Reject Kusto control commands before sending a request.
@@ -49,12 +50,14 @@ operator views, and `getAlert(id)` remains usable for a targeted investigation.
 Pagination and alert filtering wait for an observed workspace need and a separate operator-flow
 decision.
 
-## 5. Service-principal setup
+## 5. Authentication setup
 
-The operator supplies an existing app registration and secret. It needs access to query the target
-workspace through the Log Analytics API and a workspace-scoped read-only Azure role such as Log
-Analytics Reader. Role assignment and secret lifecycle are operator responsibilities; this project
-does not mutate Azure configuration.
+The selected identity needs the workspace-scoped `Log Analytics Data Reader` role. An operator may
+provide an existing app registration and secret, or sign in beforehand with `az login` or
+`Connect-AzAccount`. Service-principal values are all-or-none so a broken deployment identity never
+silently falls back to a developer account. Role assignment and secret lifecycle are operator
+responsibilities; this project does not mutate Azure configuration. Workspace shared keys are
+ingestion credentials and cannot authorize Logs queries.
 
 ## 6. Tenant-data handling
 
@@ -66,7 +69,8 @@ same ignored root. Committed benchmark artifacts under `runs/` remain Mock Senti
 
 - Mock configuration and behavior remain unchanged by default.
 - Both applications select the same narrow client capability from environment configuration.
-- Deterministic tests cover authentication, schema, queries, alert projection and secret safety.
+- Deterministic tests cover credential selection, authentication, schema, queries, alert projection
+  and secret safety.
 - The repository's scoped checks pass, followed by `bun run check` apart from documented baseline
   failures unrelated to this change.
 - The opt-in live smoke test loads schema, queries `SecurityAlert`, round-trips one alert and
@@ -75,7 +79,8 @@ same ignored root. Committed benchmark artifacts under `runs/` remain Mock Senti
 ## 8. Non-goals
 
 - Azure provisioning or RBAC changes;
-- managed identity, certificates, workload federation or delegated user authentication;
+- managed identity, certificates, workload federation, interactive browser or device-code login;
 - incident ARM APIs, incident grouping, multi-workspace queries or write-back;
-- retries, background token refresh, sovereign-cloud endpoints or an Azure SDK;
+- retries, background token refresh, sovereign-cloud endpoints or workspace shared-key query auth;
+- Azure Monitor or ARM client SDKs beyond the single Azure Identity dependency;
 - connector registries, plugin discovery, new packages, agent tools or investigation playbooks.

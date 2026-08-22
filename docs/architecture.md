@@ -161,7 +161,8 @@ The client is the application boundary. No investigator code may directly call M
 
 ADR 009 implements the real-workspace branch through Azure Monitor Logs. Consumers depend on the
 five-method `SentinelClient` capability; environment configuration selects either the Mock REST
-client or the Azure client without changing investigator tools or strategy.
+client or the Azure client without changing investigator tools or strategy. Azure Identity selects
+either one configured service principal or an explicit Azure CLI-to-PowerShell developer chain.
 
 ### 4.3 Investigation Runner
 

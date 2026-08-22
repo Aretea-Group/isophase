@@ -188,27 +188,37 @@ local: `runs/traces/` is gitignored and runs to hundreds of megabytes.
 
 ### Use a real Microsoft Sentinel workspace
 
-Use an existing Microsoft Entra app registration with a client secret and workspace-scoped
-read-only access, such as the Log Analytics Reader role. Role assignment can take time to propagate.
-This project does not create the app, secret or role assignment and never writes to Azure.
+The selected Microsoft Entra identity needs the workspace-scoped `Log Analytics Data Reader` role.
+Role assignment can take time to propagate. This project does not create identities, secrets or
+role assignments and never writes to Azure.
 
-Set these values in the local `.env` file:
+Set the connector, workspace and local artifact paths in `.env`:
 
 ```dotenv
 SENTINEL_CONNECTOR=azure
-AZURE_TENANT_ID=<tenant-guid>
-AZURE_CLIENT_ID=<application-client-guid>
-AZURE_CLIENT_SECRET=<local-secret>
 AZURE_LOG_ANALYTICS_WORKSPACE_ID=<workspace-guid>
 
 RUNS_DIR=.data/azure-runs
 INVESTIGATOR_TRACE_DIR=.data/azure-runs/traces
 ```
 
+For a service principal, also set the complete credential group:
+
+```dotenv
+AZURE_TENANT_ID=<tenant-guid>
+AZURE_CLIENT_ID=<application-client-guid>
+AZURE_CLIENT_SECRET=<local-secret>
+```
+
+For local development, omit all three values and sign in first with either `az login` or
+`Connect-AzAccount`. The connector tries Azure CLI before Azure PowerShell. When the complete
+service-principal group is present it uses only that identity; a partial group is rejected instead
+of falling back to a personal account.
+
 `AZURE_LOG_ANALYTICS_WORKSPACE_ID` is the Workspace ID shown on the Log Analytics workspace, not
 the workspace name or ARM resource ID. Azure investigations refuse paths outside ignored `.data/`
-so alert and assessment content cannot enter the committed benchmark corpus. Rotating a secret
-requires only updating the environment value.
+so alert and assessment content cannot enter the committed benchmark corpus. Log Analytics
+workspace shared keys authorize ingestion, not queries, and are not supported by this connector.
 
 The first connector slice lists at most 500 alerts. An unbounded queue fails visibly when a
 workspace contains more; targeted `bun run investigate --alert <system-alert-id>` remains available.

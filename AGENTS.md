@@ -440,7 +440,8 @@ Real Microsoft Sentinel Connector (PRD-7).
 
 Acceptance:
 - Mock Sentinel remains the default and both runtime entry points select one shared capability;
-- Azure Monitor Logs supplies alerts, schema and read-only KQL through service-principal credentials;
+- Azure Monitor Logs supplies alerts, schema and read-only KQL through a configured service
+  principal or an existing Azure CLI/Azure PowerShell session;
 - real tenant artifacts are written only to an ignored operator-selected directory;
 - deterministic connector tests pass, followed by an opt-in model-free live smoke test.
 
