@@ -38,7 +38,7 @@ started path.
 |---|---|
 | [Bun](https://bun.sh) | 1.3 or newer; runtime and package manager |
 | Docker CLI with Compose v2 | Runs Kusto and Mock Sentinel |
-| Model-provider API key | OpenAI, Anthropic, or Google; configure one in `.env` |
+| Model access | OpenAI, Anthropic, or Google API key, or one keyless llama-server endpoint |
 
 The Kusto image is amd64-only. On Apple Silicon, use Colima with Apple Virtualization and Rosetta;
 Podman's QEMU path does not run the emulator reliably. See the
@@ -58,6 +58,25 @@ INVESTIGATOR_PROVIDER=openai
 INVESTIGATOR_MODEL=gpt-5.6-luna
 OPENAI_API_KEY=...
 ```
+
+Alternatively, configure one keyless llama-server model through its OpenAI-compatible endpoint:
+
+```dotenv
+INVESTIGATOR_PROVIDER=llamacpp
+INVESTIGATOR_MODEL=local-model
+INVESTIGATOR_THINKING_LEVEL=off
+LLAMA_SERVER_BASE_URL=https://host.example/v1
+LLAMA_SERVER_MODEL=local-model
+LLAMA_SERVER_CONTEXT_WINDOW=65536
+LLAMA_SERVER_MAX_TOKENS=4096
+```
+
+The endpoint must implement `/v1/chat/completions` and return standard `message.tool_calls`.
+Model loading, server presets, and lifecycle remain operator responsibilities. Initial support is
+keyless and text-only. Reasoning is disabled per request, even when a server preset defaults it on;
+model-specific reasoning levels and tool syntax embedded in message content are not interpreted.
+Run artifacts record endpoint URL and model limits, so results from different server configurations
+remain distinct measurements.
 
 ### Start the lab
 
@@ -338,7 +357,7 @@ groups are:
 
 - Mock Sentinel and Kusto endpoints;
 - provider, model, thinking level, timeouts, and turn limits;
-- OpenAI, Anthropic, or Google credentials;
+- OpenAI, Anthropic, or Google credentials, or one keyless llama-server endpoint;
 - optional Brave Search credentials;
 - run, transcript, and analyst-feedback directories;
 - query and tool-result size limits.

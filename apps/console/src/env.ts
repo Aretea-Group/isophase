@@ -32,6 +32,10 @@ export const env = createEnv({
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
     INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
+    LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
+    LLAMA_SERVER_MODEL: z.string().min(1).optional(),
+    LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
     BRAVE_API_KEY: z.string().min(1).optional(),
     INVESTIGATOR_TRACE: z
       .enum(["true", "false"])

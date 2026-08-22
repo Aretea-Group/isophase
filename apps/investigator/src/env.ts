@@ -23,6 +23,11 @@ export const env = createEnv({
       .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
       .default("medium"),
 
+    LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
+    LLAMA_SERVER_MODEL: z.string().min(1).optional(),
+    LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+
     /** Ceiling on completed agent turns. Guards against runaway reasoning (PRD-2 §17). */
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     /** Ceiling on elapsed time for one investigation. A different failure mode to max turns. */

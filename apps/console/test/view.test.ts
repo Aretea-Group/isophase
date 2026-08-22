@@ -4,9 +4,11 @@ import { join } from "node:path";
 import type { RunArtifact, RunResult } from "../src/data/runs.ts";
 import { readRun } from "../src/data/runs.ts";
 import { indexTrace } from "../src/data/trace-index.ts";
+import { env } from "../src/env.ts";
 import { verdictBody } from "../src/ui/panes/main.ts";
 import { leadingTable, toActivityView } from "../src/view/activity.ts";
 import { alertFactsFromResult, enrichWithAlertJson } from "../src/view/alert.ts";
+import { toConfigRows } from "../src/view/config.ts";
 import { duration, tokens, tpBar, truncate, verdictBand } from "../src/view/format.ts";
 import { lineText } from "../src/view/format.ts";
 import {
@@ -47,6 +49,43 @@ describe("format", () => {
     expect(verdictBand(70)).toBe("inconclusive");
     expect(verdictBand(71)).toBe("true-positive");
     expect(verdictBand(undefined)).toBe("unknown");
+  });
+});
+
+describe("configuration", () => {
+  test("shows configured endpoint settings beside the values recorded on the run", () => {
+    const rows = toConfigRows(
+      run({
+        config: {
+          thinkingLevel: "off",
+          resultMaxChars: 40_000,
+          sentinelBaseUrl: "http://localhost:8787",
+          webSearchConfigured: false,
+          modelBaseUrl: "https://recorded.example/v1",
+          modelContextWindow: 32_768,
+          modelMaxTokens: 2_048,
+        },
+      }),
+      {
+        ...env,
+        LLAMA_SERVER_BASE_URL: "https://current.example/v1",
+        LLAMA_SERVER_MODEL: "local-model",
+        LLAMA_SERVER_CONTEXT_WINDOW: 65_536,
+        LLAMA_SERVER_MAX_TOKENS: 4_096,
+      },
+    );
+
+    expect(rows.find((row) => row.label === "model base url")).toEqual({
+      label: "model base url",
+      thisRun: "https://recorded.example/v1",
+      currentEnv: "https://current.example/v1",
+    });
+    expect(rows.find((row) => row.label === "model context window")?.thisRun).toBe("32,768");
+    expect(rows.find((row) => row.label === "model max tokens")?.currentEnv).toBe("4,096");
+  });
+
+  test("omits endpoint rows when neither side recorded one", () => {
+    expect(toConfigRows(run({}), env).some((row) => row.label === "model base url")).toBe(false);
   });
 });
 

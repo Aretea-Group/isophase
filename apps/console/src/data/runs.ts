@@ -84,6 +84,9 @@ const Artifact = z.object({
       thinkingLevel: z.string().optional(),
       resultMaxChars: z.number().optional(),
       sentinelBaseUrl: z.string().optional(),
+      modelBaseUrl: z.string().optional(),
+      modelContextWindow: z.number().optional(),
+      modelMaxTokens: z.number().optional(),
       webSearchConfigured: z.boolean().optional(),
       /** Present when an analyst supplied a premise — a steered run (PRD-5 §9). */
       analystContext: z.string().optional(),

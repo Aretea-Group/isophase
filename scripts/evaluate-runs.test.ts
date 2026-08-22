@@ -37,6 +37,9 @@ interface RunSpec {
   runId: string;
   model?: string;
   thinkingLevel?: string;
+  modelBaseUrl?: string;
+  modelContextWindow?: number;
+  modelMaxTokens?: number;
   analystContext?: string;
   status?: "running" | "completed" | "interrupted" | "failed";
   error?: { name: string; message: string };
@@ -84,6 +87,11 @@ function artifact(spec: RunSpec): string {
       resultMaxChars: 40_000,
       sentinelBaseUrl: "http://localhost:8787",
       webSearchConfigured: true,
+      ...(spec.modelBaseUrl === undefined ? {} : { modelBaseUrl: spec.modelBaseUrl }),
+      ...(spec.modelContextWindow === undefined
+        ? {}
+        : { modelContextWindow: spec.modelContextWindow }),
+      ...(spec.modelMaxTokens === undefined ? {} : { modelMaxTokens: spec.modelMaxTokens }),
       ...(spec.analystContext === undefined ? {} : { analystContext: spec.analystContext }),
     },
     ...(spec.derivedFrom === undefined ? {} : { derivedFrom: spec.derivedFrom }),
@@ -339,6 +347,28 @@ describe("evaluate — the condition key", () => {
     );
   });
 
+  test("each configured model endpoint setting partitions the condition", () => {
+    const configured = {
+      modelBaseUrl: "https://host.example/v1",
+      modelContextWindow: 65_536,
+      modelMaxTokens: 4_096,
+    };
+    const base = conditionOf(JSON.parse(artifact({ runId: "base", ...configured })));
+    const variants = [
+      conditionOf(
+        JSON.parse(
+          artifact({ ...configured, runId: "url", modelBaseUrl: "https://other.example/v1" }),
+        ),
+      ),
+      conditionOf(
+        JSON.parse(artifact({ ...configured, runId: "context", modelContextWindow: 32_768 })),
+      ),
+      conditionOf(JSON.parse(artifact({ ...configured, runId: "output", modelMaxTokens: 2_048 }))),
+    ];
+
+    expect(variants.every((variant) => variant.id !== base.id)).toBe(true);
+  });
+
   test("a label never collapses two condition ids", () => {
     const runs = [
       artifact({ runId: "a", model: "m1" }),
@@ -483,6 +513,34 @@ describe("evaluate — compare", () => {
       await rm(corpus.dir, { recursive: true, force: true });
     }
   });
+
+  test("renders model endpoint differences instead of hiding them behind condition ids", async () => {
+    const draws = [{ alertId: truePositive.startingAlertId, tpPercent: 99 }];
+    const corpus = await withCorpus([
+      {
+        runId: "left",
+        modelBaseUrl: "https://host.example/v1",
+        modelContextWindow: 65_536,
+        modelMaxTokens: 4_096,
+        draws,
+      },
+      {
+        runId: "right",
+        modelBaseUrl: "https://other.example/v1",
+        modelContextWindow: 32_768,
+        modelMaxTokens: 2_048,
+        draws,
+      },
+    ]);
+    try {
+      const report = await evaluate(corpus.runsDir, ["--compare", "left", "right"]);
+      expect(report.out).toContain("modelBaseUrl");
+      expect(report.out).toContain("modelContextWindow");
+      expect(report.out).toContain("modelMaxTokens");
+    } finally {
+      await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("evaluate — the legend", () => {
@@ -496,6 +554,9 @@ describe("evaluate — the legend", () => {
       // The axes a label omits because they happen to agree today are exactly the ones a reader
       // needs when they stop agreeing.
       expect(report.out).toContain("sentinelBaseUrl");
+      expect(report.out).toContain("modelBaseUrl");
+      expect(report.out).toContain("modelContextWindow");
+      expect(report.out).toContain("modelMaxTokens");
       expect(report.out).toContain("timeoutMs");
       // Pre-provenance artifacts have their submission shape inferred from field presence.
       expect(report.out).toContain("(inferred)");

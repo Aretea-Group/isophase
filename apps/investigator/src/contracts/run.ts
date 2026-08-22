@@ -114,6 +114,9 @@ export const InvestigationRunConfig = z.object({
   thinkingLevel: z.string().min(1).optional(),
   resultMaxChars: z.number().int().positive(),
   sentinelBaseUrl: z.string().min(1),
+  modelBaseUrl: z.string().min(1).optional(),
+  modelContextWindow: z.number().int().positive().optional(),
+  modelMaxTokens: z.number().int().positive().optional(),
   webSearchConfigured: z.boolean(),
   /**
    * Whether the agent actually searched, as opposed to being able to (PRD-6 §7 item 4, **D14**).

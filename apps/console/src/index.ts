@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { InProcessControl, type InvestigationControl } from "@soc/investigator/control";
+import { type LlamaServerConfig, llamaServerConfigFromEnv } from "@soc/investigator/model";
 import { SentinelApiClient } from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
@@ -14,7 +15,10 @@ import { runApp } from "./ui/app.ts";
  * given. `InProcessControl`'s supervisor contains the ordinary faults; an OOM still takes the
  * terminal, and the header says so.
  */
-function buildControl(runsDir: string): InvestigationControl {
+function buildControl(
+  runsDir: string,
+  llamaServer: LlamaServerConfig | undefined,
+): InvestigationControl {
   return new InProcessControl({
     config: {
       provider: env.INVESTIGATOR_PROVIDER,
@@ -30,6 +34,7 @@ function buildControl(runsDir: string): InvestigationControl {
       trace: true,
       traceDir: env.INVESTIGATOR_TRACE_DIR,
       traceStream: false,
+      ...(llamaServer === undefined ? {} : { llamaServer }),
     },
     deps: { sentinel: new SentinelApiClient({ baseUrl: env.SENTINEL_BASE_URL }) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
@@ -114,12 +119,15 @@ async function main(): Promise<void> {
   if (args.fresh === true && args.readOnly === true) {
     throw new Error("--fresh requires the alert queue and cannot be combined with --read-only.");
   }
+  const llamaServer = llamaServerConfigFromEnv(env);
   const app = await runApp({
     runsDir: args.runsDir ?? env.RUNS_DIR,
     tracesDir: args.tracesDir ?? env.INVESTIGATOR_TRACE_DIR,
     env,
     fresh: args.fresh === true,
-    ...(args.readOnly === true ? {} : { control: buildControl(args.runsDir ?? env.RUNS_DIR) }),
+    ...(args.readOnly === true
+      ? {}
+      : { control: buildControl(args.runsDir ?? env.RUNS_DIR, llamaServer) }),
   });
   await app.ready;
 }
