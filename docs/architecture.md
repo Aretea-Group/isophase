@@ -1,7 +1,9 @@
 # SOC Investigation Agent — Architecture
 
-**Status:** v0.2 — Mock Sentinel and the Core Investigation Agent are delivered  
-**Scope:** Mock Sentinel environment + first autonomous investigation agent  
+**Status:** v0.3 — Mock Sentinel, investigation runtime and Azure connector boundary
+
+**Scope:** Mock Sentinel environment + autonomous investigation agent + read-only Azure connector
+
 **Language:** TypeScript  
 **Runtime:** Bun
 
@@ -156,6 +158,10 @@ runs/<run-id>.json
 - normalize transport errors into application errors.
 
 The client is the application boundary. No investigator code may directly call Mock Sentinel endpoints.
+
+ADR 009 implements the real-workspace branch through Azure Monitor Logs. Consumers depend on the
+five-method `SentinelClient` capability; environment configuration selects either the Mock REST
+client or the Azure client without changing investigator tools or strategy.
 
 ### 4.3 Investigation Runner
 
