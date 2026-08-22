@@ -3,7 +3,11 @@ import { createHash } from "node:crypto";
 import packageJson from "../package.json" with { type: "json" };
 import { buildInitialContext } from "./context.ts";
 import { InvestigationSummarySchema } from "./contracts/summary.ts";
-import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
+import {
+  DEFAULT_INSTRUCTIONS,
+  SUBMISSION_DEADLINE_REMINDER,
+  SUBMISSION_FOLLOW_UP,
+} from "./instructions.ts";
 import { toolDescriptors } from "./tools/index.ts";
 
 /**
@@ -21,7 +25,7 @@ import { toolDescriptors } from "./tools/index.ts";
  */
 
 /** Legibility only — the hash is the truth. Two runs sharing this with different hashes is a defect. */
-export const INSTRUCTIONS_LABEL = "soc-triage-v2";
+export const INSTRUCTIONS_LABEL = "soc-triage-v8-compact-schema";
 
 function hash12(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 12);
@@ -74,6 +78,8 @@ export function computePromptHash(): string {
   return hash12(
     JSON.stringify({
       instructions: DEFAULT_INSTRUCTIONS,
+      submissionDeadlineReminder: SUBMISSION_DEADLINE_REMINDER,
+      submissionFollowUp: SUBMISSION_FOLLOW_UP,
       tools,
       contextTemplate,
     }),

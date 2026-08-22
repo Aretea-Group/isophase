@@ -66,7 +66,11 @@ export function configFromEnv(
   ]);
   const llamaServer = llamaServerConfigFromEnv(env);
   const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
-  assertLlamaServerThinkingLevel(env.INVESTIGATOR_PROVIDER, env.INVESTIGATOR_THINKING_LEVEL);
+  assertLlamaServerThinkingLevel(
+    env.INVESTIGATOR_PROVIDER,
+    env.INVESTIGATOR_THINKING_LEVEL,
+    llamaServer,
+  );
   return {
     provider: env.INVESTIGATOR_PROVIDER,
     modelId: env.INVESTIGATOR_MODEL,

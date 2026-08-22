@@ -20,6 +20,7 @@ import {
   InvestigationStepLimitError,
   InvestigationTimeoutError,
 } from "./errors.ts";
+import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "./instructions.ts";
 import { createInvestigationTools, INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
@@ -222,6 +223,27 @@ export class InvestigationHarness {
       if (seen !== undefined) toolCalls[event.toolName] = seen + 1;
     });
 
+    // Pi drains a follow-up only when the model would otherwise stop. A valid submission stops the
+    // loop first; prose-only completion gets one corrective turn and must still satisfy the same
+    // TypeBox tool contract. Nothing here converts or interprets the assistant's prose.
+    agent.followUp({
+      role: "user",
+      content: SUBMISSION_FOLLOW_UP,
+      timestamp: Date.now(),
+    });
+
+    // Reserve enough wall time for one final provider turn. `steer` is Pi's native way to inject a
+    // user message after the active turn; it does not interrupt a tool batch or add a custom loop.
+    const reminderLeadMs = Math.min(120_000, Math.floor(timeoutMs / 4));
+    const reminderTimer = setTimeout(() => {
+      if (submission !== undefined) return;
+      agent.steer({
+        role: "user",
+        content: SUBMISSION_DEADLINE_REMINDER,
+        timestamp: Date.now(),
+      });
+    }, timeoutMs - reminderLeadMs);
+
     // An Agent owns its AbortSignal and will not accept one, so both the timeout and the caller's
     // signal bridge into abort(). Each sets its own flag first, because abort() alone is
     // indistinguishable afterwards — see the error ladder below.
@@ -243,6 +265,7 @@ export class InvestigationHarness {
       await agent.prompt(buildInitialContext(alert, [...tables.keys()], options.analystContext));
     } finally {
       clearTimeout(timer);
+      clearTimeout(reminderTimer);
       options.signal?.removeEventListener("abort", onAbort);
       unsubscribe?.();
       unsubscribeMetrics();

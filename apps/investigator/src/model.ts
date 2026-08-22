@@ -11,7 +11,10 @@ export interface LlamaServerConfig {
   modelId: string;
   contextWindow: number;
   maxTokens: number;
+  reasoningProfile: LlamaServerReasoningProfile;
 }
+
+export type LlamaServerReasoningProfile = "off" | "binary" | "effort";
 
 /** Request credential kept separate from the endpoint configuration persisted in run artifacts. */
 export interface LlamaServerAuth {
@@ -23,10 +26,11 @@ const LlamaServerEnvironment = z.object({
   LLAMA_SERVER_MODEL: z.string().min(1).optional(),
   LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
   LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+  LLAMA_SERVER_REASONING_PROFILE: z.enum(["off", "binary", "effort"]).default("off"),
   LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
 });
 
-type LlamaServerEnvironment = z.infer<typeof LlamaServerEnvironment>;
+type LlamaServerEnvironment = z.input<typeof LlamaServerEnvironment>;
 
 function normalizeBaseUrl(value: string): string {
   const baseUrl = value.endsWith("/") ? value.slice(0, -1) : value;
@@ -85,7 +89,13 @@ export function llamaServerConfigFromEnv(
   if (maxTokens > contextWindow) {
     throw new Error("LLAMA_SERVER_MAX_TOKENS must not exceed LLAMA_SERVER_CONTEXT_WINDOW.");
   }
-  return { baseUrl, modelId, contextWindow, maxTokens };
+  return {
+    baseUrl,
+    modelId,
+    contextWindow,
+    maxTokens,
+    reasoningProfile: input.LLAMA_SERVER_REASONING_PROFILE,
+  };
 }
 
 /** Read optional authentication only after a complete endpoint configuration has been validated. */
@@ -103,20 +113,34 @@ export function llamaServerAuthFromEnv(
   return { bearerToken };
 }
 
-/** The local adapter currently exposes only the modes with an explicit llama.cpp request mapping. */
+/** Keep Pi's thinking levels within the reasoning contract recorded for this llama-server model. */
 export function assertLlamaServerThinkingLevel(
   provider: string,
   thinkingLevel: string | undefined,
+  llamaServer?: LlamaServerConfig,
 ): void {
+  if (provider !== "llamacpp" || thinkingLevel === undefined) return;
+
+  const profile = llamaServer?.reasoningProfile ?? "off";
+  if (profile === "off" && thinkingLevel !== "off") {
+    throw new Error(
+      'INVESTIGATOR_THINKING_LEVEL must be "off" when LLAMA_SERVER_REASONING_PROFILE is "off".',
+    );
+  }
+  if (profile === "binary" && thinkingLevel !== "off" && thinkingLevel !== "medium") {
+    throw new Error(
+      'INVESTIGATOR_THINKING_LEVEL must be "off" or "medium" when LLAMA_SERVER_REASONING_PROFILE is "binary".',
+    );
+  }
   if (
-    provider === "llamacpp" &&
-    thinkingLevel !== undefined &&
+    profile === "effort" &&
     thinkingLevel !== "off" &&
     thinkingLevel !== "low" &&
-    thinkingLevel !== "medium"
+    thinkingLevel !== "medium" &&
+    thinkingLevel !== "xhigh"
   ) {
     throw new Error(
-      'INVESTIGATOR_THINKING_LEVEL must be "off", "low", or "medium" when INVESTIGATOR_PROVIDER is "llamacpp".',
+      'INVESTIGATOR_THINKING_LEVEL must be "off", "low", "medium", or "xhigh" when LLAMA_SERVER_REASONING_PROFILE is "effort".',
     );
   }
 }
@@ -140,27 +164,42 @@ function buildModels(llamaServer?: LlamaServerConfig, llamaServerAuth?: LlamaSer
   models.setProvider(anthropicProvider());
   models.setProvider(googleProvider());
   if (llamaServer !== undefined) {
+    const reasoning = llamaServer.reasoningProfile !== "off";
     const model: Model<"openai-completions"> = {
       id: llamaServer.modelId,
       name: llamaServer.modelId,
       api: "openai-completions",
       provider: "llamacpp",
       baseUrl: llamaServer.baseUrl,
-      reasoning: true,
+      reasoning,
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: llamaServer.contextWindow,
       maxTokens: llamaServer.maxTokens,
+      ...(llamaServer.reasoningProfile === "off"
+        ? { samplingParams: { chat_template_kwargs: { enable_thinking: false } } }
+        : {}),
+      ...(llamaServer.reasoningProfile === "effort"
+        ? {
+            thinkingLevelMap: {
+              off: "none",
+              minimal: null,
+              low: "low",
+              medium: "medium",
+              high: null,
+              xhigh: "xhigh",
+              max: null,
+            },
+          }
+        : {}),
       compat: {
         supportsDeveloperRole: false,
+        ...(llamaServer.reasoningProfile === "binary"
+          ? { supportsReasoningEffort: false, thinkingFormat: "qwen-chat-template" as const }
+          : {}),
         supportsStrictMode: false,
         supportsStore: false,
         maxTokensField: "max_tokens",
-        thinkingFormat: "chat-template",
-        chatTemplateKwargs: {
-          enable_thinking: { $var: "thinking.enabled" },
-          reasoning_effort: { $var: "thinking.effort", omitWhenOff: true },
-        },
       },
     };
     models.setProvider(

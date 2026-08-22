@@ -179,6 +179,7 @@ export async function executeRun(
               modelBaseUrl: config.llamaServer.baseUrl,
               modelContextWindow: config.llamaServer.contextWindow,
               modelMaxTokens: config.llamaServer.maxTokens,
+              modelReasoningProfile: config.llamaServer.reasoningProfile,
             }),
       },
       model: { provider: config.provider, id: config.modelId },

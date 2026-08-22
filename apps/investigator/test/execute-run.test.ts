@@ -224,6 +224,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
       modelId: "local-model",
       contextWindow: 65_536,
       maxTokens: 4_096,
+      reasoningProfile: "off" as const,
     };
     const llamaServerAuth = { bearerToken: "test-bearer-token" };
     const seen: unknown[] = [];
@@ -259,6 +260,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
       modelBaseUrl: llamaServer.baseUrl,
       modelContextWindow: llamaServer.contextWindow,
       modelMaxTokens: llamaServer.maxTokens,
+      modelReasoningProfile: llamaServer.reasoningProfile,
     });
     expect(JSON.stringify(run)).not.toContain(llamaServerAuth.bearerToken);
   });

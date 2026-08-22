@@ -32,6 +32,7 @@ export const env = createEnv({
     LLAMA_SERVER_MODEL: z.string().min(1).optional(),
     LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
     LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_REASONING_PROFILE: z.enum(["off", "binary", "effort"]).default("off"),
     LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
 
     /** Ceiling on completed agent turns. Guards against runaway reasoning (PRD-2 §17). */

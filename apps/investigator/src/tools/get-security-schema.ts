@@ -23,9 +23,13 @@ export const GET_SECURITY_SCHEMA = {
   name: "get_security_schema",
   label: "Get security schema",
   description:
-    "Return the column definitions for one or more security tables. You start an investigation knowing only the table names; use this to see the columns before writing KQL against them.",
+    "Return compact table(column:type) definitions for one or more security tables. Only the returned columns exist; some tables have no datetime column. Use this before writing KQL against columns you do not already know.",
   parameters: Params,
 } as const;
+
+function renderTable(table: SchemaTable): string {
+  return `${table.name}(${table.columns.map((column) => `${column.name}:${column.type}`).join(",")})`;
+}
 
 export function createGetSecuritySchemaTool(
   tables: Map<string, SchemaTable>,
@@ -41,11 +45,22 @@ export function createGetSecuritySchemaTool(
         );
       }
 
-      // Compact rather than pretty-printed: the full 22-table schema is ~60 KB, most of which is
-      // indentation. No information is lost, only whitespace.
-      const requested = params.tables.map((name) => tables.get(name));
+      // Names and types are the whole schema contract. Repeating JSON object keys for every column
+      // adds thousands of characters without adding information, so render the same facts in Kusto-
+      // style table(column:type) form.
+      const requested = params.tables.map((name) => {
+        const table = tables.get(name);
+        // The unknown-name branch above already proved this, but Map.get cannot carry that proof.
+        if (table === undefined) throw new Error(`Unknown table: ${name}`);
+        return table;
+      });
       return {
-        content: [{ type: "text", text: JSON.stringify(requested) }],
+        content: [
+          {
+            type: "text",
+            text: `Only listed columns exist.\n${requested.map(renderTable).join("\n")}`,
+          },
+        ],
         details: { tables: params.tables },
       };
     },
