@@ -1,10 +1,15 @@
 import type { ApiErrorCode } from "@soc/contracts";
 
-/** `unreachable` covers transport failures and any non-2xx that is not a well-formed `ApiError`. */
-export type SentinelApiErrorCode = ApiErrorCode | "unreachable";
+/** Connector-neutral failures beyond the Mock Sentinel REST error contract. */
+export type SentinelApiErrorCode =
+  | ApiErrorCode
+  | "authentication_error"
+  | "authorization_error"
+  | "rate_limited"
+  | "unreachable";
 
 /**
- * A failure returned by, or while reaching, the Mock Sentinel REST API.
+ * A failure returned by, or while reaching, a Sentinel implementation.
  *
  * `message` is deliberately verbatim. For query failures the service already puts the Kusto
  * engine's own diagnostic there (`SEM0100: Failed to resolve table or column expression named
