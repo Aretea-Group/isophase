@@ -24,7 +24,7 @@ describe("InvestigationRun", () => {
     expect(parsed.config).toBeUndefined();
   });
 
-  test("accepts the lifecycle fields", () => {
+  test("accepts legacy lifecycle configuration", () => {
     const parsed = InvestigationRun.parse({
       ...base,
       status: "running",
@@ -40,6 +40,47 @@ describe("InvestigationRun", () => {
     expect(parsed.status).toBe("running");
     expect(parsed.alertCount).toBe(151);
     expect(parsed.config?.thinkingLevel).toBe("medium");
+  });
+
+  test("accepts fixed-size neutral source identity", () => {
+    const parsed = InvestigationRun.parse({
+      ...base,
+      config: {
+        resultMaxChars: 40_000,
+        source: {
+          kind: "microsoft-sentinel",
+          connector: "azure-monitor-logs",
+          target: "https://api.loganalytics.io/v1/workspaces/workspace-id",
+          queryLanguage: "kql",
+        },
+        webSearchConfigured: true,
+      },
+    });
+
+    expect(parsed.config?.source?.connector).toBe("azure-monitor-logs");
+    expect(parsed.config?.sentinelBaseUrl).toBeUndefined();
+  });
+
+  test("keeps FixtureQL artifact identity distinct from Sentinel KQL", () => {
+    const parseLanguage = (kind: string, queryLanguage: string) =>
+      InvestigationRun.parse({
+        ...base,
+        config: {
+          resultMaxChars: 40_000,
+          source: {
+            kind,
+            connector: "in-memory",
+            target: "fixture-corpus",
+            queryLanguage,
+          },
+          webSearchConfigured: false,
+        },
+      }).config?.source;
+
+    const fixture = parseLanguage("contract-fixture", "fixtureql");
+    const sentinel = parseLanguage("microsoft-sentinel", "kql");
+    expect(fixture?.queryLanguage).toBe("fixtureql");
+    expect(fixture).not.toEqual(sentinel);
   });
 
   test("records which alerts the sweep set out to investigate, not only how many", () => {

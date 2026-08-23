@@ -26,7 +26,6 @@ describe("console investigator configuration", () => {
       {
         runsDir: ".data/runs",
         tracesDir: ".data/runs/traces",
-        sentinelBaseUrl: "http://localhost:8787",
         llamaServer: LLAMA_SERVER,
       },
     );
@@ -48,7 +47,6 @@ describe("console investigator configuration", () => {
         {
           runsDir: ".data/runs",
           tracesDir: ".data/runs/traces",
-          sentinelBaseUrl: "http://localhost:8787",
           llamaServer: { ...LLAMA_SERVER, reasoningProfile: "off" },
         },
       ),

@@ -19,6 +19,10 @@ function sentinelTarget(env: ConsoleEnv): string {
     : azureWorkspaceUrl(env.AZURE_LOG_ANALYTICS_WORKSPACE_ID);
 }
 
+function sentinelConnector(env: ConsoleEnv): string {
+  return env.SENTINEL_CONNECTOR === "mock" ? "mock-sentinel-rest" : "azure-monitor-logs";
+}
+
 /**
  * What a run used, beside what this machine is set up to do.
  *
@@ -93,9 +97,24 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
       currentEnv: env.INVESTIGATOR_RESULT_MAX_CHARS.toLocaleString("en"),
     },
     {
-      label: "sentinel target",
-      thisRun: config?.sentinelBaseUrl ?? ABSENT,
+      label: "source kind",
+      thisRun: config?.source?.kind ?? ABSENT,
+      currentEnv: "microsoft-sentinel",
+    },
+    {
+      label: "source connector",
+      thisRun: config?.source?.connector ?? ABSENT,
+      currentEnv: sentinelConnector(env),
+    },
+    {
+      label: "source target",
+      thisRun: config?.source?.target ?? ABSENT,
       currentEnv: sentinelTarget(env),
+    },
+    {
+      label: "query language",
+      thisRun: config?.source?.queryLanguage ?? ABSENT,
+      currentEnv: "kql",
     },
     ...endpointRows,
     {
@@ -120,7 +139,7 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
 
 export const DATA_SOURCES: { label: string; detail: string }[] = [
   {
-    label: "Sentinel capability",
+    label: "Security source",
     detail: "alerts, schema, read-only KQL",
   },
   {

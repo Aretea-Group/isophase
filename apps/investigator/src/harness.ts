@@ -6,8 +6,7 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelClient } from "@soc/sentinel-client";
+import type { SecurityAlert } from "@soc/contracts";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -21,7 +20,7 @@ import {
   InvestigationTimeoutError,
 } from "./errors.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "./instructions.ts";
-import { addSentinelQueryInstructions, isSentinelTool } from "./query-instructions.ts";
+import type { SecuritySourceBundle } from "./source-profile.ts";
 import { createInvestigationTools, INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
@@ -81,7 +80,7 @@ export interface InvestigationMetrics {
 }
 
 export interface InvestigationHarnessOptions {
-  sentinel: SentinelClient;
+  source: SecuritySourceBundle;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   model: Model<Api>;
@@ -157,23 +156,25 @@ export class InvestigationHarness {
   }
 
   async investigate(
-    alert: SecurityAlertResource,
+    alert: SecurityAlert,
     options: InvestigateOptions = {},
   ): Promise<InvestigationSummary> {
-    const { sentinel, webSearch, webFetch, model, streamFn, instructions } = this.#options;
+    const { source, webSearch, webFetch, model, streamFn, instructions } = this.#options;
+    const { client, profile } = source;
     const maxTurns = this.#options.maxTurns ?? 50;
     const timeoutMs = this.#options.timeoutMs ?? 1_200_000;
 
     // Fetched once per investigation, and deliberately not placed into model context. The agent
     // gets table names and pulls the schemas it decides are relevant (PRD-2 §7).
-    const schema = await sentinel.getSchema();
+    const schema = await client.getSchema();
     const tables = new Map(schema.tables.map((table) => [table.name, table]));
 
     let submission: InvestigationSummary | undefined;
     let turns = 0;
     let timedOut = false;
     let aborted = false;
-    let queryInstructionsInjected = false;
+    let queryGuidanceInjected = false;
+    const guidanceActivationTools = new Set(profile.guidanceActivationTools);
 
     const agent = new Agent({
       initialState: {
@@ -192,22 +193,22 @@ export class InvestigationHarness {
         turns += 1;
         return submission !== undefined || turns >= maxTurns;
       },
-      // KQL guidance is irrelevant until the agent chooses Sentinel. Add it to the system prompt
-      // after the first Sentinel tool result so it is available for query repair and every
-      // subsequent telemetry turn, without spending initial context or repeating tool-result text.
+      // Source syntax guidance is irrelevant until the agent chooses telemetry. Add the selected
+      // profile's guidance after its first activating tool result so query repair and subsequent
+      // telemetry turns see it without spending initial context or repeating tool-result text.
       prepareNextTurnWithContext: ({ context, toolResults }) => {
         if (
-          queryInstructionsInjected ||
-          !toolResults.some((result) => isSentinelTool(result.toolName))
+          queryGuidanceInjected ||
+          !toolResults.some((result) => guidanceActivationTools.has(result.toolName))
         ) {
           return undefined;
         }
 
-        queryInstructionsInjected = true;
+        queryGuidanceInjected = true;
         return {
           context: {
             ...context,
-            systemPrompt: addSentinelQueryInstructions(context.systemPrompt),
+            systemPrompt: `${context.systemPrompt}\n\n${profile.queryGuidance}`,
           },
         };
       },
@@ -215,7 +216,7 @@ export class InvestigationHarness {
 
     agent.state.tools = createInvestigationTools({
       tables,
-      sentinel,
+      source,
       webSearch,
       webFetch,
       ...(this.#options.resultMaxChars === undefined
@@ -283,7 +284,9 @@ export class InvestigationHarness {
 
     try {
       if (aborted) throw new InvestigationAbortedError();
-      await agent.prompt(buildInitialContext(alert, [...tables.keys()], options.analystContext));
+      await agent.prompt(
+        buildInitialContext(profile, alert, [...tables.keys()], options.analystContext),
+      );
     } finally {
       clearTimeout(timer);
       clearTimeout(reminderTimer);

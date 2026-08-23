@@ -1,4 +1,6 @@
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
+
+import type { SecuritySourceProfile } from "./source-profile.ts";
 
 /**
  * Build the first user message for an investigation (PRD-2 §7).
@@ -12,18 +14,19 @@ import type { SecurityAlertResource } from "@soc/contracts";
  * run-specific data never contaminates the replaceable part (PRD-2 §8).
  */
 export function buildInitialContext(
-  alert: SecurityAlertResource,
+  profile: SecuritySourceProfile,
+  alert: SecurityAlert,
   tableNames: string[],
   analystContext?: string,
 ): string {
   const lines = [
-    "Investigate the following Microsoft Sentinel alert.",
+    profile.initialContext.alertIntroduction,
     "",
     "<alert>",
     JSON.stringify(alert, null, 2),
     "</alert>",
     "",
-    "These are the tables you can query. Request schemas for whichever look relevant.",
+    profile.initialContext.tablesIntroduction,
     "",
     "<available_tables>",
     tableNames.join("\n"),

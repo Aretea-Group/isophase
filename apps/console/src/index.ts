@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import {
+  createSentinelSourceBundle,
   InProcessControl,
   type InProcessControlOptions,
   type InvestigationControl,
@@ -11,12 +12,7 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "@soc/investigator/model";
-import {
-  assertAzureArtifactDirectories,
-  createSentinelClient,
-  sentinelClientConfigFromEnv,
-  sentinelClientTarget,
-} from "@soc/sentinel-client";
+import { assertAzureArtifactDirectories, sentinelClientConfigFromEnv } from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
 import type { ConsoleEnv } from "./env.ts";
@@ -27,7 +23,6 @@ export function buildInvestigatorConfig(
   options: {
     runsDir: string;
     tracesDir: string;
-    sentinelBaseUrl: string;
     llamaServer?: LlamaServerConfig;
     llamaServerAuth?: LlamaServerAuth;
   },
@@ -45,7 +40,6 @@ export function buildInvestigatorConfig(
     maxTurns: source.INVESTIGATOR_MAX_TURNS,
     timeoutMs: source.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: source.INVESTIGATOR_RESULT_MAX_CHARS,
-    sentinelBaseUrl: options.sentinelBaseUrl,
     webSearchConfigured: source.BRAVE_API_KEY !== undefined,
     runsDir: options.runsDir,
     trace: true,
@@ -80,11 +74,10 @@ function buildControl(
     config: buildInvestigatorConfig(env, {
       runsDir,
       tracesDir,
-      sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     }),
-    deps: { sentinel: createSentinelClient(sentinelConfig) },
+    deps: { source: createSentinelSourceBundle(sentinelConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
   });

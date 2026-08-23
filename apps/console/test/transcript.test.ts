@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import { readEvent, readToolResult } from "../src/data/trace-detail.ts";
-import { indexTrace } from "../src/data/trace-index.ts";
+import { indexTrace, type TraceIndex } from "../src/data/trace-index.ts";
 import { lineText } from "../src/view/format.ts";
 import { toTranscript, transcriptLines } from "../src/view/transcript.ts";
 
@@ -40,10 +40,32 @@ describe("toTranscript", () => {
     }
   });
 
-  test("shows the exact KQL on the call block", async () => {
-    const blocks = toTranscript(await indexTrace(TRACE), 70);
+  test("shows the exact generic query on the call block", () => {
+    const index: TraceIndex = {
+      path: "trace.jsonl",
+      runId: "run",
+      alertId: "alert",
+      startedAt: "2026-08-19T09:00:00.000Z",
+      complete: false,
+      turns: [],
+      toolCalls: [
+        {
+          seq: 1,
+          turn: 1,
+          at: "2026-08-19T09:00:01.000Z",
+          toolCallId: "call-1",
+          toolName: "query_security_data",
+          args: { query: "SecurityEvent\n| take 1" },
+        },
+      ],
+      totals: { totalTokens: 0, cost: 0 },
+      nextOffset: 0,
+      unparsed: 0,
+    };
+    const blocks = toTranscript(index, 70, "kql");
     const query = blocks.find((b) => b.heading.startsWith("query_security_data"));
-    expect(query?.body.join(" ")).toContain("SecurityEvent");
+    expect(query?.body).toEqual(["SecurityEvent", "| take 1"]);
+    expect(query?.heading).toContain("SecurityEvent");
   });
 });
 

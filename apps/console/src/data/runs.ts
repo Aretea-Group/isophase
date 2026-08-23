@@ -83,6 +83,15 @@ const Artifact = z.object({
     .object({
       thinkingLevel: z.string().optional(),
       resultMaxChars: z.number().optional(),
+      source: z
+        .object({
+          kind: z.string(),
+          connector: z.string(),
+          target: z.string(),
+          queryLanguage: z.string(),
+        })
+        .optional(),
+      /** Legacy run identity. Never promoted into the neutral source fields. */
       sentinelBaseUrl: z.string().optional(),
       modelBaseUrl: z.string().optional(),
       modelContextWindow: z.number().optional(),

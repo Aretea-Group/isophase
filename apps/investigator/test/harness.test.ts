@@ -8,14 +8,15 @@ import {
   type Context,
   type Model,
 } from "@earendil-works/pi-ai";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import { InvestigationHarness, type InvestigationMetrics } from "../src/harness.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instructions.ts";
 import {
-  addSentinelQueryInstructions,
-  SENTINEL_QUERY_INSTRUCTIONS,
-} from "../src/query-instructions.ts";
+  createFixtureSourceBundle,
+  TEST_QUERY_GUIDANCE,
+  testSourceBundle,
+} from "./fixtures/source.ts";
 
 const SUMMARY = {
   tpPercent: 90,
@@ -28,12 +29,22 @@ const SUMMARY = {
   researchDone: ["Checked the relevant telemetry."],
 };
 
+const ALERT = {
+  id: "alert-1",
+  title: "Test alert",
+  description: "Test description.",
+  tactics: [],
+  techniques: [],
+  entities: [],
+  native: null,
+};
+
 function createHarness(
   model: Model<Api>,
   streamFn: ReturnType<typeof fauxProvider>["provider"]["streamSimple"],
   timeoutMs?: number,
 ): InvestigationHarness {
-  const sentinel = {
+  const source = {
     getSchema: async () => ({
       tables: [
         {
@@ -42,10 +53,10 @@ function createHarness(
         },
       ],
     }),
-  } as unknown as SentinelApiClient;
+  } as unknown as SecurityDataSource;
 
   return new InvestigationHarness({
-    sentinel,
+    source: testSourceBundle(source),
     webSearch: { search: async () => [] },
     webFetch: {
       fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),
@@ -58,7 +69,7 @@ function createHarness(
 }
 
 describe("InvestigationHarness completion", () => {
-  test("adds Sentinel query instructions once, after the first Sentinel tool use", async () => {
+  test("adds selected query guidance once, after the first activating tool use", async () => {
     const faux = fauxProvider();
     const contexts: Context[] = [];
     faux.setResponses([
@@ -88,19 +99,23 @@ describe("InvestigationHarness completion", () => {
       faux.provider.streamSimple,
     );
 
-    await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    await harness.investigate(ALERT);
 
     expect(contexts.map((context) => context.systemPrompt)).toEqual([
       "Test instructions.",
-      addSentinelQueryInstructions("Test instructions."),
-      addSentinelQueryInstructions("Test instructions."),
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
     ]);
-    expect(contexts[0]?.systemPrompt).not.toContain(SENTINEL_QUERY_INSTRUCTIONS);
+    expect(contexts[0]?.systemPrompt).not.toContain(TEST_QUERY_GUIDANCE);
+    expect(JSON.stringify(contexts[0]?.messages)).toContain(
+      "Investigate the following Fixture SIEM alert.",
+    );
+    expect(JSON.stringify(contexts[0]?.messages)).toContain(
+      "These are the FixtureQL tables available for this investigation.",
+    );
   });
 
-  test("does not add Sentinel query instructions to a web-only investigation", async () => {
+  test("does not add query guidance to a web-only investigation", async () => {
     const faux = fauxProvider();
     let secondContext: Context | undefined;
     faux.setResponses([
@@ -119,9 +134,7 @@ describe("InvestigationHarness completion", () => {
       faux.provider.streamSimple,
     );
 
-    await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    await harness.investigate(ALERT);
 
     expect(secondContext?.systemPrompt).toBe("Test instructions.");
   });
@@ -144,10 +157,9 @@ describe("InvestigationHarness completion", () => {
     );
     let metrics: InvestigationMetrics | undefined;
 
-    const result = await harness.investigate(
-      { properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" } } as never,
-      { onMetrics: (value) => (metrics = value) },
-    );
+    const result = await harness.investigate(ALERT, {
+      onMetrics: (value) => (metrics = value),
+    });
 
     expect(result).toEqual(SUMMARY);
     expect(secondContext?.messages.at(-1)).toMatchObject({
@@ -181,14 +193,83 @@ describe("InvestigationHarness completion", () => {
       500,
     );
 
-    const result = await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    const result = await harness.investigate(ALERT);
 
     expect(result).toEqual(SUMMARY);
     expect(secondContext?.messages.at(-1)).toMatchObject({
       role: "user",
       content: SUBMISSION_DEADLINE_REMINDER,
+    });
+  });
+});
+
+describe("FixtureQL source contract", () => {
+  test("investigates a native fixture alert through schema, query, guidance, and submission", async () => {
+    const fixture = createFixtureSourceBundle();
+    const faux = fauxProvider();
+    const contexts: Context[] = [];
+    const query =
+      'MATCH IdentitySessions WHERE principal = "casey.admin" RETURN observed_at, principal, device_trust, action';
+    faux.setResponses([
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(
+          fauxToolCall("get_security_schema", { tables: ["IdentitySessions"] }),
+          { stopReason: "toolUse" },
+        );
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(fauxToolCall("query_security_data", { query }), {
+          stopReason: "toolUse",
+        });
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(fauxToolCall("submit_investigation", SUMMARY), {
+          stopReason: "toolUse",
+        });
+      },
+    ]);
+    let metrics: InvestigationMetrics | undefined;
+    const harness = new InvestigationHarness({
+      source: fixture.bundle,
+      webSearch: { search: async () => [] },
+      webFetch: {
+        fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),
+      },
+      model: faux.getModel() as unknown as Model<Api>,
+      streamFn: faux.provider.streamSimple,
+      instructions: "Test instructions.",
+    });
+
+    const result = await harness.investigate(fixture.source.alert, {
+      onMetrics: (value) => (metrics = value),
+    });
+
+    expect(result).toEqual(SUMMARY);
+    expect(fixture.source.alert.native).toEqual(fixture.source.nativeAlert);
+    expect(fixture.source.alert).toMatchObject({
+      id: "fixture-alert-1",
+      severity: "urgent",
+      compromisedEntity: "casey.admin",
+    });
+    expect(fixture.source.queries).toEqual([query]);
+    expect(contexts.map((context) => context.systemPrompt)).toEqual([
+      "Test instructions.",
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+    ]);
+    const initialMessages = JSON.stringify(contexts[0]?.messages);
+    expect(initialMessages).toContain("signalKey");
+    expect(initialMessages).toContain("fixture-alert-1");
+    expect(initialMessages).toContain("IdentitySessions");
+    expect(JSON.stringify(contexts[1]?.messages)).toContain("IdentitySessions(observed_at:instant");
+    expect(JSON.stringify(contexts[2]?.messages)).toContain("console_login");
+    expect(metrics?.toolCalls).toMatchObject({
+      get_security_schema: 1,
+      query_security_data: 1,
+      submit_investigation: 1,
     });
   });
 });

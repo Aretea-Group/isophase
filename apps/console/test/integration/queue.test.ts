@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createTestRenderer } from "@opentui/core/testing";
-import { InProcessControl } from "@soc/investigator/control";
-import { SentinelApiClient } from "@soc/sentinel-client";
+import { createSentinelSourceBundle, InProcessControl } from "@soc/investigator/control";
 
 import { env } from "../../src/env.ts";
 import { runApp } from "../../src/ui/app.ts";
@@ -41,14 +40,15 @@ describe.skipIf(!reachable)("the alert queue against a live Mock Sentinel", () =
         maxTurns: env.INVESTIGATOR_MAX_TURNS,
         timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
         resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-        sentinelBaseUrl: BASE_URL,
         webSearchConfigured: false,
         runsDir: env.RUNS_DIR,
         trace: false,
         traceDir: env.INVESTIGATOR_TRACE_DIR,
         traceStream: false,
       },
-      deps: { sentinel: new SentinelApiClient({ baseUrl: BASE_URL }) },
+      deps: {
+        source: createSentinelSourceBundle({ connector: "mock", baseUrl: BASE_URL }),
+      },
     });
 
     const alerts = await control.listAlerts();

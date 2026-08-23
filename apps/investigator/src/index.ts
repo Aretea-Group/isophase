@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 import {
   assertAzureArtifactDirectories,
-  createSentinelClient,
   sentinelClientConfigFromEnv,
-  sentinelClientTarget,
   type SentinelClientConfig,
 } from "@soc/sentinel-client";
 
@@ -16,6 +14,7 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "./model.ts";
+import { createSentinelSourceBundle } from "./source-profile.ts";
 
 export interface CliArgs {
   alertId?: string;
@@ -78,7 +77,6 @@ export function configFromEnv(
     maxTurns: env.INVESTIGATOR_MAX_TURNS,
     timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-    sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
     webSearchConfigured: env.BRAVE_API_KEY !== undefined,
     runsDir: env.RUNS_DIR,
     trace: env.INVESTIGATOR_TRACE,
@@ -100,7 +98,7 @@ async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
   const sentinelConfig = sentinelClientConfigFromEnv(env);
   const config = configFromEnv(sentinelConfig);
-  const sentinel = createSentinelClient(sentinelConfig);
+  const source = createSentinelSourceBundle(sentinelConfig);
 
   if (env.BRAVE_API_KEY === undefined) {
     log("[investigator] BRAVE_API_KEY is not set — web_search will fail if the agent uses it.");
@@ -134,7 +132,7 @@ async function main(): Promise<void> {
 
   const run = await executeRun(
     config,
-    { sentinel, webSearch, webFetch },
+    { source, webSearch, webFetch },
     {
       runId,
       ...(args.alertId === undefined ? {} : { alertId: args.alertId }),

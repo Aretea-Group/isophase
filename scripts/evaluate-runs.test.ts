@@ -45,8 +45,22 @@ interface RunSpec {
   error?: { name: string; message: string };
   derivedFrom?: { runId: string; alertId: string };
   promptHash?: string;
+  /** `null` produces a legacy artifact with no neutral source block. */
+  source?: {
+    kind: string;
+    connector: string;
+    target: string;
+    queryLanguage: string;
+  } | null;
   draws?: DrawSpec[];
 }
+
+const DEFAULT_SOURCE = {
+  kind: "microsoft-sentinel",
+  connector: "mock-sentinel-rest",
+  target: "http://localhost:8787",
+  queryLanguage: "kql",
+} as const;
 
 function result(draw: DrawSpec, at: string): Record<string, unknown> {
   const outcome =
@@ -76,6 +90,7 @@ function result(draw: DrawSpec, at: string): Record<string, unknown> {
 
 function artifact(spec: RunSpec): string {
   const at = "2026-08-20T10:00:00.000Z";
+  const source = spec.source === undefined ? DEFAULT_SOURCE : spec.source;
   return JSON.stringify({
     runId: spec.runId,
     startedAt: at,
@@ -85,7 +100,7 @@ function artifact(spec: RunSpec): string {
     config: {
       thinkingLevel: spec.thinkingLevel ?? "medium",
       resultMaxChars: 40_000,
-      sentinelBaseUrl: "http://localhost:8787",
+      ...(source === null ? { sentinelBaseUrl: "http://localhost:8787" } : { source }),
       webSearchConfigured: true,
       ...(spec.modelBaseUrl === undefined ? {} : { modelBaseUrl: spec.modelBaseUrl }),
       ...(spec.modelContextWindow === undefined
@@ -369,6 +384,27 @@ describe("evaluate — the condition key", () => {
     expect(variants.every((variant) => variant.id !== base.id)).toBe(true);
   });
 
+  test("each source field partitions the condition and legacy identity stays unknown", () => {
+    const base = conditionOf(JSON.parse(artifact({ runId: "base" })));
+    const variants = [
+      { ...DEFAULT_SOURCE, kind: "other-source" },
+      { ...DEFAULT_SOURCE, connector: "azure-monitor-logs" },
+      { ...DEFAULT_SOURCE, target: "https://workspace.example" },
+      { ...DEFAULT_SOURCE, queryLanguage: "fixtureql" },
+    ].map((source, index) =>
+      conditionOf(JSON.parse(artifact({ runId: `variant-${index}`, source }))),
+    );
+    const legacy = conditionOf(JSON.parse(artifact({ runId: "legacy", source: null })));
+
+    expect(variants.every((variant) => variant.id !== base.id)).toBe(true);
+    expect(legacy.id).not.toBe(base.id);
+    expect(legacy.fields.sourceKind).toBe("?");
+    expect(legacy.fields.sourceConnector).toBe("?");
+    expect(legacy.fields.sourceTarget).toBe("?");
+    expect(legacy.fields.queryLanguage).toBe("?");
+    expect(legacy.fields.legacySentinelBaseUrl).toBe("http://localhost:8787");
+  });
+
   test("a label never collapses two condition ids", () => {
     const runs = [
       artifact({ runId: "a", model: "m1" }),
@@ -553,7 +589,10 @@ describe("evaluate — the legend", () => {
       expect(report.out).toContain("LEGEND");
       // The axes a label omits because they happen to agree today are exactly the ones a reader
       // needs when they stop agreeing.
-      expect(report.out).toContain("sentinelBaseUrl");
+      expect(report.out).toContain("sourceKind");
+      expect(report.out).toContain("sourceConnector");
+      expect(report.out).toContain("sourceTarget");
+      expect(report.out).toContain("queryLanguage");
       expect(report.out).toContain("modelBaseUrl");
       expect(report.out).toContain("modelContextWindow");
       expect(report.out).toContain("modelMaxTokens");

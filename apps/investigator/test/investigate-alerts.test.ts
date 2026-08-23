@@ -1,41 +1,35 @@
 import { expect, test } from "bun:test";
 
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 
 import { InvestigationAbortedError } from "../src/errors.ts";
 import type { InvestigationHarness } from "../src/harness.ts";
 import { investigateAlerts } from "../src/investigate-alerts.ts";
 
-function alert(id: string): SecurityAlertResource {
+function alert(id: string): SecurityAlert {
   return {
-    id: `/alerts/${id}`,
-    name: id,
-    type: "Microsoft.SecurityInsights/Entities",
-    properties: {
-      systemAlertId: id,
-      alertDisplayName: `alert ${id}`,
-      description: "test",
-      severity: "High",
-      status: "New",
-      startTimeUtc: "2026-08-20T00:00:00.000Z",
-      endTimeUtc: "2026-08-20T00:01:00.000Z",
-      timeGenerated: "2026-08-20T00:01:00.000Z",
-      vendorName: "Microsoft",
-      productName: "Azure Sentinel",
-      alertType: "Test",
-      tactics: [],
-      techniques: [],
-      entities: [],
-    } as unknown as SecurityAlertResource["properties"],
-  } as SecurityAlertResource;
+    id,
+    title: `alert ${id}`,
+    description: "test",
+    severity: "High",
+    status: "New",
+    startTimeUtc: "2026-08-20T00:00:00.000Z",
+    endTimeUtc: "2026-08-20T00:01:00.000Z",
+    timeGenerated: "2026-08-20T00:01:00.000Z",
+    alertType: "Test",
+    tactics: [],
+    techniques: [],
+    entities: [],
+    native: { id },
+  };
 }
 
 test("cancellation records the in-flight alert and never starts the next one", async () => {
   const controller = new AbortController();
   const started: string[] = [];
   const harness = {
-    investigate(current: SecurityAlertResource) {
-      started.push(current.properties.systemAlertId);
+    investigate(current: SecurityAlert) {
+      started.push(current.id);
       controller.abort();
       return Promise.reject(new InvestigationAbortedError());
     },
@@ -84,7 +78,7 @@ const METRICS = {
 
 test("a completed investigation records its turns, tool calls and cost", async () => {
   const harness = {
-    investigate(_current: SecurityAlertResource, options: { onMetrics?: (m: unknown) => void }) {
+    investigate(_current: SecurityAlert, options: { onMetrics?: (m: unknown) => void }) {
       options.onMetrics?.(METRICS);
       return Promise.resolve({
         tpPercent: 90,
@@ -107,7 +101,7 @@ test("a completed investigation records its turns, tool calls and cost", async (
 
 test("a failed investigation records what it spent before it died", async () => {
   const harness = {
-    investigate(_current: SecurityAlertResource, options: { onMetrics?: (m: unknown) => void }) {
+    investigate(_current: SecurityAlert, options: { onMetrics?: (m: unknown) => void }) {
       // The harness reports from its `finally`, then the error ladder throws. Order is the point.
       options.onMetrics?.(METRICS);
       return Promise.reject(new Error("timed out after 600000ms"));
@@ -137,7 +131,7 @@ test("a harness that reports nothing leaves the fields absent rather than zero",
 
 test("run-level facts reach the caller without being repeated on every result", async () => {
   const harness = {
-    investigate(_current: SecurityAlertResource, options: { onMetrics?: (m: unknown) => void }) {
+    investigate(_current: SecurityAlert, options: { onMetrics?: (m: unknown) => void }) {
       options.onMetrics?.(METRICS);
       return Promise.reject(new Error("boom"));
     },

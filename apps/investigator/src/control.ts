@@ -1,5 +1,5 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 
 import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
@@ -9,6 +9,8 @@ import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "./ex
 import { listAvailableModels, type ModelChoice } from "./model.ts";
 import { INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
+export { createSentinelSourceBundle } from "./source-profile.ts";
+
 /**
  * The surface an operator interface drives the investigator through (PRD-5 §5.3).
  *
@@ -17,7 +19,7 @@ import { INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
  * spawned child or a queue worker is another, swappable without the caller changing.
  */
 export interface InvestigationControl {
-  listAlerts(): Promise<SecurityAlertResource[]>;
+  listAlerts(): Promise<SecurityAlert[]>;
   /** Only models this machine holds a credential for — never the full registered catalogue. */
   listModels(): Promise<ModelChoice[]>;
   /**
@@ -92,7 +94,7 @@ export type ControlEvent =
 export interface InProcessControlOptions {
   config: InvestigatorConfig;
   /**
-   * Sentinel, and the web tools, and the artifact writer.
+   * Security source, web tools and artifact writer.
    *
    * `webSearch` and `webFetch` default to the real clients built from `config`, so a caller does
    * not construct the agent's own tool clients — those are the investigator's business, and a
@@ -185,8 +187,8 @@ export class InProcessControl implements InvestigationControl {
     this.#maxConcurrent = options.maxConcurrent ?? 2;
   }
 
-  listAlerts(): Promise<SecurityAlertResource[]> {
-    return this.#deps.sentinel.listAlerts();
+  listAlerts(): Promise<SecurityAlert[]> {
+    return this.#deps.source.client.listAlerts();
   }
 
   listModels(): Promise<ModelChoice[]> {

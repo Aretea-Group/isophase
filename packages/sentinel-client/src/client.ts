@@ -3,18 +3,20 @@ import {
   ApiError,
   CorpusIdentity,
   QueryResponse,
+  SecurityAlert,
+  SecuritySchema,
   SchemaResponse,
   SecurityAlertResource,
 } from "@soc/contracts";
 
 import { SentinelApiError } from "./errors.ts";
 
-/** The complete Sentinel capability consumed by investigator and console code. */
-export interface SentinelClient {
-  listAlerts(top?: number): Promise<SecurityAlertResource[]>;
-  getAlert(id: string): Promise<SecurityAlertResource>;
-  getSchema(): Promise<SchemaResponse>;
-  query(kql: string, timespan?: string): Promise<QueryResponse>;
+/** Alert-oriented, read-only tabular source consumed by investigation control flow (ADR 010 §1). */
+export interface SecurityDataSource {
+  listAlerts(limit?: number): Promise<SecurityAlert[]>;
+  getAlert(id: string): Promise<SecurityAlert>;
+  getSchema(): Promise<SecuritySchema>;
+  query(query: string): Promise<QueryResponse>;
   getCorpus(): Promise<CorpusIdentity | undefined>;
 }
 
@@ -35,7 +37,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * through the shared `@soc/contracts` schema so a drift in the service fails here rather than
  * silently downstream.
  */
-export class SentinelApiClient implements SentinelClient {
+export class SentinelApiClient implements SecurityDataSource {
   readonly #baseUrl: string;
   readonly #timeoutMs: number;
 
@@ -44,18 +46,19 @@ export class SentinelApiClient implements SentinelClient {
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
-  async listAlerts(top?: number): Promise<SecurityAlertResource[]> {
-    const path = top === undefined ? "/alerts" : `/alerts?$top=${encodeURIComponent(top)}`;
-    return AlertListResponse.parse(await this.#request("GET", path)).value;
+  async listAlerts(limit?: number): Promise<SecurityAlert[]> {
+    const path = limit === undefined ? "/alerts" : `/alerts?$top=${encodeURIComponent(limit)}`;
+    return AlertListResponse.parse(await this.#request("GET", path)).value.map(normaliseMockAlert);
   }
 
-  async getAlert(id: string): Promise<SecurityAlertResource> {
+  async getAlert(id: string): Promise<SecurityAlert> {
     const path = `/alerts/${encodeURIComponent(id)}`;
-    return SecurityAlertResource.parse(await this.#request("GET", path));
+    return normaliseMockAlert(SecurityAlertResource.parse(await this.#request("GET", path)));
   }
 
-  async getSchema(): Promise<SchemaResponse> {
-    return SchemaResponse.parse(await this.#request("GET", "/schema"));
+  async getSchema(): Promise<SecuritySchema> {
+    const response = SchemaResponse.parse(await this.#request("GET", "/schema"));
+    return SecuritySchema.parse({ tables: response.tables });
   }
 
   /**
@@ -77,8 +80,8 @@ export class SentinelApiClient implements SentinelClient {
     }
   }
 
-  async query(kql: string, timespan?: string): Promise<QueryResponse> {
-    const body = timespan === undefined ? { query: kql } : { query: kql, timespan };
+  async query(query: string, timespan?: string): Promise<QueryResponse> {
+    const body = timespan === undefined ? { query } : { query, timespan };
     return QueryResponse.parse(await this.#request("POST", "/query", body));
   }
 
@@ -128,4 +131,26 @@ export class SentinelApiClient implements SentinelClient {
 
     return payload;
   }
+}
+
+function normaliseMockAlert(resource: SecurityAlertResource): SecurityAlert {
+  const { properties } = resource;
+  return SecurityAlert.parse({
+    id: properties.systemAlertId,
+    title: properties.alertDisplayName,
+    description: properties.description,
+    severity: properties.severity,
+    status: properties.status,
+    alertType: properties.alertType,
+    startTimeUtc: properties.startTimeUtc,
+    endTimeUtc: properties.endTimeUtc,
+    timeGenerated: properties.timeGenerated,
+    tactics: properties.tactics,
+    techniques: properties.techniques,
+    ...(properties.compromisedEntity === undefined
+      ? {}
+      : { compromisedEntity: properties.compromisedEntity }),
+    entities: properties.entities,
+    native: resource,
+  });
 }

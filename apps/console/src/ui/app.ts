@@ -225,7 +225,7 @@ function noTranscriptLines(waiting: boolean, width: number): Line[] {
     "",
     ...prose(
       "Tracing was off when this run happened (INVESTIGATOR_TRACE=false), so its tool calls, " +
-        "reasoning, KQL and token usage were never written down.",
+        "reasoning, source queries and token usage were never written down.",
       width,
     ),
     "",
@@ -253,7 +253,7 @@ const HELP_SECTIONS: { heading: string; keys: [string, string][]; notes?: string
       ["⏎", "expand the selected call, or load a transcript block in full"],
       ["⎋", "back, or clear the filter"],
       ["/", "filter the focused list — see WHILE FILTERING below"],
-      ["y", "copy the focused pane — on a call, the exact KQL"],
+      ["y", "copy the focused pane — on a call, the exact source query"],
     ],
   },
   {
@@ -1382,6 +1382,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // this alert is the one being investigated right now.
     const traced = currentRun()?.traceDir !== undefined;
     const waiting = traced && isPending(result);
+    const queryLanguage = currentRun()?.config?.source?.queryLanguage;
 
     // An in-flight investigation has no verdict — the agent submits one call at the end — so the
     // Verdict tab reports progress instead of an empty assessment (PRD-3 §13).
@@ -1389,13 +1390,13 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // no cap. Everything on this screen takes the pane it is given.
     if (state.tab === "verdict") {
       return isPending(result)
-        ? progressBody(state.alertFacts, state.index, traced, measure(width))
+        ? progressBody(state.alertFacts, state.index, traced, measure(width), queryLanguage)
         : verdictBody(result, state.alertFacts, measure(width));
     }
 
     if (state.tab === "transcript") {
       if (state.index === undefined) return noTranscriptLines(waiting, measure(width));
-      state.transcriptBlocks = toTranscript(state.index, width);
+      state.transcriptBlocks = toTranscript(state.index, width, queryLanguage);
       // A tailing transcript grows underneath the selection; clamp rather than let it point past
       // the end of the conversation.
       state.transcriptSelected = Math.min(
@@ -1412,9 +1413,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     if (state.index === undefined) return noTranscriptLines(waiting, measure(width));
 
-    if (state.tab === "stream") return streamBody(state.index, width);
+    if (state.tab === "stream") return streamBody(state.index, width, queryLanguage);
 
-    const rendered = activityBody(state.index, width, state.activitySelected);
+    const rendered = activityBody(state.index, width, state.activitySelected, queryLanguage);
     state.activityRows = rendered.selectable;
     state.activitySelected = Math.min(
       state.activitySelected,
@@ -2219,7 +2220,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
    *
    * OSC 52 rather than a host clipboard binary, so this works over SSH — which is where a console
    * like this actually runs. On an open call detail it copies the arguments alone, because the
-   * thing worth pasting there is the KQL: "queries used, for reproducibility" is a required field
+   * thing worth pasting there is the source query: "queries used, for reproducibility" is a required field
    * in an escalation write-up, and retyping a query out of a terminal is how it gets omitted.
    */
   async function copyFocused(): Promise<void> {
@@ -2244,7 +2245,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     } else if (state.detailOpen && state.tab === "activity") {
       const row = state.activityRows[state.activitySelected];
       text = row === undefined ? "" : callArgsText(row);
-      what = row?.kind === "call" && row.toolName === "query_security_data" ? "KQL" : "arguments";
+      what = row?.kind === "call" && row.toolName === "query_security_data" ? "query" : "arguments";
     } else {
       text = linesText(mainBody(width));
       what = state.screen === "dashboard" ? state.tab : state.screen;

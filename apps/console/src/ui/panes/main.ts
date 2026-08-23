@@ -147,6 +147,7 @@ export function progressBody(
   index: TraceIndex | undefined,
   traced: boolean,
   width: number,
+  queryLanguage?: string,
 ): Line[] {
   const lines: Line[] = [...factsHead(facts, width)];
 
@@ -172,7 +173,9 @@ export function progressBody(
       lines.push([
         { text: "  latest  ", tone: "label" },
         { text: last.toolName, tone: "accent" },
-        { text: `  ${truncate(summariseArgs(last, width - 30), Math.max(12, width - 26))}` },
+        {
+          text: `  ${truncate(summariseArgs(last, width - 30, queryLanguage), Math.max(12, width - 26))}`,
+        },
         { text: last.endedAt === undefined ? "  ·  running" : "", tone: "running" },
       ]);
     }
@@ -352,8 +355,13 @@ function toolTone(toolName: string): Tone {
   return "label";
 }
 
-export function activityBody(index: TraceIndex, width: number, selected: number): ActivityRender {
-  const view = toActivityView(index);
+export function activityBody(
+  index: TraceIndex,
+  width: number,
+  selected: number,
+  queryLanguage?: string,
+): ActivityRender {
+  const view = toActivityView(index, queryLanguage);
   const lines: Line[] = [];
   const selectable: ActivityRow[] = [];
 
@@ -425,7 +433,7 @@ export function activityBody(index: TraceIndex, width: number, selected: number)
 }
 
 /**
- * One call's arguments as written — the exact KQL, unwrapped from its JSON envelope.
+ * One call's arguments as written — the exact source query, unwrapped from its JSON envelope.
  *
  * Shared by the detail pane and `y`, so what gets copied is character-for-character what is on
  * screen rather than a second rendering of it.
@@ -433,12 +441,15 @@ export function activityBody(index: TraceIndex, width: number, selected: number)
 export function callArgsText(row: ActivityRow): string {
   if (row.kind !== "call") return "";
   const args = row.call.args;
-  return typeof args === "object" && args !== null && "kql" in args && typeof args.kql === "string"
-    ? args.kql
-    : JSON.stringify(args, undefined, 2);
+  return typeof args === "object" &&
+    args !== null &&
+    "query" in args &&
+    typeof args.query === "string"
+    ? args.query
+    : (JSON.stringify(args, undefined, 2) ?? "");
 }
 
-/** The full arguments of one call — the exact KQL as the agent wrote it (PRD-3 §8.3). */
+/** The full arguments of one call — the exact source query as the agent wrote it (PRD-3 §8.3). */
 export function callDetail(row: ActivityRow, width: number): Line[] {
   if (row.kind !== "call") return [];
   const lines: Line[] = [
@@ -480,14 +491,14 @@ export function callDetail(row: ActivityRow, width: number): Line[] {
  * on the row to say nothing new. If §8.4 is meant to be literal parity rather than the same shape,
  * this is the line to change back.
  */
-export function streamBody(index: TraceIndex, width: number): Line[] {
+export function streamBody(index: TraceIndex, width: number, queryLanguage?: string): Line[] {
   const lines: Line[] = [
     [
       { text: `  ${clockTime(index.startedAt)}  `, tone: "dim" },
       { text: "agent start", tone: "heading", bold: true },
     ],
   ];
-  const view = toActivityView(index);
+  const view = toActivityView(index, queryLanguage);
 
   for (const row of view.rows) {
     if (row.kind === "turn") {

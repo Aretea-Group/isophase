@@ -1,3 +1,5 @@
+import { SecurityAlert } from "@soc/contracts";
+
 import type { RunResult } from "../data/runs.ts";
 import {
   incidentTime,
@@ -60,19 +62,62 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function decodedJson(value: unknown): unknown {
+  if (typeof value !== "string" || value.trim() === "") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 function strings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
+  const decoded = decodedJson(value);
+  return Array.isArray(decoded)
+    ? decoded.filter((item): item is string => typeof item === "string")
     : [];
 }
 
-/** Sentinel entities are a typed union keyed by `type`; this is the human-readable bit of each. */
-export function entityLabel(entity: Record<string, unknown>): string {
-  for (const key of ["hostName", "name", "address", "url", "fileName", "processId", "value"]) {
-    const value = entity[key];
+function firstString(record: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
     if (typeof value === "string" && value !== "") return value;
   }
-  return "—";
+  return undefined;
+}
+
+/** Source entities are opaque; these are the label conventions the current connectors emit. */
+export function entityLabel(entity: Record<string, unknown>): string {
+  return (
+    firstString(entity, [
+      "hostName",
+      "HostName",
+      "name",
+      "Name",
+      "address",
+      "Address",
+      "url",
+      "Url",
+      "fileName",
+      "FileName",
+      "processId",
+      "ProcessId",
+      "value",
+      "Value",
+    ]) ?? "—"
+  );
+}
+
+function alertEntities(value: unknown): AlertEntity[] {
+  const decoded = decodedJson(value);
+  if (!Array.isArray(decoded)) return [];
+  return decoded
+    .map(asRecord)
+    .filter((entity): entity is Record<string, unknown> => entity !== undefined)
+    .map((entity) => ({
+      type: firstString(entity, ["type", "Type", "kind", "Kind"]) ?? "unknown",
+      label: entityLabel(entity),
+    }));
 }
 
 export function alertFactsFromResult(result: RunResult): AlertFacts {
@@ -100,7 +145,7 @@ export function alertFactsFromResult(result: RunResult): AlertFacts {
 
 /** Scalar `additionalData` entries, in the order the detection recorded them. */
 function scalarPairs(value: unknown): [string, string][] {
-  const record = asRecord(value);
+  const record = asRecord(decodedJson(value));
   if (record === undefined) return [];
   const pairs: [string, string][] = [];
   for (const [key, item] of Object.entries(record)) {
@@ -119,49 +164,64 @@ function scalarPairs(value: unknown): [string, string][] {
 /**
  * Facts for an alert that has no run yet (PRD-5 §7).
  *
- * `alertFactsFromResult` starts from what a run recorded; this starts from the alert itself, which
- * is what the queue has. Everything beyond the id and title comes out of `enrichWithAlertJson`, so
- * the two paths cannot describe the same alert differently — and what reaches the screen is the
- * vendor's own payload, parsed, rather than a summary this layer invented.
+ * `alertFactsFromResult` starts from what a run recorded; this starts from the normalized alert the
+ * queue has. Connector-native evidence only enriches fields that are not part of that shared
+ * contract, such as remediation steps and rule-specific additional data.
  */
-export function alertFactsFromAlert(alertJson: unknown): AlertFacts {
-  const properties = asRecord(asRecord(alertJson)?.["properties"]) ?? {};
-  const alertId =
-    typeof properties["systemAlertId"] === "string" ? properties["systemAlertId"] : "";
-  const title =
-    typeof properties["alertDisplayName"] === "string" ? properties["alertDisplayName"] : "";
-
+export function alertFactsFromAlert(alert: SecurityAlert): AlertFacts {
   const base: AlertFacts = {
-    alertId,
-    title,
-    severity: severityOf(undefined),
-    severityTag: severityTag(undefined),
-    window: "—",
-    detected: "—",
-    hasTime: false,
-    tactics: [],
-    techniques: [],
-    entities: [],
+    alertId: alert.id,
+    title: alert.title,
+    severity: severityOf(alert.severity),
+    severityTag: severityTag(alert.severity),
+    window: incidentWindow(alert.startTimeUtc, alert.endTimeUtc),
+    detected: incidentTime(alert.timeGenerated),
+    hasTime: alert.startTimeUtc !== undefined || alert.timeGenerated !== undefined,
+    tactics: alert.tactics,
+    techniques: alert.techniques,
+    ...(alert.compromisedEntity === undefined
+      ? {}
+      : { compromisedEntity: alert.compromisedEntity }),
+    ...(alert.alertType === undefined ? {} : { alertType: alert.alertType }),
+    description: alert.description,
+    entities: alertEntities(alert.entities),
     remediationSteps: [],
     additionalData: [],
-    // "none" so `enrichWithAlertJson` fills severity from the payload — it leaves it alone when a
-    // run already recorded one, which is right for the other path and wrong for this one.
-    source: "none",
+    source: "transcript",
   };
-  return enrichWithAlertJson(base, alertJson);
+  return enrichWithNativeAlert(base, alert.native);
 }
 
-export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): AlertFacts {
-  const properties = asRecord(asRecord(alertJson)?.["properties"]);
+/** Project current Azure's native row into the same evidence keys as Mock Sentinel's ARM payload. */
+function azureAlertProperties(
+  record: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const nativeKeys = ["SystemAlertId", "Entities", "RemediationSteps", "ExtendedProperties"];
+  if (!nativeKeys.some((key) => key in record)) return undefined;
+  return {
+    severity: record["AlertSeverity"],
+    startTimeUtc: record["StartTime"],
+    endTimeUtc: record["EndTime"],
+    timeGenerated: record["TimeGenerated"],
+    tactics: record["Tactics"],
+    techniques: record["Techniques"],
+    compromisedEntity: record["CompromisedEntity"],
+    alertType: record["AlertType"],
+    description: record["Description"],
+    entities: decodedJson(record["Entities"]),
+    remediationSteps: decodedJson(record["RemediationSteps"]),
+    additionalData: decodedJson(record["ExtendedProperties"]),
+  };
+}
+
+function enrichWithNativeAlert(facts: AlertFacts, alertJson: unknown): AlertFacts {
+  const record = asRecord(alertJson);
+  const properties =
+    asRecord(record?.["properties"]) ??
+    (record === undefined ? undefined : azureAlertProperties(record));
   if (properties === undefined) return facts;
 
-  const entities = (Array.isArray(properties["entities"]) ? properties["entities"] : [])
-    .map(asRecord)
-    .filter((entity): entity is Record<string, unknown> => entity !== undefined)
-    .map((entity) => ({
-      type: typeof entity["type"] === "string" ? entity["type"] : "unknown",
-      label: entityLabel(entity),
-    }));
+  const entities = alertEntities(properties["entities"]);
 
   const startTimeUtc =
     typeof properties["startTimeUtc"] === "string" ? properties["startTimeUtc"] : undefined;
@@ -180,10 +240,10 @@ export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): Aler
     hasTime: facts.hasTime || startTimeUtc !== undefined || timeGenerated !== undefined,
     tactics: facts.tactics.length > 0 ? facts.tactics : strings(properties["tactics"]),
     techniques: facts.techniques.length > 0 ? facts.techniques : strings(properties["techniques"]),
-    entities,
+    entities: entities.length === 0 ? facts.entities : entities,
     remediationSteps: strings(properties["remediationSteps"]),
     additionalData: scalarPairs(properties["additionalData"]),
-    source: facts.source === "artifact" ? "both" : "transcript",
+    source: facts.source === "artifact" || facts.source === "both" ? "both" : "transcript",
   };
 
   if (typeof properties["description"] === "string") merged.description = properties["description"];
@@ -197,6 +257,38 @@ export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): Aler
     merged.alertType = properties["alertType"];
   }
   return merged;
+}
+
+function mergeAlertFacts(facts: AlertFacts, evidence: AlertFacts): AlertFacts {
+  const merged: AlertFacts = {
+    ...facts,
+    severity: facts.source === "none" ? evidence.severity : facts.severity,
+    severityTag: facts.source === "none" ? evidence.severityTag : facts.severityTag,
+    window: facts.hasTime ? facts.window : evidence.window,
+    detected: facts.hasTime ? facts.detected : evidence.detected,
+    hasTime: facts.hasTime || evidence.hasTime,
+    tactics: facts.tactics.length > 0 ? facts.tactics : evidence.tactics,
+    techniques: facts.techniques.length > 0 ? facts.techniques : evidence.techniques,
+    entities: evidence.entities.length === 0 ? facts.entities : evidence.entities,
+    remediationSteps: evidence.remediationSteps,
+    additionalData: evidence.additionalData,
+    source: facts.source === "artifact" || facts.source === "both" ? "both" : "transcript",
+  };
+  if (evidence.description !== undefined) merged.description = evidence.description;
+  if (merged.compromisedEntity === undefined && evidence.compromisedEntity !== undefined) {
+    merged.compromisedEntity = evidence.compromisedEntity;
+  }
+  if (merged.alertType === undefined && evidence.alertType !== undefined) {
+    merged.alertType = evidence.alertType;
+  }
+  return merged;
+}
+
+export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): AlertFacts {
+  const alert = SecurityAlert.safeParse(alertJson);
+  return alert.success
+    ? mergeAlertFacts(facts, alertFactsFromAlert(alert.data))
+    : enrichWithNativeAlert(facts, alertJson);
 }
 
 /**

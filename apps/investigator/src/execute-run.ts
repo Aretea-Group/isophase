@@ -1,6 +1,5 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelClient } from "@soc/sentinel-client";
+import type { SecurityAlert } from "@soc/contracts";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -11,8 +10,9 @@ import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
 import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
-import { PROVENANCE } from "./provenance.ts";
+import { provenanceForProfile } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
+import type { SecuritySourceBundle } from "./source-profile.ts";
 import { createTracer } from "./trace.ts";
 
 /** The run's lifecycle, distinct from the per-alert `InvestigationResult.status` (PRD-3 §7). */
@@ -36,8 +36,6 @@ export interface InvestigatorConfig {
   maxTurns: number;
   timeoutMs: number;
   resultMaxChars: number;
-  /** Recorded on the artifact so two runs can be compared without guessing at the environment. */
-  sentinelBaseUrl: string;
   webSearchConfigured: boolean;
   runsDir: string;
   trace: boolean;
@@ -49,7 +47,7 @@ export interface InvestigatorConfig {
 }
 
 export interface InvestigatorDeps {
-  sentinel: SentinelClient;
+  source: SecuritySourceBundle;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   /**
@@ -89,7 +87,7 @@ export interface RunOptions {
   onResult?: (result: InvestigationResult) => void;
   /** Fired after every artifact write, so a caller can follow a run without polling the disk. */
   onProgress?: (run: InvestigationRun) => void;
-  onEvent?: (alert: SecurityAlertResource, event: AgentEvent) => void;
+  onEvent?: (alert: SecurityAlert, event: AgentEvent) => void;
   signal?: AbortSignal;
   log?: (message: string) => void;
 }
@@ -119,9 +117,10 @@ export async function executeRun(
   const log = options.log ?? ((): undefined => undefined);
   const { runId } = options;
   const startedAt = new Date().toISOString();
+  const provenance = provenanceForProfile(deps.source.profile);
 
   const collected: InvestigationResult[] = [];
-  let alerts: SecurityAlertResource[] = [];
+  let alerts: SecurityAlert[] = [];
   let servedModelId: string | undefined;
   let corpus: RunCorpusIdentity | undefined;
 
@@ -147,8 +146,8 @@ export async function executeRun(
       // alert each remaining slot is; `results` only ever holds finished alerts (PRD-3 §7, §11).
       alertCount: alerts.length,
       plannedAlerts: alerts.map((alert) => ({
-        alertId: alert.properties.systemAlertId,
-        alertTitle: alert.properties.alertDisplayName,
+        alertId: alert.id,
+        alertTitle: alert.title,
       })),
       ...(config.trace ? { traceDir: config.traceDir } : {}),
       ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
@@ -156,7 +155,7 @@ export async function executeRun(
       // identical across a run (**D16**). A provider re-pointing an alias is otherwise invisible and
       // reads as agent regression.
       provenance: {
-        ...PROVENANCE,
+        ...provenance,
         ...(servedModelId === undefined ? {} : { servedModelId }),
         ...(corpus === undefined ? {} : { corpus }),
       },
@@ -165,7 +164,12 @@ export async function executeRun(
         // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
         ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
         resultMaxChars: config.resultMaxChars,
-        sentinelBaseUrl: config.sentinelBaseUrl,
+        source: {
+          kind: deps.source.profile.kind,
+          connector: deps.source.profile.connector,
+          target: deps.source.profile.target,
+          queryLanguage: deps.source.profile.queryLanguage,
+        },
         webSearchConfigured: config.webSearchConfigured,
         // Capability is not use. Derived from the tally rather than declared, so it costs nothing and
         // cannot disagree with what happened (**D14**). Absent until a result carries a tally at all.
@@ -227,7 +231,7 @@ export async function executeRun(
     );
 
     harness = new InvestigationHarness({
-      sentinel: deps.sentinel,
+      source: deps.source,
       webSearch: deps.webSearch,
       webFetch: deps.webFetch,
       model,
@@ -241,14 +245,14 @@ export async function executeRun(
 
     alerts =
       options.alertId === undefined
-        ? await deps.sentinel.listAlerts()
-        : [await deps.sentinel.getAlert(options.alertId)];
+        ? await deps.source.client.listAlerts()
+        : [await deps.source.client.getAlert(options.alertId)];
 
     // Which data this run was actually scored against (PRD-6 §6.8). `undefined` on an older Mock
     // Sentinel, and that is the point: the artifact records no corpus rather than a fabricated one,
     // and a bootstrap that re-pins the content-addressed alert ids becomes a visible hash change
     // instead of a silently empty evaluation report.
-    corpus = await deps.sentinel.getCorpus().catch(() => undefined);
+    corpus = await deps.source.client.getCorpus().catch(() => undefined);
   } catch (error) {
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not
@@ -290,10 +294,10 @@ export async function executeRun(
     },
     ...(config.trace
       ? {
-          createEventSink: (alert: SecurityAlertResource) => {
+          createEventSink: (alert: SecurityAlert) => {
             const tracer = createTracer({
               runId,
-              alertId: alert.properties.systemAlertId,
+              alertId: alert.id,
               dir: config.traceDir,
               // Narration goes wherever the caller's `log` goes. The CLI sends it to stdout; a
               // caller sharing a terminal with a renderer must not have it written underneath.
@@ -312,7 +316,7 @@ export async function executeRun(
       : options.onEvent === undefined
         ? {}
         : {
-            createEventSink: (alert: SecurityAlertResource) => {
+            createEventSink: (alert: SecurityAlert) => {
               const forward = options.onEvent;
               if (forward === undefined) return undefined;
               return (event: AgentEvent): void => forward(alert, event);

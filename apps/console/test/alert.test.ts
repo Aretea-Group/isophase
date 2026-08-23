@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { SecurityAlert } from "@soc/contracts";
+
 import { readRun } from "../src/data/runs.ts";
 import { readAlert } from "../src/data/trace-detail.ts";
 import { indexTrace } from "../src/data/trace-index.ts";
 import {
   alertFactsFromResult,
+  alertFactsFromAlert,
   alertLines,
   enrichWithAlertJson,
   entityLabel,
@@ -105,10 +108,71 @@ describe("alert facts", () => {
     expect(merged.entities.length).toBeGreaterThan(0);
   });
 
+  test("enriches an artifact from the neutral alert envelope written by new traces", () => {
+    const before = alertFactsFromResult({
+      alertId: "alert-1",
+      alertTitle: "Suspicious authentication",
+      alert: { severity: "High", tactics: ["InitialAccess"], techniques: ["T1078"] },
+    });
+    const alert = SecurityAlert.parse({
+      id: "alert-1",
+      title: "Suspicious authentication",
+      description: "Authentication from an unusual network",
+      severity: "Medium",
+      tactics: ["CredentialAccess"],
+      techniques: ["T1110"],
+      entities: [{ type: "account", name: "alice" }],
+      native: {
+        properties: {
+          entities: [{ type: "account", name: "alice" }],
+          remediationSteps: ["Reset the password."],
+          additionalData: { Action: "Allowed" },
+        },
+      },
+    });
+
+    const merged = enrichWithAlertJson(before, alert);
+
+    expect(merged.source).toBe("both");
+    expect(merged.severity).toBe("High");
+    expect(merged.tactics).toEqual(["InitialAccess"]);
+    expect(merged.description).toBe("Authentication from an unusual network");
+    expect(entityPairs(merged)).toEqual(["account alice"]);
+    expect(merged.remediationSteps).toEqual(["Reset the password."]);
+    expect(merged.additionalData).toEqual([["Action", "Allowed"]]);
+  });
+
+  test("renders Azure native entity and evidence casing without changing the native values", () => {
+    const alert = SecurityAlert.parse({
+      id: "alert-1",
+      title: "Suspicious authentication",
+      description: "Authentication from an unusual network",
+      tactics: ["InitialAccess"],
+      techniques: ["T1078"],
+      entities: [{ Type: "account", Name: "alice", NTDomain: "CONTOSO" }],
+      native: {
+        SystemAlertId: "alert-1",
+        Entities: '[{"Type":"account","Name":"alice","NTDomain":"CONTOSO"}]',
+        RemediationSteps: '["Reset the password."]',
+        ExtendedProperties: '{"Action":"Allowed","Nested":{"ignored":true}}',
+      },
+    });
+
+    const facts = alertFactsFromAlert(alert);
+
+    expect(entityPairs(facts)).toEqual(["account alice"]);
+    expect(facts.remediationSteps).toEqual(["Reset the password."]);
+    expect(facts.additionalData).toEqual([["Action", "Allowed"]]);
+    expect(alert.native).toMatchObject({
+      Entities: '[{"Type":"account","Name":"alice","NTDomain":"CONTOSO"}]',
+    });
+  });
+
   test("reads a label out of each entity shape", () => {
     expect(entityLabel({ type: "host", hostName: "SOC-FW-RDP" })).toBe("SOC-FW-RDP");
     expect(entityLabel({ type: "account", name: "ADMINISTRATOR" })).toBe("ADMINISTRATOR");
     expect(entityLabel({ type: "ip", address: "10.0.0.4" })).toBe("10.0.0.4");
+    expect(entityLabel({ Type: "account", Name: "AZURE\\alice" })).toBe("AZURE\\alice");
     expect(entityLabel({ type: "mystery" })).toBe("—");
   });
 
