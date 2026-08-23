@@ -12,6 +12,10 @@ import type { SentinelApiClient } from "@soc/sentinel-client";
 
 import { InvestigationHarness, type InvestigationMetrics } from "../src/harness.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instructions.ts";
+import {
+  addSentinelQueryInstructions,
+  SENTINEL_QUERY_INSTRUCTIONS,
+} from "../src/query-instructions.ts";
 
 const SUMMARY = {
   tpPercent: 90,
@@ -30,7 +34,14 @@ function createHarness(
   timeoutMs?: number,
 ): InvestigationHarness {
   const sentinel = {
-    getSchema: async () => ({ tables: [] }),
+    getSchema: async () => ({
+      tables: [
+        {
+          name: "SecurityEvent",
+          columns: [{ name: "TimeGenerated", type: "datetime" }],
+        },
+      ],
+    }),
   } as unknown as SentinelApiClient;
 
   return new InvestigationHarness({
@@ -47,6 +58,74 @@ function createHarness(
 }
 
 describe("InvestigationHarness completion", () => {
+  test("adds Sentinel query instructions once, after the first Sentinel tool use", async () => {
+    const faux = fauxProvider();
+    const contexts: Context[] = [];
+    faux.setResponses([
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(
+          fauxToolCall("get_security_schema", { tables: ["SecurityEvent"] }),
+          { stopReason: "toolUse" },
+        );
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(
+          fauxToolCall("get_security_schema", { tables: ["SecurityEvent"] }),
+          { stopReason: "toolUse" },
+        );
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(fauxToolCall("submit_investigation", SUMMARY), {
+          stopReason: "toolUse",
+        });
+      },
+    ]);
+    const harness = createHarness(
+      faux.getModel() as unknown as Model<Api>,
+      faux.provider.streamSimple,
+    );
+
+    await harness.investigate({
+      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
+    } as never);
+
+    expect(contexts.map((context) => context.systemPrompt)).toEqual([
+      "Test instructions.",
+      addSentinelQueryInstructions("Test instructions."),
+      addSentinelQueryInstructions("Test instructions."),
+    ]);
+    expect(contexts[0]?.systemPrompt).not.toContain(SENTINEL_QUERY_INSTRUCTIONS);
+  });
+
+  test("does not add Sentinel query instructions to a web-only investigation", async () => {
+    const faux = fauxProvider();
+    let secondContext: Context | undefined;
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("web_search", { query: "indicator" }), {
+        stopReason: "toolUse",
+      }),
+      (context) => {
+        secondContext = context;
+        return fauxAssistantMessage(fauxToolCall("submit_investigation", SUMMARY), {
+          stopReason: "toolUse",
+        });
+      },
+    ]);
+    const harness = createHarness(
+      faux.getModel() as unknown as Model<Api>,
+      faux.provider.streamSimple,
+    );
+
+    await harness.investigate({
+      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
+    } as never);
+
+    expect(secondContext?.systemPrompt).toBe("Test instructions.");
+  });
+
   test("gives a prose-only completion one corrective turn to submit structurally", async () => {
     const faux = fauxProvider();
     let secondContext: Context | undefined;

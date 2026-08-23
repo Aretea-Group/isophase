@@ -85,7 +85,7 @@ export const QUERY_SECURITY_DATA = {
   name: "query_security_data",
   label: "Query security data",
   description:
-    "Run a read-only KQL query against the security telemetry and return the raw result. Results are capped at 500 rows and at a fixed response size, and will tell you when either limit was hit — so prefer summarize/count/dcount over dumping rows when you are looking at volume, and project only the columns you need on wide tables.",
+    "Run a read-only KQL query against the security telemetry and return the raw result.",
   parameters: Params,
 } as const;
 

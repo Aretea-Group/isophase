@@ -23,7 +23,7 @@ export const GET_SECURITY_SCHEMA = {
   name: "get_security_schema",
   label: "Get security schema",
   description:
-    "Return compact table(column:type) definitions for one or more security tables. Only the returned columns exist; some tables have no datetime column. Use this before writing KQL against columns you do not already know.",
+    "Return compact table(column:type) definitions for one or more security telemetry tables.",
   parameters: Params,
 } as const;
 

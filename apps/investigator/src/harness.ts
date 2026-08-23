@@ -21,6 +21,7 @@ import {
   InvestigationTimeoutError,
 } from "./errors.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "./instructions.ts";
+import { addSentinelQueryInstructions, isSentinelTool } from "./query-instructions.ts";
 import { createInvestigationTools, INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
@@ -172,6 +173,7 @@ export class InvestigationHarness {
     let turns = 0;
     let timedOut = false;
     let aborted = false;
+    let queryInstructionsInjected = false;
 
     const agent = new Agent({
       initialState: {
@@ -189,6 +191,25 @@ export class InvestigationHarness {
       shouldStopAfterTurn: () => {
         turns += 1;
         return submission !== undefined || turns >= maxTurns;
+      },
+      // KQL guidance is irrelevant until the agent chooses Sentinel. Add it to the system prompt
+      // after the first Sentinel tool result so it is available for query repair and every
+      // subsequent telemetry turn, without spending initial context or repeating tool-result text.
+      prepareNextTurnWithContext: ({ context, toolResults }) => {
+        if (
+          queryInstructionsInjected ||
+          !toolResults.some((result) => isSentinelTool(result.toolName))
+        ) {
+          return undefined;
+        }
+
+        queryInstructionsInjected = true;
+        return {
+          context: {
+            ...context,
+            systemPrompt: addSentinelQueryInstructions(context.systemPrompt),
+          },
+        };
       },
     });
 
