@@ -26,7 +26,7 @@ import { toolDescriptors } from "./tools/index.ts";
  */
 
 /** Legibility only — the hash is the truth. Two runs sharing this with different hashes is a defect. */
-export const INSTRUCTIONS_LABEL = "soc-triage-v9-query-overlay";
+export const INSTRUCTIONS_LABEL = "soc-triage-v10-aggregate-alias";
 
 function hash12(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 12);

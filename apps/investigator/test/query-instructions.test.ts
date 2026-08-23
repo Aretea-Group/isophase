@@ -12,6 +12,9 @@ describe("Sentinel query instructions", () => {
     expect(SENTINEL_QUERY_INSTRUCTIONS).toContain(
       "Before querying, identify the unresolved questions",
     );
-    expect(SENTINEL_QUERY_INSTRUCTIONS).toContain("Use valid KQL forms");
+    expect(SENTINEL_QUERY_INSTRUCTIONS).toContain("Never write '| order by count()'");
+    expect(SENTINEL_QUERY_INSTRUCTIONS).toContain(
+      "| summarize total=count() by Column | order by total desc",
+    );
   });
 });
