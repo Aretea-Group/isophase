@@ -13,7 +13,7 @@ export const TEST_QUERY_GUIDANCE =
   "Use only listed tables and columns; pipes and Kusto operators are invalid.";
 
 export const TEST_SOURCE_PROFILE: SecuritySourceProfile = Object.freeze({
-  kind: "fixture-siem",
+  kind: "contract-fixture",
   connector: "in-memory",
   target: "fixture-corpus",
   queryLanguage: "fixtureql",

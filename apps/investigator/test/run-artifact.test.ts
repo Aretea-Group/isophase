@@ -77,7 +77,7 @@ describe("InvestigationRun", () => {
         },
       }).config?.source;
 
-    const fixture = parseLanguage("fixture-siem", "fixtureql");
+    const fixture = parseLanguage("contract-fixture", "fixtureql");
     const sentinel = parseLanguage("microsoft-sentinel", "kql");
     expect(fixture?.queryLanguage).toBe("fixtureql");
     expect(fixture).not.toEqual(sentinel);
