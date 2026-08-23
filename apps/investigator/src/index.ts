@@ -2,7 +2,6 @@
 import {
   assertAzureArtifactDirectories,
   sentinelClientConfigFromEnv,
-  sentinelClientTarget,
   type SentinelClientConfig,
 } from "@soc/sentinel-client";
 
@@ -78,7 +77,6 @@ export function configFromEnv(
     maxTurns: env.INVESTIGATOR_MAX_TURNS,
     timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-    sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
     webSearchConfigured: env.BRAVE_API_KEY !== undefined,
     runsDir: env.RUNS_DIR,
     trace: env.INVESTIGATOR_TRACE,

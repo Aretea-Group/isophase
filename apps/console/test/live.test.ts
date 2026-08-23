@@ -158,7 +158,7 @@ when("following a run in progress", () => {
           type: "tool_execution_start",
           toolCallId: "call_live_1",
           toolName: "query_security_data",
-          args: { kql: "SecurityEvent | take 1" },
+          args: { query: "SecurityEvent | take 1" },
         }),
         JSON.stringify({
           at: "2026-08-19T10:00:03.000Z",
@@ -235,7 +235,7 @@ when("following a run in progress", () => {
             type: "tool_execution_start",
             toolCallId: "call_solo_1",
             toolName: "query_security_data",
-            args: { kql: "OfficeActivity | take 1" },
+            args: { query: "OfficeActivity | take 1" },
           }),
           "",
         ].join("\n"),

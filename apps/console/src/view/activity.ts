@@ -25,7 +25,7 @@ export function leadingTable(kql: string): string | undefined {
 }
 
 /** A one-line description of what a call asked for. */
-export function summariseArgs(call: ToolCall, width = 40): string {
+export function summariseArgs(call: ToolCall, width = 40, queryLanguage?: string): string {
   const args = asRecord(call.args);
   if (args === undefined) return "";
 
@@ -35,9 +35,11 @@ export function summariseArgs(call: ToolCall, width = 40): string {
       return Array.isArray(tables) ? `${tables.length} tables` : "";
     }
     case "query_security_data": {
-      const kql = args["kql"];
-      if (typeof kql !== "string") return "";
-      return leadingTable(kql) ?? truncate(kql, width);
+      const query = args["query"];
+      if (typeof query !== "string") return "";
+      return queryLanguage === "kql"
+        ? (leadingTable(query) ?? truncate(query, width))
+        : truncate(query, width);
     }
     case "web_search":
       return typeof args["query"] === "string" ? truncate(args["query"], width) : "";
@@ -85,7 +87,7 @@ export interface ActivityView {
   callCount: number;
 }
 
-export function toActivityView(index: TraceIndex): ActivityView {
+export function toActivityView(index: TraceIndex, queryLanguage?: string): ActivityView {
   const rows: ActivityRow[] = [];
   const tableCounts = new Map<string, number>();
   const searches: string[] = [];
@@ -104,7 +106,7 @@ export function toActivityView(index: TraceIndex): ActivityView {
     seq: call.seq,
     at: clockTime(call.at),
     toolName: call.toolName,
-    summary: summariseArgs(call),
+    summary: summariseArgs(call, 40, queryLanguage),
     size: chars(call.resultChars),
     isError: call.isError === true,
     call,
@@ -150,8 +152,12 @@ export function toActivityView(index: TraceIndex): ActivityView {
         if (typeof table === "string") tableCounts.set(table, tableCounts.get(table) ?? 0);
       }
     }
-    if (call.toolName === "query_security_data" && typeof args["kql"] === "string") {
-      const table = leadingTable(args["kql"]);
+    if (
+      queryLanguage === "kql" &&
+      call.toolName === "query_security_data" &&
+      typeof args["query"] === "string"
+    ) {
+      const table = leadingTable(args["query"]);
       if (table !== undefined) tableCounts.set(table, (tableCounts.get(table) ?? 0) + 1);
     }
     if (call.toolName === "web_search" && typeof args["query"] === "string") {

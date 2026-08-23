@@ -52,13 +52,22 @@ export function blockGlyph(kind: BlockKind): string {
 
 function callBody(call: ToolCall, width: number): string[] {
   const args = call.args;
-  if (typeof args === "object" && args !== null && "kql" in args && typeof args.kql === "string") {
-    return args.kql.split("\n").flatMap((line) => wrap(line, width));
+  if (
+    typeof args === "object" &&
+    args !== null &&
+    "query" in args &&
+    typeof args.query === "string"
+  ) {
+    return args.query.split("\n").flatMap((line) => wrap(line, width));
   }
   return wrap(JSON.stringify(args ?? {}), width);
 }
 
-export function toTranscript(index: TraceIndex, width: number): TranscriptBlock[] {
+export function toTranscript(
+  index: TraceIndex,
+  width: number,
+  queryLanguage?: string,
+): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];
   const body = Math.max(20, width - 6);
 
@@ -91,7 +100,7 @@ export function toTranscript(index: TraceIndex, width: number): TranscriptBlock[
         kind: isVerdict ? "verdict" : "call",
         turn: call.turn,
         at: clockTime(call.at),
-        heading: `${call.toolName}  ${summariseArgs(call, 60)}`,
+        heading: `${call.toolName}  ${summariseArgs(call, 60, queryLanguage)}`,
         body: callBody(call, body),
         truncated: false,
       });

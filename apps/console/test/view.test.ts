@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import type { RunArtifact, RunResult } from "../src/data/runs.ts";
 import { readRun } from "../src/data/runs.ts";
-import { indexTrace } from "../src/data/trace-index.ts";
+import { indexTrace, type TraceIndex } from "../src/data/trace-index.ts";
 import { env } from "../src/env.ts";
 import { verdictBody } from "../src/ui/panes/main.ts";
 import { leadingTable, toActivityView } from "../src/view/activity.ts";
@@ -59,7 +59,12 @@ describe("configuration", () => {
         config: {
           thinkingLevel: "off",
           resultMaxChars: 40_000,
-          sentinelBaseUrl: "http://localhost:8787",
+          source: {
+            kind: "microsoft-sentinel",
+            connector: "mock-sentinel-rest",
+            target: "http://localhost:8787",
+            queryLanguage: "kql",
+          },
           webSearchConfigured: false,
           modelBaseUrl: "https://recorded.example/v1",
           modelContextWindow: 32_768,
@@ -82,6 +87,30 @@ describe("configuration", () => {
     });
     expect(rows.find((row) => row.label === "model context window")?.thisRun).toBe("32,768");
     expect(rows.find((row) => row.label === "model max tokens")?.currentEnv).toBe("4,096");
+    expect(rows.find((row) => row.label === "source connector")?.thisRun).toBe(
+      "mock-sentinel-rest",
+    );
+    expect(rows.find((row) => row.label === "source target")?.thisRun).toBe(
+      "http://localhost:8787",
+    );
+    expect(rows.find((row) => row.label === "query language")?.thisRun).toBe("kql");
+  });
+
+  test("does not infer neutral source fields from a legacy Sentinel URL", () => {
+    const rows = toConfigRows(
+      run({
+        config: {
+          resultMaxChars: 40_000,
+          sentinelBaseUrl: "http://legacy.example",
+          webSearchConfigured: false,
+        },
+      }),
+      env,
+    );
+
+    for (const label of ["source kind", "source connector", "source target", "query language"]) {
+      expect(rows.find((row) => row.label === label)?.thisRun).toBe("—");
+    }
   });
 
   test("omits endpoint rows when neither side recorded one", () => {
@@ -235,7 +264,7 @@ describe("toActivityView", () => {
         "traces/01a0194a-90fd-7000-b417-5eea46721c99-cc6430ca-0fc5-b704-c048-1d5f3d8a2524.jsonl",
       ),
     );
-    const view = toActivityView(index);
+    const view = toActivityView(index, "kql");
 
     expect(view.turnCount).toBe(4);
     expect(view.callCount).toBe(11);
@@ -250,6 +279,38 @@ describe("toActivityView", () => {
     expect(leadingTable("SecurityEvent\n| where EventID == 4625")).toBe("SecurityEvent");
     expect(leadingTable("// a comment\nCommonSecurityLog | take 1")).toBe("CommonSecurityLog");
     expect(leadingTable("| where x")).toBeUndefined();
+  });
+
+  test("extracts tables only for recorded KQL and otherwise bounds raw query text", () => {
+    const index: TraceIndex = {
+      path: "trace.jsonl",
+      runId: "run",
+      alertId: "alert",
+      startedAt: "2026-08-19T09:00:00.000Z",
+      complete: false,
+      turns: [],
+      toolCalls: [
+        {
+          seq: 1,
+          turn: 1,
+          at: "2026-08-19T09:00:01.000Z",
+          toolCallId: "call-1",
+          toolName: "query_security_data",
+          args: { query: "SecurityEvent\n| take 1" },
+        },
+      ],
+      totals: { totalTokens: 0, cost: 0 },
+      nextOffset: 0,
+      unparsed: 0,
+    };
+
+    const kql = toActivityView(index, "kql");
+    expect(kql.tables).toEqual([{ name: "SecurityEvent", count: 1 }]);
+    expect(kql.rows.find((row) => row.kind === "call")?.summary).toBe("SecurityEvent");
+
+    const other = toActivityView(index, "sql");
+    expect(other.tables).toEqual([]);
+    expect(other.rows.find((row) => row.kind === "call")?.summary).toBe("SecurityEvent | take 1");
   });
 });
 

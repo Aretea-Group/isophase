@@ -6,7 +6,7 @@ import { z } from "zod";
  * Zod rather than TypeBox: this is a persisted boundary that evaluation tooling will read back
  * later, which is exactly ADR 003's case for Zod, and nothing here crosses into a Pi tool schema.
  *
- * Deliberately not a tracing system. No transcript, no token counts, no tool trace, no raw KQL or
+ * Deliberately not a tracing system. No transcript, no token counts, no tool trace, no raw query or
  * web results — only what a later comparison against the hidden scenario metadata needs. Those can
  * be added if evaluation shows a concrete need for them.
  */
@@ -71,7 +71,7 @@ export const InvestigationResult = z.object({
    *
    * Fixed-size and bounded by construction: a count of turns, a tally over the five closed tool
    * names, and one usage object. **Nothing here may grow with the length of an investigation** —
-   * no per-event records, no tool arguments, no KQL, no results. A count of `query_security_data`
+   * no per-event records, no tool arguments, no query text, no results. A count of `query_security_data`
    * calls is a number; the queries themselves are a trace, and traces stay in `runs/traces/`,
    * optional and off by default.
    *
@@ -94,6 +94,16 @@ export const InvestigationResult = z.object({
     .optional(),
 });
 
+/** Fixed-size operational identity for the selected tabular security source (PRD-8 §7). */
+export const RunSecuritySource = z.object({
+  kind: z.string().min(1),
+  connector: z.string().min(1),
+  target: z.string().min(1),
+  queryLanguage: z.string().min(1),
+});
+
+export type RunSecuritySource = z.infer<typeof RunSecuritySource>;
+
 /**
  * How a run was configured beyond model and limits (PRD-3 §7).
  *
@@ -113,7 +123,9 @@ export const InvestigationRunConfig = z.object({
    */
   thinkingLevel: z.string().min(1).optional(),
   resultMaxChars: z.number().int().positive(),
-  sentinelBaseUrl: z.string().min(1),
+  source: RunSecuritySource.optional(),
+  /** Retained only so artifacts written before the neutral source boundary remain readable. */
+  sentinelBaseUrl: z.string().min(1).optional(),
   modelBaseUrl: z.string().min(1).optional(),
   modelContextWindow: z.number().int().positive().optional(),
   modelMaxTokens: z.number().int().positive().optional(),

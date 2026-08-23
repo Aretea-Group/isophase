@@ -36,8 +36,6 @@ export interface InvestigatorConfig {
   maxTurns: number;
   timeoutMs: number;
   resultMaxChars: number;
-  /** Recorded on the artifact so two runs can be compared without guessing at the environment. */
-  sentinelBaseUrl: string;
   webSearchConfigured: boolean;
   runsDir: string;
   trace: boolean;
@@ -166,7 +164,12 @@ export async function executeRun(
         // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
         ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
         resultMaxChars: config.resultMaxChars,
-        sentinelBaseUrl: config.sentinelBaseUrl,
+        source: {
+          kind: deps.source.profile.kind,
+          connector: deps.source.profile.connector,
+          target: deps.source.profile.target,
+          queryLanguage: deps.source.profile.queryLanguage,
+        },
         webSearchConfigured: config.webSearchConfigured,
         // Capability is not use. Derived from the tally rather than declared, so it costs nothing and
         // cannot disagree with what happened (**D14**). Absent until a result carries a tally at all.

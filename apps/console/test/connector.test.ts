@@ -18,9 +18,14 @@ describe("Azure connector console behavior", () => {
     };
 
     expect(toConfigRows(undefined, azureEnv)).toContainEqual({
-      label: "sentinel target",
+      label: "source target",
       thisRun: "—",
       currentEnv: "Azure workspace not configured",
+    });
+    expect(toConfigRows(undefined, azureEnv)).toContainEqual({
+      label: "source connector",
+      thisRun: "—",
+      currentEnv: "azure-monitor-logs",
     });
   });
 

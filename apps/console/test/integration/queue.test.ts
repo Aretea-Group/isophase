@@ -40,7 +40,6 @@ describe.skipIf(!reachable)("the alert queue against a live Mock Sentinel", () =
         maxTurns: env.INVESTIGATOR_MAX_TURNS,
         timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
         resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-        sentinelBaseUrl: BASE_URL,
         webSearchConfigured: false,
         runsDir: env.RUNS_DIR,
         trace: false,

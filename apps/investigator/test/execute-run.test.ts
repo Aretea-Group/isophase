@@ -25,7 +25,6 @@ const CONFIG: InvestigatorConfig = {
   maxTurns: 50,
   timeoutMs: 600_000,
   resultMaxChars: 40_000,
-  sentinelBaseUrl: "http://localhost:8787",
   webSearchConfigured: false,
   runsDir: "runs",
   trace: false,
@@ -103,6 +102,13 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
     expect(written?.results).toEqual([]);
     // It still records what it was asked to do, so the failure is attributable.
     expect(written?.model).toEqual({ provider: "openai", id: "nope" });
+    expect(written?.config?.source).toEqual({
+      kind: "test-source",
+      connector: "in-memory",
+      target: "test-fixture",
+      queryLanguage: "testql",
+    });
+    expect(written?.config?.sentinelBaseUrl).toBeUndefined();
   });
 
   test("an unreachable Sentinel is recorded the same way", async () => {

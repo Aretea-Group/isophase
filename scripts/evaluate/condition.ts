@@ -29,7 +29,12 @@ export interface ConditionFields {
   webSearch: string;
   maxTurns: string;
   timeoutMs: string;
-  sentinelBaseUrl: string;
+  sourceKind: string;
+  sourceConnector: string;
+  sourceTarget: string;
+  queryLanguage: string;
+  /** Present only on pre-boundary artifacts; never inferred into the neutral source fields. */
+  legacySentinelBaseUrl: string;
   modelBaseUrl: string;
   modelContextWindow: string;
   modelMaxTokens: string;
@@ -151,7 +156,11 @@ export function conditionOf(run: InvestigationRun): Condition {
     webSearch: config === undefined ? UNKNOWN : config.webSearchConfigured ? "on" : "off",
     maxTurns: String(run.limits.maxTurns),
     timeoutMs: String(run.limits.timeoutMs),
-    sentinelBaseUrl: config?.sentinelBaseUrl ?? UNKNOWN,
+    sourceKind: config?.source?.kind ?? UNKNOWN,
+    sourceConnector: config?.source?.connector ?? UNKNOWN,
+    sourceTarget: config?.source?.target ?? UNKNOWN,
+    queryLanguage: config?.source?.queryLanguage ?? UNKNOWN,
+    legacySentinelBaseUrl: config?.sentinelBaseUrl ?? UNKNOWN,
     modelBaseUrl: config?.modelBaseUrl ?? UNKNOWN,
     modelContextWindow:
       config?.modelContextWindow === undefined ? UNKNOWN : String(config.modelContextWindow),
@@ -188,9 +197,12 @@ export function conditionOf(run: InvestigationRun): Condition {
   return { id, fields };
 }
 
-/** Axes in the order a label renders them. `provider` and the URLs stay out of the short form. */
+/** Axes in the order a label renders them. `provider` and source targets stay out of the short form. */
 const LABEL_AXES: { key: keyof ConditionFields; render: (value: string) => string }[] = [
   { key: "model", render: (value) => value },
+  { key: "sourceKind", render: (value) => `source=${value}` },
+  { key: "sourceConnector", render: (value) => `connector=${value}` },
+  { key: "queryLanguage", render: (value) => `lang=${value}` },
   { key: "thinkingLevel", render: (value) => `think=${value}` },
   { key: "modelReasoningProfile", render: (value) => `reason=${value}` },
   { key: "submission", render: (value) => `sub=${value}` },
