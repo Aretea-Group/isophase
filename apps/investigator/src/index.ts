@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
   const sentinelConfig = sentinelClientConfigFromEnv(env);
   const config = configFromEnv(sentinelConfig);
-  const sentinel = createSentinelClient(sentinelConfig);
+  const source = createSentinelClient(sentinelConfig);
 
   if (env.BRAVE_API_KEY === undefined) {
     log("[investigator] BRAVE_API_KEY is not set — web_search will fail if the agent uses it.");
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
 
   const run = await executeRun(
     config,
-    { sentinel, webSearch, webFetch },
+    { source, webSearch, webFetch },
     {
       runId,
       ...(args.alertId === undefined ? {} : { alertId: args.alertId }),

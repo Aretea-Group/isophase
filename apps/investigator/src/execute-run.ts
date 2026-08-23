@@ -1,6 +1,6 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelClient } from "@soc/sentinel-client";
+import type { SecurityAlert } from "@soc/contracts";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -49,7 +49,7 @@ export interface InvestigatorConfig {
 }
 
 export interface InvestigatorDeps {
-  sentinel: SentinelClient;
+  source: SecurityDataSource;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   /**
@@ -89,7 +89,7 @@ export interface RunOptions {
   onResult?: (result: InvestigationResult) => void;
   /** Fired after every artifact write, so a caller can follow a run without polling the disk. */
   onProgress?: (run: InvestigationRun) => void;
-  onEvent?: (alert: SecurityAlertResource, event: AgentEvent) => void;
+  onEvent?: (alert: SecurityAlert, event: AgentEvent) => void;
   signal?: AbortSignal;
   log?: (message: string) => void;
 }
@@ -121,7 +121,7 @@ export async function executeRun(
   const startedAt = new Date().toISOString();
 
   const collected: InvestigationResult[] = [];
-  let alerts: SecurityAlertResource[] = [];
+  let alerts: SecurityAlert[] = [];
   let servedModelId: string | undefined;
   let corpus: RunCorpusIdentity | undefined;
 
@@ -147,8 +147,8 @@ export async function executeRun(
       // alert each remaining slot is; `results` only ever holds finished alerts (PRD-3 §7, §11).
       alertCount: alerts.length,
       plannedAlerts: alerts.map((alert) => ({
-        alertId: alert.properties.systemAlertId,
-        alertTitle: alert.properties.alertDisplayName,
+        alertId: alert.id,
+        alertTitle: alert.title,
       })),
       ...(config.trace ? { traceDir: config.traceDir } : {}),
       ...(options.derivedFrom === undefined ? {} : { derivedFrom: options.derivedFrom }),
@@ -227,7 +227,7 @@ export async function executeRun(
     );
 
     harness = new InvestigationHarness({
-      sentinel: deps.sentinel,
+      source: deps.source,
       webSearch: deps.webSearch,
       webFetch: deps.webFetch,
       model,
@@ -241,14 +241,14 @@ export async function executeRun(
 
     alerts =
       options.alertId === undefined
-        ? await deps.sentinel.listAlerts()
-        : [await deps.sentinel.getAlert(options.alertId)];
+        ? await deps.source.listAlerts()
+        : [await deps.source.getAlert(options.alertId)];
 
     // Which data this run was actually scored against (PRD-6 §6.8). `undefined` on an older Mock
     // Sentinel, and that is the point: the artifact records no corpus rather than a fabricated one,
     // and a bootstrap that re-pins the content-addressed alert ids becomes a visible hash change
     // instead of a silently empty evaluation report.
-    corpus = await deps.sentinel.getCorpus().catch(() => undefined);
+    corpus = await deps.source.getCorpus().catch(() => undefined);
   } catch (error) {
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not
@@ -290,10 +290,10 @@ export async function executeRun(
     },
     ...(config.trace
       ? {
-          createEventSink: (alert: SecurityAlertResource) => {
+          createEventSink: (alert: SecurityAlert) => {
             const tracer = createTracer({
               runId,
-              alertId: alert.properties.systemAlertId,
+              alertId: alert.id,
               dir: config.traceDir,
               // Narration goes wherever the caller's `log` goes. The CLI sends it to stdout; a
               // caller sharing a terminal with a renderer must not have it written underneath.
@@ -312,7 +312,7 @@ export async function executeRun(
       : options.onEvent === undefined
         ? {}
         : {
-            createEventSink: (alert: SecurityAlertResource) => {
+            createEventSink: (alert: SecurityAlert) => {
               const forward = options.onEvent;
               if (forward === undefined) return undefined;
               return (event: AgentEvent): void => forward(alert, event);

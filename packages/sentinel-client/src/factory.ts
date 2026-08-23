@@ -9,7 +9,11 @@ import {
 } from "@azure/identity";
 
 import { AzureSentinelClient, azureWorkspaceUrl } from "./azure.ts";
-import { SentinelApiClient, type SentinelApiClientOptions, type SentinelClient } from "./client.ts";
+import {
+  SentinelApiClient,
+  type SecurityDataSource,
+  type SentinelApiClientOptions,
+} from "./client.ts";
 
 export type AzureAuthenticationConfig =
   | {
@@ -114,7 +118,7 @@ export function assertAzureArtifactDirectories(
   }
 }
 
-export function createSentinelClient(config: SentinelClientConfig): SentinelClient {
+export function createSentinelClient(config: SentinelClientConfig): SecurityDataSource {
   return config.connector === "mock"
     ? new SentinelApiClient(config)
     : new AzureSentinelClient({

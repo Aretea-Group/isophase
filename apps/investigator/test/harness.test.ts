@@ -8,7 +8,7 @@ import {
   type Context,
   type Model,
 } from "@earendil-works/pi-ai";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import { InvestigationHarness, type InvestigationMetrics } from "../src/harness.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instructions.ts";
@@ -33,7 +33,7 @@ function createHarness(
   streamFn: ReturnType<typeof fauxProvider>["provider"]["streamSimple"],
   timeoutMs?: number,
 ): InvestigationHarness {
-  const sentinel = {
+  const source = {
     getSchema: async () => ({
       tables: [
         {
@@ -42,10 +42,10 @@ function createHarness(
         },
       ],
     }),
-  } as unknown as SentinelApiClient;
+  } as unknown as SecurityDataSource;
 
   return new InvestigationHarness({
-    sentinel,
+    source,
     webSearch: { search: async () => [] },
     webFetch: {
       fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),

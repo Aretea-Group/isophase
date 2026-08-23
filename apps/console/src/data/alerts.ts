@@ -1,6 +1,6 @@
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 import { SentinelApiError } from "@soc/sentinel-client";
-import type { SentinelClient } from "@soc/sentinel-client";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 import { z } from "zod";
 
 /**
@@ -14,11 +14,11 @@ import { z } from "zod";
 /**
  * Narrowed on purpose, and load-bearing rather than tidy.
  *
- * `SentinelClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole client
+ * `SecurityDataSource` also exposes query and schema access. Handing `data/` the whole source
  * would compile ad-hoc KQL execution into the console from the first increment — which PRD-3 §14
  * excludes by name, and which this PRD does not reopen. The queue needs two reads and gets two.
  */
-export type AlertReader = Pick<SentinelClient, "listAlerts" | "getAlert">;
+export type AlertReader = Pick<SecurityDataSource, "listAlerts" | "getAlert">;
 
 /** One entry of the generated ids-only scenario map (PRD-5 §7). */
 const BenchmarkMapEntry = z.object({
@@ -38,7 +38,7 @@ export interface QueueAlert {
   /** Present when ground truth exists for this alert. Purely a label; it carries no verdict. */
   scenarioId?: string;
   /** Kept whole so pane [4] can render the alert's own facts without a second fetch. */
-  resource: SecurityAlertResource;
+  resource: SecurityAlert;
 }
 
 export interface AlertsSnapshot {
@@ -91,18 +91,17 @@ export async function readBenchmarkMap(path: string): Promise<Map<string, string
   }
 }
 
-function toQueueAlert(resource: SecurityAlertResource, scenarios: Map<string, string>): QueueAlert {
-  const properties = resource.properties;
-  const scenarioId = scenarios.get(properties.systemAlertId);
+function toQueueAlert(resource: SecurityAlert, scenarios: Map<string, string>): QueueAlert {
+  const scenarioId = scenarios.get(resource.id);
   return {
-    alertId: properties.systemAlertId,
-    title: properties.alertDisplayName,
-    severity: properties.severity,
-    vendorStatus: properties.status,
-    startTimeUtc: properties.startTimeUtc,
-    ...(properties.compromisedEntity === undefined
+    alertId: resource.id,
+    title: resource.title,
+    severity: resource.severity ?? "Unknown",
+    vendorStatus: resource.status ?? "Unknown",
+    startTimeUtc: resource.startTimeUtc ?? resource.timeGenerated ?? "",
+    ...(resource.compromisedEntity === undefined
       ? {}
-      : { compromisedEntity: properties.compromisedEntity }),
+      : { compromisedEntity: resource.compromisedEntity }),
     ...(scenarioId === undefined ? {} : { scenarioId }),
     resource,
   };

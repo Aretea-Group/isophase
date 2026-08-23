@@ -7,14 +7,14 @@ import {
   ConfidenceLevel,
   QueryResponse,
   QueryTable,
-  SchemaResponse,
+  SecurityAlert,
+  SecuritySchema,
   SecurityAlertResource,
   type CorpusIdentity,
-  type SecurityAlertResource as SecurityAlert,
 } from "@soc/contracts";
 import { z } from "zod";
 
-import type { SentinelClient } from "./client.ts";
+import type { SecurityDataSource } from "./client.ts";
 import { SentinelApiError, type SentinelApiErrorCode } from "./errors.ts";
 
 const LOGS_ENDPOINT = "https://api.loganalytics.azure.com";
@@ -235,7 +235,7 @@ function projectAlert(
     return tactic.success ? [tactic.data] : [];
   });
 
-  return SecurityAlertResource.parse({
+  const resource = SecurityAlertResource.parse({
     id: `${workspaceResourceId}/providers/Microsoft.SecurityInsights/Entities/${systemAlertId}`,
     name: systemAlertId,
     type: "Microsoft.SecurityInsights/Entities",
@@ -270,6 +270,25 @@ function projectAlert(
       entities: entities(row["Entities"]),
     },
   });
+
+  return SecurityAlert.parse({
+    id: resource.properties.systemAlertId,
+    title: resource.properties.alertDisplayName,
+    description: resource.properties.description,
+    severity: resource.properties.severity,
+    status: resource.properties.status,
+    alertType: resource.properties.alertType,
+    startTimeUtc: resource.properties.startTimeUtc,
+    endTimeUtc: resource.properties.endTimeUtc,
+    timeGenerated: resource.properties.timeGenerated,
+    tactics: resource.properties.tactics,
+    techniques: resource.properties.techniques,
+    ...(resource.properties.compromisedEntity === undefined
+      ? {}
+      : { compromisedEntity: resource.properties.compromisedEntity }),
+    entities: resource.properties.entities,
+    native: row,
+  });
 }
 
 function namedRows(table: z.infer<typeof QueryTable>): Record<string, unknown>[] {
@@ -278,7 +297,7 @@ function namedRows(table: z.infer<typeof QueryTable>): Record<string, unknown>[]
   );
 }
 
-export class AzureSentinelClient implements SentinelClient {
+export class AzureSentinelClient implements SecurityDataSource {
   readonly #credential: TokenCredential;
   readonly #workspaceId: string;
   readonly #timeoutMs: number;
@@ -334,11 +353,10 @@ export class AzureSentinelClient implements SentinelClient {
     return projectAlert(row, this.#workspace(metadata).resourceId);
   }
 
-  async getSchema(): Promise<SchemaResponse> {
+  async getSchema(): Promise<SecuritySchema> {
     const metadata = await this.#getMetadata();
-    const workspace = this.#workspace(metadata);
-    return SchemaResponse.parse({
-      database: workspace.name,
+    this.#workspace(metadata);
+    return SecuritySchema.parse({
       tables: metadata.tables.map((table) => ({
         name: table.name,
         columns: table.columns.map((column) => ({ name: column.name, type: column.type })),
@@ -346,8 +364,8 @@ export class AzureSentinelClient implements SentinelClient {
     });
   }
 
-  async query(kql: string, timespan?: string): Promise<QueryResponse> {
-    if (isControlCommand(kql)) {
+  async query(query: string, timespan?: string): Promise<QueryResponse> {
+    if (isControlCommand(query)) {
       throw new SentinelApiError(
         "query_error",
         400,
@@ -357,8 +375,8 @@ export class AzureSentinelClient implements SentinelClient {
 
     const body =
       timespan === undefined
-        ? { query: `${kql}\n| take 501` }
-        : { query: `${kql}\n| take 501`, timespan };
+        ? { query: `${query}\n| take 501` }
+        : { query: `${query}\n| take 501`, timespan };
     const payload = await this.#authenticatedRequest(
       "POST",
       `${azureWorkspaceUrl(this.#workspaceId)}/query`,

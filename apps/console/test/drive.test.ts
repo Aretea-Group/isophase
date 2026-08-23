@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createTestRenderer } from "@opentui/core/testing";
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 import type {
   ControlEvent,
   InvestigationControl,
@@ -26,34 +26,26 @@ import { COMPOSE_TAB_STOP_PROPAGATION_EXCEPTIONS, runApp } from "../src/ui/app.t
 const ALERT_ID = "aaaaaaaa-0000-0000-0000-000000000001";
 const ALERT_TITLE = "Brute force against SOC-FW-RDP";
 
-function alertResource(): SecurityAlertResource {
+function alertResource(): SecurityAlert {
   return {
-    id: `/x/${ALERT_ID}`,
-    name: ALERT_ID,
-    type: "Microsoft.SecurityInsights/Entities",
-    kind: "SecurityAlert",
-    properties: {
-      systemAlertId: ALERT_ID,
-      alertDisplayName: ALERT_TITLE,
-      description: "d",
-      severity: "High",
-      status: "New",
-      startTimeUtc: "2026-08-01T00:00:00.000Z",
-      endTimeUtc: "2026-08-01T00:10:00.000Z",
-      timeGenerated: "2026-08-01T00:10:00.000Z",
-      vendorName: "Microsoft",
-      productName: "Azure Sentinel",
-      alertType: "Test",
-      tactics: ["CredentialAccess", "Persistence"],
-      techniques: ["T1110", "T1098"],
-      entities: [
-        { type: "host", hostName: "server-01" },
-        { type: "account", name: "analyst@example.test" },
-        { type: "ip", address: "192.0.2.10" },
-      ],
-      additionalData: { source: "integration-test", action: "allowed" },
-    },
-  } as unknown as SecurityAlertResource;
+    id: ALERT_ID,
+    title: ALERT_TITLE,
+    description: "d",
+    severity: "High",
+    status: "New",
+    startTimeUtc: "2026-08-01T00:00:00.000Z",
+    endTimeUtc: "2026-08-01T00:10:00.000Z",
+    timeGenerated: "2026-08-01T00:10:00.000Z",
+    alertType: "Test",
+    tactics: ["CredentialAccess", "Persistence"],
+    techniques: ["T1110", "T1098"],
+    entities: [
+      { type: "host", hostName: "server-01" },
+      { type: "account", name: "analyst@example.test" },
+      { type: "ip", address: "192.0.2.10" },
+    ],
+    native: { source: "integration-test", action: "allowed" },
+  };
 }
 
 /** Records what the console asked for, and lets a test push events back. */

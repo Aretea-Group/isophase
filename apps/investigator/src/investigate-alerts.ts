@@ -1,17 +1,17 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 
 import type { AlertContext, InvestigationResult } from "./contracts/run.ts";
 import type { InvestigationHarness, InvestigationMetrics } from "./harness.ts";
 
 export interface InvestigateAlertsOptions {
   harness: Pick<InvestigationHarness, "investigate">;
-  alerts: SecurityAlertResource[];
+  alerts: SecurityAlert[];
   log?: (message: string) => void;
   /** Called after each alert so a long run can be flushed if it is interrupted. */
   onResult?: (result: InvestigationResult) => void;
   /** Build a per-alert Pi event observer, when tracing is enabled. */
-  createEventSink?: (alert: SecurityAlertResource) => ((event: AgentEvent) => void) | undefined;
+  createEventSink?: (alert: SecurityAlert) => ((event: AgentEvent) => void) | undefined;
   /**
    * Stop the run (PRD-5 §6).
    *
@@ -28,7 +28,7 @@ export interface InvestigateAlertsOptions {
    * not per-result — `servedModelId` is identical across a run and belongs in `provenance`, not
    * repeated on every result, where it would be a string the artifact grows by alert count.
    */
-  onMetrics?: (alert: SecurityAlertResource, metrics: InvestigationMetrics) => void;
+  onMetrics?: (alert: SecurityAlert, metrics: InvestigationMetrics) => void;
 }
 
 /**
@@ -38,19 +38,18 @@ export interface InvestigateAlertsOptions {
  * run that failed on a High-severity alert is not the same finding as one that failed on an
  * informational one.
  */
-function alertContext(alert: SecurityAlertResource): AlertContext {
-  const properties = alert.properties;
+function alertContext(alert: SecurityAlert): AlertContext {
   return {
-    severity: properties.severity,
-    startTimeUtc: properties.startTimeUtc,
-    endTimeUtc: properties.endTimeUtc,
-    timeGenerated: properties.timeGenerated,
-    tactics: properties.tactics,
-    techniques: properties.techniques,
-    alertType: properties.alertType,
-    ...(properties.compromisedEntity === undefined
+    ...(alert.severity === undefined ? {} : { severity: alert.severity }),
+    ...(alert.startTimeUtc === undefined ? {} : { startTimeUtc: alert.startTimeUtc }),
+    ...(alert.endTimeUtc === undefined ? {} : { endTimeUtc: alert.endTimeUtc }),
+    ...(alert.timeGenerated === undefined ? {} : { timeGenerated: alert.timeGenerated }),
+    tactics: alert.tactics,
+    techniques: alert.techniques,
+    ...(alert.alertType === undefined ? {} : { alertType: alert.alertType }),
+    ...(alert.compromisedEntity === undefined
       ? {}
-      : { compromisedEntity: properties.compromisedEntity }),
+      : { compromisedEntity: alert.compromisedEntity }),
   };
 }
 
@@ -94,10 +93,10 @@ export async function investigateAlerts(
       log(`[investigator] cancelled — ${alerts.length - index} alert(s) not investigated.`);
       break;
     }
-    const alertId = alert.properties.systemAlertId;
+    const alertId = alert.id;
     const position = `${index + 1}/${alerts.length}`;
     const started = new Date();
-    log(`[investigator] ${position} ${alertId} — ${alert.properties.alertDisplayName}`);
+    log(`[investigator] ${position} ${alertId} — ${alert.title}`);
 
     // Captured into a local *before* the try, and spread into both branches below. The harness
     // fires `onMetrics` from the `finally` around `agent.prompt()`, so a run that times out having
@@ -121,7 +120,7 @@ export async function investigateAlerts(
       const completed = new Date();
       result = {
         alertId,
-        alertTitle: alert.properties.alertDisplayName,
+        alertTitle: alert.title,
         alert: alertContext(alert),
         status: "completed",
         startedAt: started.toISOString(),
@@ -140,7 +139,7 @@ export async function investigateAlerts(
       const described = describe(error);
       result = {
         alertId,
-        alertTitle: alert.properties.alertDisplayName,
+        alertTitle: alert.title,
         alert: alertContext(alert),
         status: "failed",
         startedAt: started.toISOString(),

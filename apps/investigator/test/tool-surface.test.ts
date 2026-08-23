@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "../src/clients/brave.ts";
 import type { WebFetchClient } from "../src/clients/fetch.ts";
@@ -22,7 +22,7 @@ describe("the advertised tool surface matches the built one (PRD-5 §8)", () => 
   test("names and order are identical to what the factory returns", () => {
     const tools = createInvestigationTools({
       tables: new Map(),
-      sentinel: {} as SentinelApiClient,
+      source: {} as SecurityDataSource,
       webSearch: {} as WebSearchClient,
       webFetch: {} as WebFetchClient,
       onSubmit: () => undefined,

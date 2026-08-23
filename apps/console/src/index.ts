@@ -84,7 +84,7 @@ function buildControl(
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     }),
-    deps: { sentinel: createSentinelClient(sentinelConfig) },
+    deps: { source: createSentinelClient(sentinelConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
   });

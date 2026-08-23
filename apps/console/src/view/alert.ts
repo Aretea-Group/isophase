@@ -1,3 +1,5 @@
+import type { SecurityAlert } from "@soc/contracts";
+
 import type { RunResult } from "../data/runs.ts";
 import {
   incidentTime,
@@ -119,36 +121,38 @@ function scalarPairs(value: unknown): [string, string][] {
 /**
  * Facts for an alert that has no run yet (PRD-5 §7).
  *
- * `alertFactsFromResult` starts from what a run recorded; this starts from the alert itself, which
- * is what the queue has. Everything beyond the id and title comes out of `enrichWithAlertJson`, so
- * the two paths cannot describe the same alert differently — and what reaches the screen is the
- * vendor's own payload, parsed, rather than a summary this layer invented.
+ * `alertFactsFromResult` starts from what a run recorded; this starts from the normalized alert the
+ * queue has. Connector-native evidence only enriches fields that are not part of that shared
+ * contract, such as remediation steps and rule-specific additional data.
  */
-export function alertFactsFromAlert(alertJson: unknown): AlertFacts {
-  const properties = asRecord(asRecord(alertJson)?.["properties"]) ?? {};
-  const alertId =
-    typeof properties["systemAlertId"] === "string" ? properties["systemAlertId"] : "";
-  const title =
-    typeof properties["alertDisplayName"] === "string" ? properties["alertDisplayName"] : "";
-
+export function alertFactsFromAlert(alert: SecurityAlert): AlertFacts {
   const base: AlertFacts = {
-    alertId,
-    title,
-    severity: severityOf(undefined),
-    severityTag: severityTag(undefined),
-    window: "—",
-    detected: "—",
-    hasTime: false,
-    tactics: [],
-    techniques: [],
-    entities: [],
+    alertId: alert.id,
+    title: alert.title,
+    severity: severityOf(alert.severity),
+    severityTag: severityTag(alert.severity),
+    window: incidentWindow(alert.startTimeUtc, alert.endTimeUtc),
+    detected: incidentTime(alert.timeGenerated),
+    hasTime: alert.startTimeUtc !== undefined || alert.timeGenerated !== undefined,
+    tactics: alert.tactics,
+    techniques: alert.techniques,
+    ...(alert.compromisedEntity === undefined
+      ? {}
+      : { compromisedEntity: alert.compromisedEntity }),
+    ...(alert.alertType === undefined ? {} : { alertType: alert.alertType }),
+    description: alert.description,
+    entities: alert.entities
+      .map(asRecord)
+      .filter((entity): entity is Record<string, unknown> => entity !== undefined)
+      .map((entity) => ({
+        type: typeof entity["type"] === "string" ? entity["type"] : "unknown",
+        label: entityLabel(entity),
+      })),
     remediationSteps: [],
     additionalData: [],
-    // "none" so `enrichWithAlertJson` fills severity from the payload — it leaves it alone when a
-    // run already recorded one, which is right for the other path and wrong for this one.
-    source: "none",
+    source: "transcript",
   };
-  return enrichWithAlertJson(base, alertJson);
+  return enrichWithAlertJson(base, alert.native);
 }
 
 export function enrichWithAlertJson(facts: AlertFacts, alertJson: unknown): AlertFacts {

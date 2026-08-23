@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import type { QueryResponse } from "@soc/contracts";
-import type { SentinelClient } from "@soc/sentinel-client";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 const Params = Type.Object(
   {
@@ -90,13 +90,13 @@ export const QUERY_SECURITY_DATA = {
 } as const;
 
 export function createQuerySecurityDataTool(
-  sentinel: SentinelClient,
+  source: SecurityDataSource,
   maxChars: number = DEFAULT_RESULT_MAX_CHARS,
 ): AgentTool<typeof Params> {
   return {
     ...QUERY_SECURITY_DATA,
     execute: async (_toolCallId, params) => {
-      const result = await sentinel.query(params.kql);
+      const result = await source.query(params.kql);
       const fitted = fitResultToBudget(result, maxChars);
 
       return {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SecurityAlert } from "@soc/contracts";
+import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import type { InvestigationRun } from "../src/contracts/run.ts";
 import { InvestigationAbortedError } from "../src/errors.ts";
@@ -32,28 +32,22 @@ const CONFIG: InvestigatorConfig = {
   traceStream: false,
 };
 
-function alert(id: string, title = "Suspicious sign-in"): SecurityAlertResource {
+function alert(id: string, title = "Suspicious sign-in"): SecurityAlert {
   return {
-    id: `/subscriptions/x/providers/Microsoft.SecurityInsights/alerts/${id}`,
-    name: id,
-    type: "Microsoft.SecurityInsights/Entities",
-    properties: {
-      systemAlertId: id,
-      alertDisplayName: title,
-      description: "d",
-      severity: "High",
-      status: "New",
-      startTimeUtc: "2026-08-01T00:00:00.000Z",
-      endTimeUtc: "2026-08-01T00:10:00.000Z",
-      timeGenerated: "2026-08-01T00:10:00.000Z",
-      vendorName: "Microsoft",
-      productName: "Azure Sentinel",
-      alertType: "Test",
-      tactics: [],
-      techniques: [],
-      entities: [],
-    } as unknown as SecurityAlertResource["properties"],
-  } as SecurityAlertResource;
+    id,
+    title,
+    description: "d",
+    severity: "High",
+    status: "New",
+    startTimeUtc: "2026-08-01T00:00:00.000Z",
+    endTimeUtc: "2026-08-01T00:10:00.000Z",
+    timeGenerated: "2026-08-01T00:10:00.000Z",
+    alertType: "Test",
+    tactics: [],
+    techniques: [],
+    entities: [],
+    native: { id },
+  };
 }
 
 /** Captures every artifact write instead of touching the filesystem. */
@@ -70,11 +64,11 @@ function recorder(): { writes: InvestigationRun[]; write: NonNullable<Investigat
   };
 }
 
-function sentinelStub(alerts: SecurityAlertResource[]): SentinelApiClient {
+function sourceStub(alerts: SecurityAlert[]): SecurityDataSource {
   return {
     listAlerts: () => Promise.resolve(alerts),
     getAlert: (id: string) => {
-      const found = alerts.find((a) => a.properties.systemAlertId === id);
+      const found = alerts.find((candidate) => candidate.id === id);
       if (!found) throw new Error(`Alert "${id}" was not found.`);
       return Promise.resolve(found);
     },
@@ -82,14 +76,14 @@ function sentinelStub(alerts: SecurityAlertResource[]): SentinelApiClient {
     // Degrades to `undefined` on a Mock Sentinel with no corpus manifest, which is the shape a
     // pre-PRD-6 service presents and the one `executeRun` must not break on.
     getCorpus: () => Promise.resolve(undefined),
-  } as unknown as SentinelApiClient;
+  } as unknown as SecurityDataSource;
 }
 
 describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
   test("an unknown model writes a failed artifact under the supplied runId, then rethrows", async () => {
     const { writes, write } = recorder();
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([alert("a1")]),
+      source: sourceStub([alert("a1")]),
       webSearch: { search: () => Promise.resolve([]) } as unknown as InvestigatorDeps["webSearch"],
       webFetch: { fetch: () => Promise.resolve("") } as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -113,9 +107,9 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
   test("an unreachable Sentinel is recorded the same way", async () => {
     const { writes, write } = recorder();
     const deps: InvestigatorDeps = {
-      sentinel: {
+      source: {
         listAlerts: () => Promise.reject(new Error("Sentinel is unreachable at localhost:8787")),
-      } as unknown as SentinelApiClient,
+      } as unknown as SecurityDataSource,
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -130,7 +124,7 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
 
   test("a write failure during startup does not mask the real error", async () => {
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([]),
+      source: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write: () => Promise.reject(new Error("disk full")),
@@ -147,7 +141,7 @@ describe("executeRun — cancellation (PRD-5 §6)", () => {
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([alert("a1"), alert("a2")]),
+      source: sourceStub([alert("a1"), alert("a2")]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -170,7 +164,7 @@ describe("executeRun — cancellation (PRD-5 §6)", () => {
     const controller = new AbortController();
     controller.abort();
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([alert("a1")]),
+      source: sourceStub([alert("a1")]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -194,7 +188,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     const seen: { provider: string; id: string }[] = [];
 
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([]),
+      source: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -229,7 +223,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     const llamaServerAuth = { bearerToken: "test-bearer-token" };
     const seen: unknown[] = [];
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([]),
+      source: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -271,7 +265,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([]),
+      source: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -297,7 +291,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      sentinel: sentinelStub([]),
+      source: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,

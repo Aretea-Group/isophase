@@ -102,7 +102,6 @@ describe("AzureSentinelClient authentication and metadata", () => {
     const [first, second] = await Promise.all([client.getSchema(), client.getSchema()]);
     expect(first).toEqual(second);
     expect(first).toEqual({
-      database: "sentinel-prod",
       tables: metadata.tables,
     });
     expect(await client.getCorpus()).toBeUndefined();
@@ -435,7 +434,7 @@ describe("AzureSentinelClient alerts", () => {
 
     const alerts = await new AzureSentinelClient(azureOptions()).listAlerts(2);
 
-    expect(alerts.map((alert) => alert.name)).toEqual(["newest", "older"]);
+    expect(alerts.map((alert) => alert.id)).toEqual(["newest", "older"]);
     const queryRequest = requests.find((request) => request.url.endsWith("/query"));
     const queryBody = JSON.parse(String(queryRequest?.init?.body)) as { query: string };
     expect(queryBody.query).toContain("order by TimeGenerated desc");
@@ -452,18 +451,18 @@ describe("AzureSentinelClient alerts", () => {
 
     const alert = await client.getAlert(requestedId);
 
-    expect(alert.id).toBe(
-      `${workspace.resourceId}/providers/Microsoft.SecurityInsights/Entities/${requestedId}`,
-    );
-    expect(alert.properties).toMatchObject({
-      systemAlertId: requestedId,
-      alertDisplayName: "Suspicious sign-in",
+    expect(alert).toMatchObject({
+      id: requestedId,
+      title: "Suspicious sign-in",
       severity: "High",
       tactics: ["InitialAccess", "CredentialAccess"],
       techniques: ["T1078", "T1078.004"],
-      remediationSteps: ["Reset password"],
-      additionalData: { source: "test" },
       entities: [{ $id: "1", type: "account", name: "alice", ntDomain: "CONTOSO" }],
+    });
+    expect(alert.native).toMatchObject({
+      SystemAlertId: requestedId,
+      RemediationSteps: '["Reset password"]',
+      ExtendedProperties: '{"source":"test"}',
     });
     const queryBody = JSON.parse(String(requests[0]?.init?.body)) as { query: string };
     expect(queryBody.query).toContain('where SystemAlertId == "alert\\"with\\\\slashes"');

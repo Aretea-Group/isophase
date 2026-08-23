@@ -135,11 +135,11 @@ describe("console write isolation", () => {
   });
 
   test("the alert reader is narrowed to two methods", () => {
-    // `SentinelClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole
-    // client would compile ad-hoc KQL into the console, which PRD-3 §14 excludes by name.
+    // `SecurityDataSource` also exposes query and schema access. Handing `data/` the whole source
+    // would compile ad-hoc security queries into the console, which PRD-3 §14 excludes by name.
     const alerts = files.find((file) => file.path.includes(NETWORK_SEAM));
     expect(alerts).toBeDefined();
-    expect(alerts?.raw).toContain('Pick<SentinelClient, "listAlerts" | "getAlert">');
+    expect(alerts?.raw).toContain('Pick<SecurityDataSource, "listAlerts" | "getAlert">');
     expect(alerts?.code).not.toContain(".query(");
   });
 });

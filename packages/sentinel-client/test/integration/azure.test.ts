@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { QueryResponse, SchemaResponse, SecurityAlertResource } from "@soc/contracts";
+import { QueryResponse, SecurityAlert, SecuritySchema } from "@soc/contracts";
 
 import {
   SentinelApiError,
@@ -26,17 +26,15 @@ describe.skipIf(!enabled)("AzureSentinelClient against a real workspace", () => 
       }),
     );
 
-    const schema = SchemaResponse.parse(await client.getSchema());
+    const schema = SecuritySchema.parse(await client.getSchema());
     expect(schema.tables.some((table) => table.name === "SecurityAlert")).toBeTrue();
 
     QueryResponse.parse(await client.query("SecurityAlert | count"));
 
     const alerts = await client.listAlerts(1);
     expect(alerts).toHaveLength(1);
-    const first = SecurityAlertResource.parse(alerts[0]);
-    expect(
-      SecurityAlertResource.parse(await client.getAlert(first.properties.systemAlertId)),
-    ).toEqual(first);
+    const first = SecurityAlert.parse(alerts[0]);
+    expect(SecurityAlert.parse(await client.getAlert(first.id))).toEqual(first);
 
     const error = await client
       .query("SecurityAlert | project ColumnThatDoesNotExistForConnectorSmokeTest")

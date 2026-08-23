@@ -48,7 +48,7 @@ describe.skipIf(!reachable)("the alert queue against a live Mock Sentinel", () =
         traceDir: env.INVESTIGATOR_TRACE_DIR,
         traceStream: false,
       },
-      deps: { sentinel: new SentinelApiClient({ baseUrl: BASE_URL }) },
+      deps: { source: new SentinelApiClient({ baseUrl: BASE_URL }) },
     });
 
     const alerts = await control.listAlerts();

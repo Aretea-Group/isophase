@@ -25,8 +25,8 @@ describe.skipIf(!reachable)("SentinelApiClient against a live Mock Sentinel", ()
     const alerts = await client.listAlerts();
 
     expect(alerts.length).toBeGreaterThan(100);
-    expect(alerts[0]?.kind).toBe("SecurityAlert");
-    expect(alerts[0]?.properties.systemAlertId).toBeTruthy();
+    expect(alerts[0]?.id).toBeTruthy();
+    expect(alerts[0]?.native).toMatchObject({ kind: "SecurityAlert" });
   });
 
   test("listAlerts bounds the list with $top", async () => {
@@ -35,9 +35,9 @@ describe.skipIf(!reachable)("SentinelApiClient against a live Mock Sentinel", ()
 
   test("getAlert round-trips a systemAlertId from the list", async () => {
     const [first] = await client.listAlerts(1);
-    const id = first!.properties.systemAlertId;
+    const id = first!.id;
 
-    expect((await client.getAlert(id)).properties.systemAlertId).toBe(id);
+    expect((await client.getAlert(id)).id).toBe(id);
   });
 
   test("an unknown alert id surfaces as a not_found SentinelApiError", async () => {

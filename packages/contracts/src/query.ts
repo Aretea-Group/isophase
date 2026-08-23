@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Contract for `POST /query`.
+ * Tabular result contract shared by source clients and `POST /query`.
  *
  * The response follows the Azure Monitor / Log Analytics query API shape —
  * `{ tables: [{ name, columns: [{ name, type }], rows }] }` — because that is
@@ -24,7 +24,7 @@ export type QueryRequest = z.infer<typeof QueryRequest>;
 
 export const QueryColumn = z.object({
   name: z.string(),
-  /** Kusto scalar type: `string`, `datetime`, `int`, `dynamic`, … */
+  /** Engine-native scalar type string, preserved without a cross-engine taxonomy. */
   type: z.string(),
 });
 export type QueryColumn = z.infer<typeof QueryColumn>;

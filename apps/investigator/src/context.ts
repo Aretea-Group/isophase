@@ -1,4 +1,4 @@
-import type { SecurityAlertResource } from "@soc/contracts";
+import type { SecurityAlert } from "@soc/contracts";
 
 /**
  * Build the first user message for an investigation (PRD-2 §7).
@@ -12,7 +12,7 @@ import type { SecurityAlertResource } from "@soc/contracts";
  * run-specific data never contaminates the replaceable part (PRD-2 §8).
  */
 export function buildInitialContext(
-  alert: SecurityAlertResource,
+  alert: SecurityAlert,
   tableNames: string[],
   analystContext?: string,
 ): string {
