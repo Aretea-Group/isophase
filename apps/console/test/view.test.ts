@@ -308,9 +308,11 @@ describe("toActivityView", () => {
     expect(kql.tables).toEqual([{ name: "SecurityEvent", count: 1 }]);
     expect(kql.rows.find((row) => row.kind === "call")?.summary).toBe("SecurityEvent");
 
-    const other = toActivityView(index, "sql");
-    expect(other.tables).toEqual([]);
-    expect(other.rows.find((row) => row.kind === "call")?.summary).toBe("SecurityEvent | take 1");
+    const fixtureql = toActivityView(index, "fixtureql");
+    expect(fixtureql.tables).toEqual([]);
+    expect(fixtureql.rows.find((row) => row.kind === "call")?.summary).toBe(
+      "SecurityEvent | take 1",
+    );
   });
 });
 

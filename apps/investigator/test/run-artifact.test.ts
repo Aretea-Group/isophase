@@ -61,6 +61,28 @@ describe("InvestigationRun", () => {
     expect(parsed.config?.sentinelBaseUrl).toBeUndefined();
   });
 
+  test("keeps FixtureQL artifact identity distinct from Sentinel KQL", () => {
+    const parseLanguage = (kind: string, queryLanguage: string) =>
+      InvestigationRun.parse({
+        ...base,
+        config: {
+          resultMaxChars: 40_000,
+          source: {
+            kind,
+            connector: "in-memory",
+            target: "fixture-corpus",
+            queryLanguage,
+          },
+          webSearchConfigured: false,
+        },
+      }).config?.source;
+
+    const fixture = parseLanguage("fixture-siem", "fixtureql");
+    const sentinel = parseLanguage("microsoft-sentinel", "kql");
+    expect(fixture?.queryLanguage).toBe("fixtureql");
+    expect(fixture).not.toEqual(sentinel);
+  });
+
   test("records which alerts the sweep set out to investigate, not only how many", () => {
     // Without the ids a reader cannot name — or find the transcript of — the alert being
     // investigated right now, because `results` holds only alerts that have finished.

@@ -12,7 +12,11 @@ import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import { InvestigationHarness, type InvestigationMetrics } from "../src/harness.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instructions.ts";
-import { TEST_QUERY_GUIDANCE, testSourceBundle } from "./fixtures/source.ts";
+import {
+  createFixtureSourceBundle,
+  TEST_QUERY_GUIDANCE,
+  testSourceBundle,
+} from "./fixtures/source.ts";
 
 const SUMMARY = {
   tpPercent: 90,
@@ -104,10 +108,10 @@ describe("InvestigationHarness completion", () => {
     ]);
     expect(contexts[0]?.systemPrompt).not.toContain(TEST_QUERY_GUIDANCE);
     expect(JSON.stringify(contexts[0]?.messages)).toContain(
-      "Investigate the following test-source alert.",
+      "Investigate the following Fixture SIEM alert.",
     );
     expect(JSON.stringify(contexts[0]?.messages)).toContain(
-      "These are the TestQL tables available for this investigation.",
+      "These are the FixtureQL tables available for this investigation.",
     );
   });
 
@@ -195,6 +199,77 @@ describe("InvestigationHarness completion", () => {
     expect(secondContext?.messages.at(-1)).toMatchObject({
       role: "user",
       content: SUBMISSION_DEADLINE_REMINDER,
+    });
+  });
+});
+
+describe("FixtureQL source contract", () => {
+  test("investigates a native fixture alert through schema, query, guidance, and submission", async () => {
+    const fixture = createFixtureSourceBundle();
+    const faux = fauxProvider();
+    const contexts: Context[] = [];
+    const query =
+      'MATCH IdentitySessions WHERE principal = "casey.admin" RETURN observed_at, principal, device_trust, action';
+    faux.setResponses([
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(
+          fauxToolCall("get_security_schema", { tables: ["IdentitySessions"] }),
+          { stopReason: "toolUse" },
+        );
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(fauxToolCall("query_security_data", { query }), {
+          stopReason: "toolUse",
+        });
+      },
+      (context) => {
+        contexts.push(context);
+        return fauxAssistantMessage(fauxToolCall("submit_investigation", SUMMARY), {
+          stopReason: "toolUse",
+        });
+      },
+    ]);
+    let metrics: InvestigationMetrics | undefined;
+    const harness = new InvestigationHarness({
+      source: fixture.bundle,
+      webSearch: { search: async () => [] },
+      webFetch: {
+        fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),
+      },
+      model: faux.getModel() as unknown as Model<Api>,
+      streamFn: faux.provider.streamSimple,
+      instructions: "Test instructions.",
+    });
+
+    const result = await harness.investigate(fixture.source.alert, {
+      onMetrics: (value) => (metrics = value),
+    });
+
+    expect(result).toEqual(SUMMARY);
+    expect(fixture.source.alert.native).toEqual(fixture.source.nativeAlert);
+    expect(fixture.source.alert).toMatchObject({
+      id: "fixture-alert-1",
+      severity: "urgent",
+      compromisedEntity: "casey.admin",
+    });
+    expect(fixture.source.queries).toEqual([query]);
+    expect(contexts.map((context) => context.systemPrompt)).toEqual([
+      "Test instructions.",
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+    ]);
+    const initialMessages = JSON.stringify(contexts[0]?.messages);
+    expect(initialMessages).toContain("signalKey");
+    expect(initialMessages).toContain("fixture-alert-1");
+    expect(initialMessages).toContain("IdentitySessions");
+    expect(JSON.stringify(contexts[1]?.messages)).toContain("IdentitySessions(observed_at:instant");
+    expect(JSON.stringify(contexts[2]?.messages)).toContain("console_login");
+    expect(metrics?.toolCalls).toMatchObject({
+      get_security_schema: 1,
+      query_security_data: 1,
+      submit_investigation: 1,
     });
   });
 });

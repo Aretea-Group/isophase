@@ -390,7 +390,7 @@ describe("evaluate — the condition key", () => {
       { ...DEFAULT_SOURCE, kind: "other-source" },
       { ...DEFAULT_SOURCE, connector: "azure-monitor-logs" },
       { ...DEFAULT_SOURCE, target: "https://workspace.example" },
-      { ...DEFAULT_SOURCE, queryLanguage: "sql" },
+      { ...DEFAULT_SOURCE, queryLanguage: "fixtureql" },
     ].map((source, index) =>
       conditionOf(JSON.parse(artifact({ runId: `variant-${index}`, source }))),
     );

@@ -103,10 +103,10 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
     // It still records what it was asked to do, so the failure is attributable.
     expect(written?.model).toEqual({ provider: "openai", id: "nope" });
     expect(written?.config?.source).toEqual({
-      kind: "test-source",
+      kind: "fixture-siem",
       connector: "in-memory",
-      target: "test-fixture",
-      queryLanguage: "testql",
+      target: "fixture-corpus",
+      queryLanguage: "fixtureql",
     });
     expect(written?.config?.sentinelBaseUrl).toBeUndefined();
   });

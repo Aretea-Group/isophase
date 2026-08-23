@@ -44,11 +44,11 @@ describe("query_security_data selected profile", () => {
       },
     });
 
-    const result = await tool.execute("call-1", { query: "FROM native_events" });
-    expect(received).toEqual(["FROM native_events"]);
+    const result = await tool.execute("call-1", { query: "MATCH NativeEvents RETURN opaque" });
+    expect(received).toEqual(["MATCH NativeEvents RETURN opaque"]);
     expect(result.content).toEqual([{ type: "text", text: JSON.stringify(RESULT) }]);
     expect(result.details).toMatchObject({
-      query: "FROM native_events",
+      query: "MATCH NativeEvents RETURN opaque",
       keptRows: 1,
       totalRows: 1,
     });

@@ -9,6 +9,7 @@ import {
   INSTRUCTIONS_LABEL,
   provenanceForProfile,
 } from "../src/provenance.ts";
+import { createSentinelSourceBundle } from "../src/source-profile.ts";
 import { INVESTIGATION_TOOL_NAMES, toolDescriptors } from "../src/tools/index.ts";
 import { TEST_SOURCE_PROFILE } from "./fixtures/source.ts";
 
@@ -90,6 +91,17 @@ describe("promptHash", () => {
         queryLanguage: "other-language",
       }),
     ).toBe(base);
+  });
+
+  test("distinguishes FixtureQL prompt behavior from the Sentinel KQL profile", () => {
+    const sentinel = createSentinelSourceBundle({
+      connector: "mock",
+      baseUrl: "http://localhost:8787",
+    }).profile;
+
+    expect(TEST_SOURCE_PROFILE.queryLanguage).toBe("fixtureql");
+    expect(sentinel.queryLanguage).toBe("kql");
+    expect(computePromptHash(TEST_SOURCE_PROFILE)).not.toBe(computePromptHash(sentinel));
   });
 });
 
