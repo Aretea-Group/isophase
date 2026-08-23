@@ -1,15 +1,9 @@
 import type { TokenCredential } from "@azure/identity";
 import {
-  AlertEntity,
-  AlertSeverity,
-  AlertStatus,
-  AttackTactic,
-  ConfidenceLevel,
   QueryResponse,
   QueryTable,
   SecurityAlert,
   SecuritySchema,
-  SecurityAlertResource,
   type CorpusIdentity,
 } from "@soc/contracts";
 import { z } from "zod";
@@ -154,30 +148,6 @@ async function boundedErrorText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-function recaseEntity(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(recaseEntity);
-  if (value === null || typeof value !== "object") return value;
-
-  const exceptions: Readonly<Record<string, string>> = {
-    NTDomain: "ntDomain",
-    UPNSuffix: "upnSuffix",
-    OMSAgentID: "omsAgentID",
-    OSFamily: "osFamily",
-    OSVersion: "osVersion",
-  };
-
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, inner]) => {
-      const first = key[0];
-      const recased =
-        key.startsWith("$") || first === undefined
-          ? key
-          : (exceptions[key] ?? first.toLowerCase() + key.slice(1));
-      return [recased, recaseEntity(inner)];
-    }),
-  );
-}
-
 function jsonValue(value: unknown): unknown {
   if (typeof value !== "string") return value;
   if (value.trim() === "") return undefined;
@@ -188,12 +158,12 @@ function jsonValue(value: unknown): unknown {
   }
 }
 
-function entities(value: unknown): z.infer<typeof AlertEntity>[] {
+function entities(value: unknown): SecurityAlert["entities"] {
   const parsed = jsonValue(value);
   if (!Array.isArray(parsed)) return [];
 
   return parsed.flatMap((candidate) => {
-    const entity = AlertEntity.safeParse(recaseEntity(candidate));
+    const entity = z.json().safeParse(candidate);
     return entity.success ? [entity.data] : [];
   });
 }
@@ -201,6 +171,11 @@ function entities(value: unknown): z.infer<typeof AlertEntity>[] {
 function text(row: Readonly<Record<string, unknown>>, column: string): string {
   const value = row[column];
   return value === null || value === undefined ? "" : String(value);
+}
+
+function optionalText(row: Readonly<Record<string, unknown>>, column: string): string | undefined {
+  const value = text(row, column);
+  return value === "" ? undefined : value;
 }
 
 function iso(value: string): string | undefined {
@@ -217,76 +192,32 @@ function stringList(value: unknown): string[] {
     .filter((part) => part !== "");
 }
 
-function projectAlert(
-  row: Readonly<Record<string, unknown>>,
-  workspaceResourceId: string,
-): SecurityAlert {
+function projectAlert(row: Readonly<Record<string, unknown>>): SecurityAlert {
   const systemAlertId = text(row, "SystemAlertId");
-  const timeGenerated = iso(text(row, "TimeGenerated")) ?? new Date(0).toISOString();
-  const confidenceScore = Number(text(row, "ConfidenceScore"));
-  const remediation = z.array(z.string()).safeParse(jsonValue(row["RemediationSteps"]));
-  const extras = z.record(z.string(), z.unknown()).safeParse(jsonValue(row["ExtendedProperties"]));
-
-  const severity = AlertSeverity.safeParse(row["AlertSeverity"]);
-  const status = AlertStatus.safeParse(row["Status"]);
-  const confidence = ConfidenceLevel.safeParse(row["ConfidenceLevel"]);
-  const tactics = stringList(row["Tactics"]).flatMap((value) => {
-    const tactic = AttackTactic.safeParse(value);
-    return tactic.success ? [tactic.data] : [];
-  });
-
-  const resource = SecurityAlertResource.parse({
-    id: `${workspaceResourceId}/providers/Microsoft.SecurityInsights/Entities/${systemAlertId}`,
-    name: systemAlertId,
-    type: "Microsoft.SecurityInsights/Entities",
-    kind: "SecurityAlert",
-    properties: {
-      systemAlertId,
-      alertDisplayName: text(row, "DisplayName") || text(row, "AlertName"),
-      description: text(row, "Description"),
-      severity: severity.success ? severity.data : "Informational",
-      status: status.success ? status.data : "Unknown",
-      alertType: text(row, "AlertType") || "Unknown",
-      vendorOriginalId: text(row, "VendorOriginalId") || undefined,
-      vendorName: text(row, "VendorName") || "Unknown",
-      productName: text(row, "ProductName") || "Unknown",
-      productComponentName: text(row, "ProductComponentName") || undefined,
-      providerName: text(row, "ProviderName") || "Unknown",
-      tactics,
-      techniques: [
-        ...new Set([...stringList(row["Techniques"]), ...stringList(row["SubTechniques"])]),
-      ],
-      startTimeUtc: iso(text(row, "StartTime")) ?? timeGenerated,
-      endTimeUtc: iso(text(row, "EndTime")) ?? timeGenerated,
-      timeGenerated,
-      processingEndTime: iso(text(row, "ProcessingEndTime")) ?? timeGenerated,
-      confidenceLevel: confidence.success ? confidence.data : "Unknown",
-      confidenceScore:
-        Number.isFinite(confidenceScore) && confidenceScore > 0 ? confidenceScore : undefined,
-      compromisedEntity: text(row, "CompromisedEntity") || undefined,
-      remediationSteps: remediation.success ? remediation.data : [],
-      alertLink: text(row, "AlertLink") || undefined,
-      additionalData: extras.success ? extras.data : {},
-      entities: entities(row["Entities"]),
-    },
-  });
+  const severity = optionalText(row, "AlertSeverity");
+  const status = optionalText(row, "Status");
+  const alertType = optionalText(row, "AlertType");
+  const startTimeUtc = iso(text(row, "StartTime"));
+  const endTimeUtc = iso(text(row, "EndTime"));
+  const timeGenerated = iso(text(row, "TimeGenerated"));
+  const compromisedEntity = optionalText(row, "CompromisedEntity");
 
   return SecurityAlert.parse({
-    id: resource.properties.systemAlertId,
-    title: resource.properties.alertDisplayName,
-    description: resource.properties.description,
-    severity: resource.properties.severity,
-    status: resource.properties.status,
-    alertType: resource.properties.alertType,
-    startTimeUtc: resource.properties.startTimeUtc,
-    endTimeUtc: resource.properties.endTimeUtc,
-    timeGenerated: resource.properties.timeGenerated,
-    tactics: resource.properties.tactics,
-    techniques: resource.properties.techniques,
-    ...(resource.properties.compromisedEntity === undefined
-      ? {}
-      : { compromisedEntity: resource.properties.compromisedEntity }),
-    entities: resource.properties.entities,
+    id: systemAlertId,
+    title: text(row, "DisplayName") || text(row, "AlertName"),
+    description: text(row, "Description"),
+    ...(severity === undefined ? {} : { severity }),
+    ...(status === undefined ? {} : { status }),
+    ...(alertType === undefined ? {} : { alertType }),
+    ...(startTimeUtc === undefined ? {} : { startTimeUtc }),
+    ...(endTimeUtc === undefined ? {} : { endTimeUtc }),
+    ...(timeGenerated === undefined ? {} : { timeGenerated }),
+    tactics: stringList(row["Tactics"]),
+    techniques: [
+      ...new Set([...stringList(row["Techniques"]), ...stringList(row["SubTechniques"])]),
+    ],
+    ...(compromisedEntity === undefined ? {} : { compromisedEntity }),
+    entities: entities(row["Entities"]),
     native: row,
   });
 }
@@ -337,7 +268,8 @@ export class AzureSentinelClient implements SecurityDataSource {
     const metadata = await this.#getMetadata();
     const table = result.tables[0];
     if (table === undefined) return [];
-    return namedRows(table).map((row) => projectAlert(row, this.#workspace(metadata).resourceId));
+    this.#workspace(metadata);
+    return namedRows(table).map(projectAlert);
   }
 
   async getAlert(id: string): Promise<SecurityAlert> {
@@ -350,7 +282,8 @@ export class AzureSentinelClient implements SecurityDataSource {
     }
 
     const metadata = await this.#getMetadata();
-    return projectAlert(row, this.#workspace(metadata).resourceId);
+    this.#workspace(metadata);
+    return projectAlert(row);
   }
 
   async getSchema(): Promise<SecuritySchema> {

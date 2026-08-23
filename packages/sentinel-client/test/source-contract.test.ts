@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { TokenCredential } from "@azure/identity";
-import { SecurityAlertResource, type QueryResponse } from "@soc/contracts";
+import { SecurityAlertResource, type QueryResponse, type SecurityAlert } from "@soc/contracts";
+import { z } from "zod";
 
 import {
   AzureSentinelClient,
@@ -41,6 +42,7 @@ const nativeMockAlert = SecurityAlertResource.parse({
     entities: [{ $id: "1", type: "account", name: "alice@example.test" }],
   },
 });
+const nativeMockEvidence = z.json().parse(nativeMockAlert);
 
 const schemaTables = [
   {
@@ -84,22 +86,29 @@ const azureAlertValues: Record<string, unknown> = {
   SystemAlertId: "alert-1",
   TimeGenerated: "2026-08-23T10:02:00.000Z",
   DisplayName: "Suspicious authentication",
-  AlertSeverity: "High",
+  AlertSeverity: "Critical",
   Description: "Authentication from an unusual network",
-  Status: "New",
-  AlertType: "AUTH-1",
+  Status: "Investigating",
+  AlertType: null,
   VendorName: "Microsoft",
   ProductName: "Microsoft Sentinel",
   ProviderName: "Scheduled Alerts",
-  Tactics: "InitialAccess",
+  Tactics: "UnmappedPhase",
   Techniques: "T1078",
   StartTime: "2026-08-23T10:00:00.000Z",
   EndTime: "2026-08-23T10:01:00.000Z",
   ProcessingEndTime: "2026-08-23T10:03:00.000Z",
-  CompromisedEntity: "alice@example.test",
-  Entities: '[{"$id":"1","Type":"account","Name":"alice@example.test"}]',
+  CompromisedEntity: null,
+  Entities: '[{"Kind":"opaque-identity","OpaqueLabel":"alice@example.test"}]',
 };
 const azureAlertRow = azureAlertColumns.map((column) => azureAlertValues[column.name]);
+const azureNativeAlert = z
+  .json()
+  .parse(
+    Object.fromEntries(
+      azureAlertColumns.map((column, index) => [column.name, azureAlertRow[index]]),
+    ),
+  );
 
 interface SourceFixture {
   source: SecurityDataSource;
@@ -108,6 +117,15 @@ interface SourceFixture {
 
 interface SourceCase {
   name: string;
+  expected: {
+    severity: string | undefined;
+    status: string | undefined;
+    alertType: string | undefined;
+    compromisedEntity: string | undefined;
+    tactics: string[];
+    entities: SecurityAlert["entities"];
+    native: SecurityAlert["native"];
+  };
   create(options?: { queryError?: boolean }): SourceFixture;
 }
 
@@ -123,6 +141,15 @@ function installFetch(
 const cases: SourceCase[] = [
   {
     name: "Mock Sentinel REST",
+    expected: {
+      severity: "High",
+      status: "New",
+      alertType: "AUTH-1",
+      compromisedEntity: "alice@example.test",
+      tactics: ["InitialAccess"],
+      entities: [{ $id: "1", type: "account", name: "alice@example.test" }],
+      native: nativeMockEvidence,
+    },
     create: (options = {}) => {
       const queries: string[] = [];
       installFetch((url, init) => {
@@ -159,6 +186,15 @@ const cases: SourceCase[] = [
   },
   {
     name: "Azure Monitor Logs",
+    expected: {
+      severity: "Critical",
+      status: "Investigating",
+      alertType: undefined,
+      compromisedEntity: undefined,
+      tactics: ["UnmappedPhase"],
+      entities: [{ Kind: "opaque-identity", OpaqueLabel: "alice@example.test" }],
+      native: azureNativeAlert,
+    },
     create: (options = {}) => {
       const queries: string[] = [];
       const credential: TokenCredential = {
@@ -223,17 +259,15 @@ for (const sourceCase of cases) {
           id: "alert-1",
           title: "Suspicious authentication",
           description: "Authentication from an unusual network",
-          severity: "High",
-          status: "New",
-          alertType: "AUTH-1",
-          tactics: ["InitialAccess"],
           techniques: ["T1078"],
-          compromisedEntity: "alice@example.test",
         });
-        expect(alert?.entities).toEqual([
-          expect.objectContaining({ type: "account", name: "alice@example.test" }),
-        ]);
-        expect(alert?.native).toBeDefined();
+        expect(alert?.severity).toBe(sourceCase.expected.severity);
+        expect(alert?.status).toBe(sourceCase.expected.status);
+        expect(alert?.alertType).toBe(sourceCase.expected.alertType);
+        expect(alert?.compromisedEntity).toBe(sourceCase.expected.compromisedEntity);
+        expect(alert?.tactics).toEqual(sourceCase.expected.tactics);
+        expect(alert?.entities).toEqual(sourceCase.expected.entities);
+        expect(alert?.native).toEqual(sourceCase.expected.native);
       }
     });
 

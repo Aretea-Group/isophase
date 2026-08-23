@@ -441,7 +441,7 @@ describe("AzureSentinelClient alerts", () => {
     expect(queryBody.query).toContain("take 2");
   });
 
-  test("escapes an alert id and projects a real SecurityAlert row", async () => {
+  test("escapes an alert id and preserves a real SecurityAlert row", async () => {
     const requestedId = 'alert"with\\slashes';
     const requests = captureFetch((request) => {
       if (request.url.endsWith("/metadata")) return json(metadata);
@@ -457,7 +457,7 @@ describe("AzureSentinelClient alerts", () => {
       severity: "High",
       tactics: ["InitialAccess", "CredentialAccess"],
       techniques: ["T1078", "T1078.004"],
-      entities: [{ $id: "1", type: "account", name: "alice", ntDomain: "CONTOSO" }],
+      entities: [{ $id: "1", Type: "account", Name: "alice", NTDomain: "CONTOSO" }],
     });
     expect(alert.native).toMatchObject({
       SystemAlertId: requestedId,
