@@ -17,6 +17,7 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [`prd-5-console-operator-surface.md`](./prd-5-console-operator-surface.md) | **Complete** — the alert queue and investigation operator surface |
 | [`prd-6-run-comparability.md`](./prd-6-run-comparability.md) | **Draft** — making runs comparable across models, parameters, tools, prompts, steering and memory, and accumulating a durable baseline to compare them on. Partitions the scoring bands and makes the run corpus append-only |
 | [`prd-7-real-sentinel-connector.md`](./prd-7-real-sentinel-connector.md) | **Approved** — a read-only Azure Monitor Logs implementation of the Sentinel capability |
+| [`prd-8-tabular-security-data-sources.md`](./prd-8-tabular-security-data-sources.md) | **Approved** — a source-neutral boundary for alert-oriented tabular security data sources |
 | [`research-console-write-path.md`](./research-console-write-path.md) | **Research** — roadmap §6, the console write path. Verdict: buildable in ~1k lines, no new dependency. Not a PRD; nothing in it is built |
 | [`research-run-comparability.md`](./research-run-comparability.md) | **Research** — roadmap §9, why runs are not comparable today. The measurements behind PRD-6 |
 | [`roadmap.md`](./roadmap.md) | Forward-looking capabilities and follow-up work |
@@ -35,12 +36,17 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [007 — Console control surface](./adr/007-console-control-surface.md) | Accepted |
 | [008 — The comparability record](./adr/008-comparability-record.md) | Proposed; amends 005 §2, `AGENTS.md` §5/§9/§12/§14 and roadmap §7 |
 | [009 — Azure Monitor Logs connector](./adr/009-azure-monitor-logs-connector.md) | Accepted |
+| [010 — Tabular security data-source boundary](./adr/010-tabular-security-data-source-boundary.md) | Accepted; amends the Sentinel-only investigation boundary |
 
 ADR 006 covers the console: why a TUI rather than a web frontend, why the run artifact gained a
 lifecycle, and why the console is not ground-truth-aware.
 
 ADR 008 covers benchmarking: why the run artifact gains counters but never content, why the
 comparison key is derived rather than declared, and why a scored report is never written to disk.
+
+ADR 010 covers security sources: why the common boundary stops at alerts and tabular read-only
+queries, why source-native alert evidence remains visible, and why query behavior travels with the
+selected client as one profile.
 
 ADR 005 is the one to read first if the code surprises you. It records six supersessions —
 `submit_investigation` over a BAML finalizer, a run artifact over a trace store, five tools over one,
