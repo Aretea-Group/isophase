@@ -43,6 +43,6 @@ describe.skipIf(!enabled)("AzureSentinelClient against a real workspace", () => 
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SentinelApiError);
     expect(error).toMatchObject({ code: "query_error" });
-    expect(String(error).length).toBeGreaterThan(20);
+    expect(String(error)).toContain("ColumnThatDoesNotExistForConnectorSmokeTest");
   });
 });
