@@ -13,7 +13,7 @@ The current sequence is:
 ```text
 Mock Sentinel
 -> manual investigation through REST
--> Sentinel Client
+-> selected security data-source bundle
 -> Investigation Runner
 -> Pi autonomous agent
 -> structured submission
@@ -31,13 +31,15 @@ Implement:
 - alert fixtures;
 - schema endpoint;
 - read-only KQL endpoint;
-- Sentinel Client;
+- Mock and Azure Sentinel connectors;
+- the alert-oriented tabular security data-source boundary (PRD-8, ADR 010);
 - investigation runtime;
 - Pi agent integration;
 - the five agent tools (§10);
 - structured submission as the Definition of Done;
 - run artifacts, and evaluation against the hidden scenario metadata.
 - a read-only Azure Monitor Logs implementation of the Sentinel capability (PRD-7, ADR 009).
+- an in-memory non-KQL contract fixture used only to prove the source boundary (PRD-8, ADR 010).
 
 Do not implement:
 - cross-investigation memory;
@@ -51,17 +53,22 @@ Do not implement:
 - alert grouping;
 - multi-tenancy;
 - production HA.
+- a live second-SIEM connector.
 
 ## 3. Architecture Rules
 
-### Sentinel boundary
+### Security data-source boundary
 
-Consumers interact with Sentinel through the Sentinel Client/capability.
+Investigation consumers interact with the selected source through `SecurityDataSource` and its
+immutable query profile (PRD-8, ADR 010). Mock and Azure Sentinel remain concrete connectors in
+`@soc/sentinel-client`; their transport and native contracts do not enter investigation control
+flow.
 
 Never:
 - import Mock Sentinel fixture repositories from investigator code;
 - query Kusto directly from investigator code;
-- couple the agent runtime to Mock Sentinel URLs.
+- couple the agent runtime to Mock Sentinel URLs;
+- branch investigation control flow on source kind, connector or query language.
 
 ### Agent boundary
 
@@ -79,7 +86,8 @@ The agent owns the investigative path.
 
 Do not implement alert-specific deterministic playbooks.
 
-Do not force a KQL call. The agent may conclude that the starting alert contains sufficient evidence.
+Do not force a security-data query. The agent may conclude that the starting alert contains
+sufficient evidence.
 
 ### Contracts
 
@@ -268,13 +276,15 @@ Current surface (PRD-2 §9, extended by ADR 005):
 
 ```text
 get_security_schema(tables)
-query_security_data(kql)
+query_security_data(query)
 web_search(query)
 web_fetch(url)
 submit_investigation(...)
 ```
 
-`query_security_data` calls the Sentinel Client and returns the raw result to the agent.
+`query_security_data` calls the selected `SecurityDataSource` and returns the raw tabular result to
+the agent. Its description, `{ query }` parameter description and lazy syntax guidance come from
+the selected profile.
 Do not summarise, extract or normalise it — anything this layer emphasises is a playbook
 smuggled in through formatting.
 
@@ -290,7 +300,7 @@ Add new tools only when a real investigation failure demonstrates the need.
 
 Each investigation starts with:
 - system instructions;
-- current alert;
+- current source-neutral alert, including its source-native evidence;
 - available table names;
 - available tools.
 
@@ -312,7 +322,7 @@ trace store, deferred until evaluation shows a concrete need:
 - configured provider/model;
 - relevant agent events/messages;
 - tool calls;
-- exact KQL;
+- exact source query;
 - query result or result reference;
 - assessment;
 - errors;
@@ -332,8 +342,12 @@ on: 47 artifacts that cannot say what a run cost, and a comparison that inverts 
 One rule governs the addition, and it is what keeps "not a trace store" true in substance:
 
 > **Nothing added to the run artifact may grow with the length of an investigation.** No per-event
-> records, no messages, no tool arguments, no KQL text, no query results. A count of
+> records, no messages, no tool arguments, no query text, no query results. A count of
 > `query_security_data` calls is a number; the queries themselves are a trace.
+
+PRD-8 adds `config.source = { kind, connector, target, queryLanguage }` to new artifacts. The reader
+keeps `sentinelBaseUrl` only for committed legacy artifacts; it never infers missing source values
+from that URL, and no artifact is rewritten (ADR 010 §5).
 
 The trace store list above is unchanged and still deferred. `runs/` is also a committed root now
 (§5) — a run is a measurement that cannot be re-derived, so nothing may remove one from the scored
@@ -445,13 +459,27 @@ Acceptance:
 - real tenant artifacts are written only to an ignored operator-selected directory;
 - deterministic connector tests pass, followed by an opt-in model-free live smoke test.
 
+### Phase 12
+Tabular Security Data Sources (PRD-8).
+
+Acceptance:
+- investigation control flow depends on a source-neutral alert and `SecurityDataSource`;
+- one selected bundle supplies the client, source identity and immutable query profile;
+- Mock and Azure Sentinel behavior remains covered through the common capability;
+- new artifacts record source kind, connector, target and query language while committed legacy
+  artifacts remain readable without rewriting;
+- console and evaluation render recorded source/query identity and safely fall back to raw query
+  text for non-KQL or unknown languages;
+- an in-memory non-KQL fixture completes a deterministic investigation without a harness branch.
+
 ## 15. When to Stop and Ask for Architecture Input
 
 Stop implementation and surface the decision if any of these occur:
 - Training Lab assets cannot be mapped into Kusto without material semantic loss;
 - Kusto Emulator differs from required Sentinel KQL behavior in a way that breaks the experiment;
 - Pi cannot support a required agent/tool/context behavior;
-- a second investigation capability is required outside KQL;
+- a second investigation capability is required outside the alert-oriented, tabular, read-only
+  query boundary approved by PRD-8 and ADR 010;
 - the full schema is too large for useful startup context;
 - an implementation would require introducing a roadmap feature listed as non-goal.
 

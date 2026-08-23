@@ -6,10 +6,11 @@
 
 **Implements:** PRD-8 — Tabular Security Data Sources
 
-**Amends:** PRD-2 §5.2, §11 and §24; ADR 004 (the Sentinel alert shape remains the Mock REST
-contract, not the investigator contract); ADR 005 §3 and §4 (query descriptions, argument and lazy
-context are selected); ADR 009 §2, §4 and §5 (the Sentinel capability becomes a source-neutral
-capability and new artifacts stop writing `sentinelBaseUrl`); `AGENTS.md` §3, §10, §11, §12 and §14
+**Amends:** PRD-2 §5.2, §11, §22, §24 and §26; ADR 004 (the Sentinel alert shape remains the Mock
+REST contract, not the investigator contract); ADR 005 §3 and §4 (query descriptions, argument and
+lazy context are selected); ADR 009 §2, §4 and §5 (the Sentinel capability becomes a source-neutral
+capability and new artifacts stop writing `sentinelBaseUrl`); `AGENTS.md` §2, §3, §10, §11, §12,
+§14 and §15
 
 **Extends:** ADR 008 §3 (the derived condition includes the configured source block)
 
