@@ -13,7 +13,10 @@ describe("get_security_schema", () => {
         { name: "Properties", type: "dynamic" },
       ],
     };
-    const tool = createGetSecuritySchemaTool(new Map([[table.name, table]]));
+    const tool = createGetSecuritySchemaTool(
+      new Map([[table.name, table]]),
+      "Describe test tables.",
+    );
 
     const result = await tool.execute("call-1", { tables: [table.name] });
 

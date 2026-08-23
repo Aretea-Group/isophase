@@ -1,6 +1,5 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlert } from "@soc/contracts";
-import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -11,8 +10,9 @@ import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
 import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
-import { PROVENANCE } from "./provenance.ts";
+import { provenanceForProfile } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
+import type { SecuritySourceBundle } from "./source-profile.ts";
 import { createTracer } from "./trace.ts";
 
 /** The run's lifecycle, distinct from the per-alert `InvestigationResult.status` (PRD-3 §7). */
@@ -49,7 +49,7 @@ export interface InvestigatorConfig {
 }
 
 export interface InvestigatorDeps {
-  source: SecurityDataSource;
+  source: SecuritySourceBundle;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   /**
@@ -119,6 +119,7 @@ export async function executeRun(
   const log = options.log ?? ((): undefined => undefined);
   const { runId } = options;
   const startedAt = new Date().toISOString();
+  const provenance = provenanceForProfile(deps.source.profile);
 
   const collected: InvestigationResult[] = [];
   let alerts: SecurityAlert[] = [];
@@ -156,7 +157,7 @@ export async function executeRun(
       // identical across a run (**D16**). A provider re-pointing an alias is otherwise invisible and
       // reads as agent regression.
       provenance: {
-        ...PROVENANCE,
+        ...provenance,
         ...(servedModelId === undefined ? {} : { servedModelId }),
         ...(corpus === undefined ? {} : { corpus }),
       },
@@ -241,14 +242,14 @@ export async function executeRun(
 
     alerts =
       options.alertId === undefined
-        ? await deps.source.listAlerts()
-        : [await deps.source.getAlert(options.alertId)];
+        ? await deps.source.client.listAlerts()
+        : [await deps.source.client.getAlert(options.alertId)];
 
     // Which data this run was actually scored against (PRD-6 §6.8). `undefined` on an older Mock
     // Sentinel, and that is the point: the artifact records no corpus rather than a fabricated one,
     // and a bootstrap that re-pins the content-addressed alert ids becomes a visible hash change
     // instead of a silently empty evaluation report.
-    corpus = await deps.source.getCorpus().catch(() => undefined);
+    corpus = await deps.source.client.getCorpus().catch(() => undefined);
   } catch (error) {
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not

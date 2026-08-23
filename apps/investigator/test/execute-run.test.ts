@@ -7,6 +7,7 @@ import type { InvestigationRun } from "../src/contracts/run.ts";
 import { InvestigationAbortedError } from "../src/errors.ts";
 import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "../src/execute-run.ts";
 import type { ResolvedModel } from "../src/model.ts";
+import { testSourceBundle } from "./fixtures/source.ts";
 
 /**
  * `executeRun` was `main()` until PRD-5 §5.2, and `main()` had no test — its flush ordering, its
@@ -64,8 +65,8 @@ function recorder(): { writes: InvestigationRun[]; write: NonNullable<Investigat
   };
 }
 
-function sourceStub(alerts: SecurityAlert[]): SecurityDataSource {
-  return {
+function sourceStub(alerts: SecurityAlert[]): InvestigatorDeps["source"] {
+  return testSourceBundle({
     listAlerts: () => Promise.resolve(alerts),
     getAlert: (id: string) => {
       const found = alerts.find((candidate) => candidate.id === id);
@@ -76,7 +77,7 @@ function sourceStub(alerts: SecurityAlert[]): SecurityDataSource {
     // Degrades to `undefined` on a Mock Sentinel with no corpus manifest, which is the shape a
     // pre-PRD-6 service presents and the one `executeRun` must not break on.
     getCorpus: () => Promise.resolve(undefined),
-  } as unknown as SecurityDataSource;
+  } as unknown as SecurityDataSource);
 }
 
 describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
@@ -107,9 +108,9 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
   test("an unreachable Sentinel is recorded the same way", async () => {
     const { writes, write } = recorder();
     const deps: InvestigatorDeps = {
-      source: {
+      source: testSourceBundle({
         listAlerts: () => Promise.reject(new Error("Sentinel is unreachable at localhost:8787")),
-      } as unknown as SecurityDataSource,
+      } as unknown as SecurityDataSource),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,

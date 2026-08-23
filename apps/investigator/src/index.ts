@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import {
   assertAzureArtifactDirectories,
-  createSentinelClient,
   sentinelClientConfigFromEnv,
   sentinelClientTarget,
   type SentinelClientConfig,
@@ -16,6 +15,7 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "./model.ts";
+import { createSentinelSourceBundle } from "./source-profile.ts";
 
 export interface CliArgs {
   alertId?: string;
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
   const sentinelConfig = sentinelClientConfigFromEnv(env);
   const config = configFromEnv(sentinelConfig);
-  const source = createSentinelClient(sentinelConfig);
+  const source = createSentinelSourceBundle(sentinelConfig);
 
   if (env.BRAVE_API_KEY === undefined) {
     log("[investigator] BRAVE_API_KEY is not set — web_search will fail if the agent uses it.");

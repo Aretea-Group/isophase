@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import {
+  createSentinelSourceBundle,
   InProcessControl,
   type InProcessControlOptions,
   type InvestigationControl,
@@ -13,7 +14,6 @@ import {
 } from "@soc/investigator/model";
 import {
   assertAzureArtifactDirectories,
-  createSentinelClient,
   sentinelClientConfigFromEnv,
   sentinelClientTarget,
 } from "@soc/sentinel-client";
@@ -84,7 +84,7 @@ function buildControl(
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     }),
-    deps: { source: createSentinelClient(sentinelConfig) },
+    deps: { source: createSentinelSourceBundle(sentinelConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
   });

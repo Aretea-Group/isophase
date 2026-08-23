@@ -3,15 +3,12 @@ import { Type } from "@earendil-works/pi-ai";
 import type { QueryResponse } from "@soc/contracts";
 import type { SecurityDataSource } from "@soc/sentinel-client";
 
-const Params = Type.Object(
-  {
-    kql: Type.String({
-      minLength: 1,
-      description: "Read-only KQL. Control commands (anything starting with '.') are rejected.",
-    }),
-  },
-  { additionalProperties: false },
-);
+export function querySecurityDataParameters(description: string) {
+  return Type.Object(
+    { query: Type.String({ minLength: 1, description }) },
+    { additionalProperties: false },
+  );
+}
 
 /** Default character budget for one query result. Roughly 10k tokens. */
 export const DEFAULT_RESULT_MAX_CHARS = 40_000;
@@ -64,45 +61,47 @@ export function fitResultToBudget(result: QueryResponse, maxChars: number): Fitt
   const notice =
     `\n\nNOTE: this result was too large to return in full (${compact.length} characters, limit ${maxChars}). ` +
     `Showing the first ${low} of ${totalRows} rows. The rows are not a sample — they are simply the first ones. ` +
-    `To see the whole picture, aggregate (summarize, count, dcount) or project fewer columns.`;
+    `To see the whole picture, ask a narrower or aggregated query.`;
 
   return { text: JSON.stringify(kept) + notice, keptRows: low, totalRows };
 }
 
 /**
- * Arbitrary read-only KQL against the security telemetry (PRD-2 §11).
+ * Arbitrary read-only source query against the security telemetry (PRD-2 §11, ADR 010 §3).
  *
  * The result is handed back uninterpreted: no summarisation, no evidence extraction, no semantic
  * normalisation. Understanding the rows is the model's job, and anything this layer chose to
  * emphasise would be an investigation playbook smuggled in through formatting.
  *
  * Failures are thrown rather than returned as content, which is how pi-agent-core wants tool errors
- * reported. `SentinelApiError.message` already carries the Kusto engine's own diagnostic, so it
- * propagates untouched — that string is what lets the model repair its own query.
+ * reported. The connector's actionable native diagnostic propagates untouched so the model can
+ * repair its own query.
  */
-/** Name, description and schema — everything the model sees, hashed by `provenance.ts`. */
+/** Stable name and label; selected profile supplies description and `{ query }` help text. */
 export const QUERY_SECURITY_DATA = {
   name: "query_security_data",
   label: "Query security data",
-  description:
-    "Run a read-only KQL query against the security telemetry and return the raw result.",
-  parameters: Params,
 } as const;
 
 export function createQuerySecurityDataTool(
   source: SecurityDataSource,
+  description: string,
+  parameterDescription: string,
   maxChars: number = DEFAULT_RESULT_MAX_CHARS,
-): AgentTool<typeof Params> {
+): AgentTool<ReturnType<typeof querySecurityDataParameters>> {
+  const parameters = querySecurityDataParameters(parameterDescription);
   return {
     ...QUERY_SECURITY_DATA,
+    description,
+    parameters,
     execute: async (_toolCallId, params) => {
-      const result = await source.query(params.kql);
+      const result = await source.query(params.query);
       const fitted = fitResultToBudget(result, maxChars);
 
       return {
         content: [{ type: "text", text: fitted.text }],
         details: {
-          kql: params.kql,
+          query: params.query,
           truncation: result.truncation,
           keptRows: fitted.keptRows,
           totalRows: fitted.totalRows,

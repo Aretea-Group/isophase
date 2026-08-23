@@ -16,14 +16,13 @@ const Params = Type.Object(
  * Column definitions for tables the agent considers relevant (PRD-2 §10).
  *
  * Reads the schema already loaded at investigation startup — no second network call. Definitions
- * are returned as Mock Sentinel reported them, with no semantic interpretation layered on top.
+ * are returned as the selected source reported them, with no semantic interpretation layered on
+ * top.
  */
-/** Name, description and schema — everything the model sees, hashed by `provenance.ts`. */
+/** Stable name and schema; selected profile supplies model-visible description. */
 export const GET_SECURITY_SCHEMA = {
   name: "get_security_schema",
   label: "Get security schema",
-  description:
-    "Return compact table(column:type) definitions for one or more security telemetry tables.",
   parameters: Params,
 } as const;
 
@@ -33,9 +32,11 @@ function renderTable(table: SchemaTable): string {
 
 export function createGetSecuritySchemaTool(
   tables: Map<string, SchemaTable>,
+  description: string,
 ): AgentTool<typeof Params> {
   return {
     ...GET_SECURITY_SCHEMA,
+    description,
     execute: async (_toolCallId, params) => {
       const unknown = params.tables.filter((name) => !tables.has(name));
       if (unknown.length > 0) {
@@ -46,8 +47,8 @@ export function createGetSecuritySchemaTool(
       }
 
       // Names and types are the whole schema contract. Repeating JSON object keys for every column
-      // adds thousands of characters without adding information, so render the same facts in Kusto-
-      // style table(column:type) form.
+      // adds thousands of characters without adding information, so render the same facts in
+      // compact table(column:type) form.
       const requested = params.tables.map((name) => {
         const table = tables.get(name);
         // The unknown-name branch above already proved this, but Map.get cannot carry that proof.

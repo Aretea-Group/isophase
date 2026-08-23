@@ -12,10 +12,7 @@ import type { SecurityDataSource } from "@soc/sentinel-client";
 
 import { InvestigationHarness, type InvestigationMetrics } from "../src/harness.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instructions.ts";
-import {
-  addSentinelQueryInstructions,
-  SENTINEL_QUERY_INSTRUCTIONS,
-} from "../src/query-instructions.ts";
+import { TEST_QUERY_GUIDANCE, testSourceBundle } from "./fixtures/source.ts";
 
 const SUMMARY = {
   tpPercent: 90,
@@ -26,6 +23,16 @@ const SUMMARY = {
   impact: "confirmed-compromise" as const,
   keyEvidence: ["A decisive telemetry finding."],
   researchDone: ["Checked the relevant telemetry."],
+};
+
+const ALERT = {
+  id: "alert-1",
+  title: "Test alert",
+  description: "Test description.",
+  tactics: [],
+  techniques: [],
+  entities: [],
+  native: null,
 };
 
 function createHarness(
@@ -45,7 +52,7 @@ function createHarness(
   } as unknown as SecurityDataSource;
 
   return new InvestigationHarness({
-    source,
+    source: testSourceBundle(source),
     webSearch: { search: async () => [] },
     webFetch: {
       fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),
@@ -58,7 +65,7 @@ function createHarness(
 }
 
 describe("InvestigationHarness completion", () => {
-  test("adds Sentinel query instructions once, after the first Sentinel tool use", async () => {
+  test("adds selected query guidance once, after the first activating tool use", async () => {
     const faux = fauxProvider();
     const contexts: Context[] = [];
     faux.setResponses([
@@ -88,19 +95,23 @@ describe("InvestigationHarness completion", () => {
       faux.provider.streamSimple,
     );
 
-    await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    await harness.investigate(ALERT);
 
     expect(contexts.map((context) => context.systemPrompt)).toEqual([
       "Test instructions.",
-      addSentinelQueryInstructions("Test instructions."),
-      addSentinelQueryInstructions("Test instructions."),
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
+      `Test instructions.\n\n${TEST_QUERY_GUIDANCE}`,
     ]);
-    expect(contexts[0]?.systemPrompt).not.toContain(SENTINEL_QUERY_INSTRUCTIONS);
+    expect(contexts[0]?.systemPrompt).not.toContain(TEST_QUERY_GUIDANCE);
+    expect(JSON.stringify(contexts[0]?.messages)).toContain(
+      "Investigate the following test-source alert.",
+    );
+    expect(JSON.stringify(contexts[0]?.messages)).toContain(
+      "These are the TestQL tables available for this investigation.",
+    );
   });
 
-  test("does not add Sentinel query instructions to a web-only investigation", async () => {
+  test("does not add query guidance to a web-only investigation", async () => {
     const faux = fauxProvider();
     let secondContext: Context | undefined;
     faux.setResponses([
@@ -119,9 +130,7 @@ describe("InvestigationHarness completion", () => {
       faux.provider.streamSimple,
     );
 
-    await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    await harness.investigate(ALERT);
 
     expect(secondContext?.systemPrompt).toBe("Test instructions.");
   });
@@ -144,10 +153,9 @@ describe("InvestigationHarness completion", () => {
     );
     let metrics: InvestigationMetrics | undefined;
 
-    const result = await harness.investigate(
-      { properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" } } as never,
-      { onMetrics: (value) => (metrics = value) },
-    );
+    const result = await harness.investigate(ALERT, {
+      onMetrics: (value) => (metrics = value),
+    });
 
     expect(result).toEqual(SUMMARY);
     expect(secondContext?.messages.at(-1)).toMatchObject({
@@ -181,9 +189,7 @@ describe("InvestigationHarness completion", () => {
       500,
     );
 
-    const result = await harness.investigate({
-      properties: { systemAlertId: "alert-1", alertDisplayName: "Test alert" },
-    } as never);
+    const result = await harness.investigate(ALERT);
 
     expect(result).toEqual(SUMMARY);
     expect(secondContext?.messages.at(-1)).toMatchObject({

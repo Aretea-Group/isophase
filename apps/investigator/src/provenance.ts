@@ -8,7 +8,7 @@ import {
   SUBMISSION_DEADLINE_REMINDER,
   SUBMISSION_FOLLOW_UP,
 } from "./instructions.ts";
-import { SENTINEL_QUERY_INSTRUCTIONS, SENTINEL_QUERY_TOOL_NAMES } from "./query-instructions.ts";
+import type { SecuritySourceProfile } from "./source-profile.ts";
 import { toolDescriptors } from "./tools/index.ts";
 
 /**
@@ -26,7 +26,7 @@ import { toolDescriptors } from "./tools/index.ts";
  */
 
 /** Legibility only — the hash is the truth. Two runs sharing this with different hashes is a defect. */
-export const INSTRUCTIONS_LABEL = "soc-triage-v10-aggregate-alias";
+export const INSTRUCTIONS_LABEL = "soc-triage-v11-source-profile";
 
 function hash12(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 12);
@@ -63,15 +63,24 @@ function canonical(value: unknown): unknown {
  * vary per investigation and per bootstrap, and hashing them would mint a fresh condition for every
  * alert. What is captured is the framing around them, which is the part that is a prompt decision.
  */
-export function computePromptHash(): string {
-  const tools = toolDescriptors().map((tool) => ({
+export function computePromptHash(profile: SecuritySourceProfile): string {
+  const tools = toolDescriptors(profile).map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: canonical(tool.parameters),
   }));
 
   const contextTemplate = buildInitialContext(
-    { properties: { systemAlertId: "", alertDisplayName: "" } } as never,
+    profile,
+    {
+      id: "",
+      title: "",
+      description: "",
+      tactics: [],
+      techniques: [],
+      entities: [],
+      native: null,
+    },
     [],
     undefined,
   );
@@ -79,9 +88,9 @@ export function computePromptHash(): string {
   return hash12(
     JSON.stringify({
       instructions: DEFAULT_INSTRUCTIONS,
-      sentinelQueryInstructions: {
-        triggerTools: SENTINEL_QUERY_TOOL_NAMES,
-        instructions: SENTINEL_QUERY_INSTRUCTIONS,
+      queryGuidance: {
+        triggerTools: profile.guidanceActivationTools,
+        instructions: profile.queryGuidance,
       },
       submissionDeadlineReminder: SUBMISSION_DEADLINE_REMINDER,
       submissionFollowUp: SUBMISSION_FOLLOW_UP,
@@ -117,10 +126,11 @@ export function computePiVersion(): string {
   return `core@${core}+ai@${ai}`;
 }
 
-/** Computed once at import: none of it varies within a process. */
-export const PROVENANCE = {
-  promptHash: computePromptHash(),
-  submissionHash: computeSubmissionHash(),
-  piVersion: computePiVersion(),
-  instructionsLabel: INSTRUCTIONS_LABEL,
-} as const;
+export function provenanceForProfile(profile: SecuritySourceProfile) {
+  return {
+    promptHash: computePromptHash(profile),
+    submissionHash: computeSubmissionHash(),
+    piVersion: computePiVersion(),
+    instructionsLabel: INSTRUCTIONS_LABEL,
+  } as const;
+}

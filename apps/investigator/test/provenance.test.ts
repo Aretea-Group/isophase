@@ -7,9 +7,12 @@ import {
   computePromptHash,
   computeSubmissionHash,
   INSTRUCTIONS_LABEL,
-  PROVENANCE,
+  provenanceForProfile,
 } from "../src/provenance.ts";
 import { INVESTIGATION_TOOL_NAMES, toolDescriptors } from "../src/tools/index.ts";
+import { TEST_SOURCE_PROFILE } from "./fixtures/source.ts";
+
+const PROVENANCE = provenanceForProfile(TEST_SOURCE_PROFILE);
 
 /**
  * What the artifact claims about the software that produced it (PRD-6 §6.6, ADR 008 §1).
@@ -21,14 +24,14 @@ import { INVESTIGATION_TOOL_NAMES, toolDescriptors } from "../src/tools/index.ts
 
 describe("promptHash", () => {
   test("is stable within a process — it is a fact about the source, not about the run", () => {
-    expect(computePromptHash()).toBe(computePromptHash());
-    expect(PROVENANCE.promptHash).toBe(computePromptHash());
+    expect(computePromptHash(TEST_SOURCE_PROFILE)).toBe(computePromptHash(TEST_SOURCE_PROFILE));
+    expect(PROVENANCE.promptHash).toBe(computePromptHash(TEST_SOURCE_PROFILE));
   });
 
   test("covers the tool surface, not only the instructions", () => {
     // An instructions-only hash would call two materially different agents the same agent: a tool
     // description is in the model's context and changes behaviour just as surely.
-    const descriptors = toolDescriptors();
+    const descriptors = toolDescriptors(TEST_SOURCE_PROFILE);
     expect(descriptors.length).toBe(5);
     for (const descriptor of descriptors) {
       expect(descriptor.description.length).toBeGreaterThan(0);
@@ -46,9 +49,47 @@ describe("promptHash", () => {
       "submit_investigation",
     ]);
     // Name order for the hash, so reordering the factory cannot move it.
-    expect(toolDescriptors().map((tool) => tool.name)).toEqual(
+    expect(toolDescriptors(TEST_SOURCE_PROFILE).map((tool) => tool.name)).toEqual(
       [...INVESTIGATION_TOOL_NAMES].toSorted(),
     );
+  });
+
+  test("moves with active profile prompt content and not operational identity", () => {
+    const base = computePromptHash(TEST_SOURCE_PROFILE);
+    expect(
+      computePromptHash({ ...TEST_SOURCE_PROFILE, queryGuidance: "Changed query guidance." }),
+    ).not.toBe(base);
+    expect(
+      computePromptHash({
+        ...TEST_SOURCE_PROFILE,
+        guidanceActivationTools: ["query_security_data"],
+      }),
+    ).not.toBe(base);
+    expect(
+      computePromptHash({
+        ...TEST_SOURCE_PROFILE,
+        queryToolDescription: "Changed active query tool description.",
+      }),
+    ).not.toBe(base);
+    expect(
+      computePromptHash({
+        ...TEST_SOURCE_PROFILE,
+        initialContext: {
+          ...TEST_SOURCE_PROFILE.initialContext,
+          alertIntroduction: "Changed alert framing.",
+        },
+      }),
+    ).not.toBe(base);
+
+    expect(
+      computePromptHash({
+        ...TEST_SOURCE_PROFILE,
+        kind: "other-kind",
+        connector: "other-connector",
+        target: "other-target",
+        queryLanguage: "other-language",
+      }),
+    ).toBe(base);
   });
 });
 
@@ -56,7 +97,7 @@ describe("submissionHash", () => {
   test("is separate from the prompt hash", () => {
     // `summary.nextAction` becoming `summary.researchDone` is what actually split this corpus, and
     // a reader has to be able to see which of the two moved (D17).
-    expect(computeSubmissionHash()).not.toBe(computePromptHash());
+    expect(computeSubmissionHash()).not.toBe(computePromptHash(TEST_SOURCE_PROFILE));
     expect(computeSubmissionHash()).toBe(computeSubmissionHash());
   });
 });
