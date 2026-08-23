@@ -105,10 +105,18 @@ const FIXTURE_RESULT = QueryResponse.parse({
   truncation: { truncated: false, returnedRows: 1, maxRows: 50 },
 });
 
+export const FIXTURE_QUERY_ERROR =
+  "FixtureQL FQ1002: unknown column 'device_trsut'; available column: 'device_trust'.";
+
 export class FixtureSecuritySource implements SecurityDataSource {
+  readonly #queryError: string | undefined;
   readonly nativeAlert = FIXTURE_NATIVE_ALERT;
   readonly alert = normaliseFixtureAlert(this.nativeAlert);
   readonly queries: string[] = [];
+
+  constructor(queryError?: string) {
+    this.#queryError = queryError;
+  }
 
   async listAlerts(limit?: number) {
     return limit === 0 ? [] : [this.alert];
@@ -125,6 +133,7 @@ export class FixtureSecuritySource implements SecurityDataSource {
 
   async query(query: string) {
     this.queries.push(query);
+    if (this.#queryError !== undefined) throw new Error(this.#queryError);
     return FIXTURE_RESULT;
   }
 
@@ -133,10 +142,10 @@ export class FixtureSecuritySource implements SecurityDataSource {
   }
 }
 
-export function createFixtureSourceBundle(): {
+export function createFixtureSourceBundle(options: { queryError?: string } = {}): {
   source: FixtureSecuritySource;
   bundle: SecuritySourceBundle;
 } {
-  const source = new FixtureSecuritySource();
+  const source = new FixtureSecuritySource(options.queryError);
   return { source, bundle: testSourceBundle(source) };
 }

@@ -7,7 +7,11 @@ import {
   createQuerySecurityDataTool,
   fitResultToBudget,
 } from "../src/tools/query-security-data.ts";
-import { TEST_SOURCE_PROFILE } from "./fixtures/source.ts";
+import {
+  createFixtureSourceBundle,
+  FIXTURE_QUERY_ERROR,
+  TEST_SOURCE_PROFILE,
+} from "./fixtures/source.ts";
 
 const RESULT: QueryResponse = {
   tables: [
@@ -67,5 +71,18 @@ describe("query_security_data selected profile", () => {
     expect(fitted.text).toContain("rows are not a sample");
     expect(fitted.text).toContain("narrower or aggregated query");
     expect(fitted.text).not.toContain("summarize");
+  });
+
+  test("propagates an actionable FixtureQL diagnostic without interpreting the query", async () => {
+    const fixture = createFixtureSourceBundle({ queryError: FIXTURE_QUERY_ERROR });
+    const tool = createQuerySecurityDataTool(
+      fixture.source,
+      TEST_SOURCE_PROFILE.queryToolDescription,
+      TEST_SOURCE_PROFILE.queryParameterDescription,
+    );
+    const query = "MATCH IdentitySessions RETURN device_trsut";
+
+    await expect(tool.execute("call-error", { query })).rejects.toThrow(FIXTURE_QUERY_ERROR);
+    expect(fixture.source.queries).toEqual([query]);
   });
 });
