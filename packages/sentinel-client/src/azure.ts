@@ -29,6 +29,9 @@ const ErrorInfo = z.object({
   details: z
     .array(z.object({ code: z.string().optional(), message: z.string().min(1) }))
     .optional(),
+  get innererror() {
+    return ErrorInfo.optional();
+  },
 });
 
 const ErrorResponse = z.object({ error: ErrorInfo });
@@ -115,7 +118,8 @@ function kqlString(value: string): string {
 
 function diagnostic(error: z.infer<typeof ErrorInfo>): string {
   const details = error.details?.map((detail) => detail.message).filter(Boolean) ?? [];
-  return [error.message, ...details].join("; ");
+  const nested = error.innererror === undefined ? [] : [diagnostic(error.innererror)];
+  return [error.message, ...details, ...nested].join("; ");
 }
 
 async function boundedErrorText(response: Response): Promise<string> {

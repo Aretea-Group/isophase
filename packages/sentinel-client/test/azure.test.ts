@@ -287,6 +287,37 @@ describe("AzureSentinelClient query boundary", () => {
     expect(cancelled).toBeTrue();
   });
 
+  test("preserves nested Azure KQL diagnostics", async () => {
+    captureFetch(() =>
+      json(
+        {
+          error: {
+            code: "BadArgumentError",
+            message: "The request had some invalid properties",
+            innererror: {
+              code: "SemanticError",
+              message: "A semantic error occurred",
+              innererror: {
+                code: "SEM0100",
+                message: "Failed to resolve scalar expression named 'count()'",
+              },
+            },
+          },
+        },
+        400,
+      ),
+    );
+
+    const error = await new AzureSentinelClient(azureOptions())
+      .query("SecurityAlert | summarize count() | order by count() desc")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: "query_error", status: 400 });
+    expect(String(error)).toContain(
+      "The request had some invalid properties; A semantic error occurred; Failed to resolve scalar expression named 'count()'",
+    );
+  });
+
   test("rejects control commands before authentication", async () => {
     const requests = captureFetch(() => {
       throw new Error("fetch must not run");
