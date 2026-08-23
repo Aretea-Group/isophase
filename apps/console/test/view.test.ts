@@ -5,7 +5,7 @@ import type { RunArtifact, RunResult } from "../src/data/runs.ts";
 import { readRun } from "../src/data/runs.ts";
 import { indexTrace, type TraceIndex } from "../src/data/trace-index.ts";
 import { env } from "../src/env.ts";
-import { verdictBody } from "../src/ui/panes/main.ts";
+import { callArgsText, verdictBody } from "../src/ui/panes/main.ts";
 import { leadingTable, toActivityView } from "../src/view/activity.ts";
 import { alertFactsFromResult, enrichWithAlertJson } from "../src/view/alert.ts";
 import { toConfigRows } from "../src/view/config.ts";
@@ -313,6 +313,35 @@ describe("toActivityView", () => {
     expect(fixtureql.rows.find((row) => row.kind === "call")?.summary).toBe(
       "SecurityEvent | take 1",
     );
+  });
+
+  test("renders missing trace arguments as empty text", () => {
+    const index: TraceIndex = {
+      path: "trace.jsonl",
+      runId: "run",
+      alertId: "alert",
+      startedAt: "2026-08-19T09:00:00.000Z",
+      complete: false,
+      turns: [],
+      toolCalls: [
+        {
+          seq: 1,
+          turn: 1,
+          at: "2026-08-19T09:00:01.000Z",
+          toolCallId: "call-1",
+          toolName: "query_security_data",
+          args: undefined,
+        },
+      ],
+      totals: { totalTokens: 0, cost: 0 },
+      nextOffset: 0,
+      unparsed: 0,
+    };
+    const row = toActivityView(index).rows.find((candidate) => candidate.kind === "call");
+
+    expect(row).toBeDefined();
+    if (row === undefined) throw new Error("call row missing");
+    expect(callArgsText(row)).toBe("");
   });
 });
 

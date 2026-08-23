@@ -446,7 +446,7 @@ export function callArgsText(row: ActivityRow): string {
     "query" in args &&
     typeof args.query === "string"
     ? args.query
-    : JSON.stringify(args, undefined, 2);
+    : (JSON.stringify(args, undefined, 2) ?? "");
 }
 
 /** The full arguments of one call — the exact source query as the agent wrote it (PRD-3 §8.3). */
