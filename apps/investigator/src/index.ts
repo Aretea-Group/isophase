@@ -1,5 +1,11 @@
 #!/usr/bin/env bun
-import { SentinelApiClient } from "@soc/sentinel-client";
+import {
+  assertAzureArtifactDirectories,
+  createSentinelClient,
+  sentinelClientConfigFromEnv,
+  sentinelClientTarget,
+  type SentinelClientConfig,
+} from "@soc/sentinel-client";
 
 import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
@@ -51,7 +57,13 @@ function log(message: string): void {
 }
 
 /** The CLI's whole configuration contract: `env` in, a `InvestigatorConfig` out (PRD-5 §5.2). */
-export function configFromEnv(): InvestigatorConfig {
+export function configFromEnv(
+  sentinelConfig: SentinelClientConfig = sentinelClientConfigFromEnv(env),
+): InvestigatorConfig {
+  assertAzureArtifactDirectories(sentinelConfig, [
+    env.RUNS_DIR,
+    ...(env.INVESTIGATOR_TRACE ? [env.INVESTIGATOR_TRACE_DIR] : []),
+  ]);
   const llamaServer = llamaServerConfigFromEnv(env);
   const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
   assertLlamaServerThinkingLevel(env.INVESTIGATOR_PROVIDER, env.INVESTIGATOR_THINKING_LEVEL);
@@ -62,7 +74,7 @@ export function configFromEnv(): InvestigatorConfig {
     maxTurns: env.INVESTIGATOR_MAX_TURNS,
     timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-    sentinelBaseUrl: env.SENTINEL_BASE_URL,
+    sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
     webSearchConfigured: env.BRAVE_API_KEY !== undefined,
     runsDir: env.RUNS_DIR,
     trace: env.INVESTIGATOR_TRACE,
@@ -82,11 +94,9 @@ export function configFromEnv(): InvestigatorConfig {
  */
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
-
-  const sentinel = new SentinelApiClient({
-    baseUrl: env.SENTINEL_BASE_URL,
-    timeoutMs: env.SENTINEL_TIMEOUT_MS,
-  });
+  const sentinelConfig = sentinelClientConfigFromEnv(env);
+  const config = configFromEnv(sentinelConfig);
+  const sentinel = createSentinelClient(sentinelConfig);
 
   if (env.BRAVE_API_KEY === undefined) {
     log("[investigator] BRAVE_API_KEY is not set — web_search will fail if the agent uses it.");
@@ -119,7 +129,7 @@ async function main(): Promise<void> {
   });
 
   const run = await executeRun(
-    configFromEnv(),
+    config,
     { sentinel, webSearch, webFetch },
     {
       runId,

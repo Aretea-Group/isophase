@@ -17,7 +17,10 @@ const CONFIG: LlamaServerConfig = {
   maxTokens: 4_096,
 };
 
-async function sendTestRequest(llamaServerAuth?: LlamaServerAuth): Promise<{
+async function sendTestRequest(
+  llamaServerAuth?: LlamaServerAuth,
+  reasoning?: "low" | "medium",
+): Promise<{
   requestUrl: string | undefined;
   authorization: string | null | undefined;
   payload: unknown;
@@ -57,7 +60,7 @@ async function sendTestRequest(llamaServerAuth?: LlamaServerAuth): Promise<{
   const stream = streamFn(
     model,
     { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] },
-    { fetch: fetchStub },
+    { fetch: fetchStub, reasoning },
   );
 
   await stream.result();
@@ -132,9 +135,13 @@ describe("llama-server configuration", () => {
     ).toThrow("must not exceed");
   });
 
-  test("requires off when the local provider is active", () => {
-    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).toThrow('must be "off"');
+  test("allows only mapped thinking levels when the local provider is active", () => {
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "high")).toThrow(
+      'must be "off", "low", or "medium"',
+    );
     expect(() => assertLlamaServerThinkingLevel("llamacpp", "off")).not.toThrow();
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "low")).not.toThrow();
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).not.toThrow();
     expect(() => assertLlamaServerThinkingLevel("openai", "medium")).not.toThrow();
   });
 });
@@ -153,7 +160,7 @@ describe("llama-server model registration", () => {
       id: "local-model",
       api: "openai-completions",
       baseUrl: "https://host.example/v1",
-      reasoning: false,
+      reasoning: true,
       input: ["text"],
       contextWindow: 65_536,
       maxTokens: 4_096,
@@ -178,6 +185,21 @@ describe("llama-server model registration", () => {
     expect(requestUrl).toBe("https://host.example/v1/chat/completions");
     expect(authorization).toBe("Bearer unused");
     expect(payload).toMatchObject({ chat_template_kwargs: { enable_thinking: false } });
+    expect(JSON.stringify(payload)).not.toContain("reasoning_effort");
+  });
+
+  test("requests low reasoning through Qwen chat-template arguments", async () => {
+    const { payload } = await sendTestRequest(undefined, "low");
+    expect(payload).toMatchObject({
+      chat_template_kwargs: { enable_thinking: true, reasoning_effort: "low" },
+    });
+  });
+
+  test("requests medium reasoning through Qwen chat-template arguments", async () => {
+    const { payload } = await sendTestRequest(undefined, "medium");
+    expect(payload).toMatchObject({
+      chat_template_kwargs: { enable_thinking: true, reasoning_effort: "medium" },
+    });
   });
 
   test("sends the configured bearer token through the existing adapter", async () => {

@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
 import type { SchemaTable } from "@soc/contracts";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "../clients/brave.ts";
 import type { WebFetchClient } from "../clients/fetch.ts";
@@ -15,7 +15,7 @@ import { createWebSearchTool, WEB_SEARCH } from "./web-search.ts";
 export interface InvestigationToolDeps {
   /** The complete schema, loaded once at investigation startup. */
   tables: Map<string, SchemaTable>;
-  sentinel: SentinelApiClient;
+  sentinel: SentinelClient;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   onSubmit: (summary: InvestigationSummary) => void;

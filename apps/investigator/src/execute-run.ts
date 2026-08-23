@@ -1,6 +1,6 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlertResource } from "@soc/contracts";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -49,7 +49,7 @@ export interface InvestigatorConfig {
 }
 
 export interface InvestigatorDeps {
-  sentinel: SentinelApiClient;
+  sentinel: SentinelClient;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   /**

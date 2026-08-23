@@ -103,14 +103,20 @@ export function llamaServerAuthFromEnv(
   return { bearerToken };
 }
 
-/** This first slice records no model-specific reasoning contract, so only Pi's off mode is honest. */
+/** The local adapter currently exposes only the modes with an explicit llama.cpp request mapping. */
 export function assertLlamaServerThinkingLevel(
   provider: string,
   thinkingLevel: string | undefined,
 ): void {
-  if (provider === "llamacpp" && thinkingLevel !== undefined && thinkingLevel !== "off") {
+  if (
+    provider === "llamacpp" &&
+    thinkingLevel !== undefined &&
+    thinkingLevel !== "off" &&
+    thinkingLevel !== "low" &&
+    thinkingLevel !== "medium"
+  ) {
     throw new Error(
-      'INVESTIGATOR_THINKING_LEVEL must be "off" when INVESTIGATOR_PROVIDER is "llamacpp".',
+      'INVESTIGATOR_THINKING_LEVEL must be "off", "low", or "medium" when INVESTIGATOR_PROVIDER is "llamacpp".',
     );
   }
 }
@@ -140,17 +146,21 @@ function buildModels(llamaServer?: LlamaServerConfig, llamaServerAuth?: LlamaSer
       api: "openai-completions",
       provider: "llamacpp",
       baseUrl: llamaServer.baseUrl,
-      reasoning: false,
+      reasoning: true,
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: llamaServer.contextWindow,
       maxTokens: llamaServer.maxTokens,
-      samplingParams: { chat_template_kwargs: { enable_thinking: false } },
       compat: {
         supportsDeveloperRole: false,
         supportsStrictMode: false,
         supportsStore: false,
         maxTokensField: "max_tokens",
+        thinkingFormat: "chat-template",
+        chatTemplateKwargs: {
+          enable_thinking: { $var: "thinking.enabled" },
+          reasoning_effort: { $var: "thinking.effort", omitWhenOff: true },
+        },
       },
     };
     models.setProvider(

@@ -37,6 +37,7 @@ Implement:
 - the five agent tools (§10);
 - structured submission as the Definition of Done;
 - run artifacts, and evaluation against the hidden scenario metadata.
+- a read-only Azure Monitor Logs implementation of the Sentinel capability (PRD-7, ADR 009).
 
 Do not implement:
 - cross-investigation memory;
@@ -433,6 +434,16 @@ Acceptance:
   report;
 - the artifact records prompt, runtime and corpus identity, and cost and effort, with tracing off;
 - no scored artifact is written to disk, and ground-truth isolation is unchanged.
+
+### Phase 11
+Real Microsoft Sentinel Connector (PRD-7).
+
+Acceptance:
+- Mock Sentinel remains the default and both runtime entry points select one shared capability;
+- Azure Monitor Logs supplies alerts, schema and read-only KQL through a configured service
+  principal or an existing Azure CLI/Azure PowerShell session;
+- real tenant artifacts are written only to an ignored operator-selected directory;
+- deterministic connector tests pass, followed by an opt-in model-free live smoke test.
 
 ## 15. When to Stop and Ask for Architecture Input
 

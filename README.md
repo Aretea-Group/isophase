@@ -1,23 +1,19 @@
 # SOC Investigation Agent
 
-An autonomous LLM agent that investigates realistic Microsoft Sentinel alerts against a local,
-deterministic security lab. The analyst operates it through a terminal UI, follows the investigation
-live, reviews the evidence and exact KQL, and records the final classification.
+An autonomous LLM agent that investigates Microsoft Sentinel alerts through either a local,
+deterministic security lab or a read-only Azure Monitor Logs connector. The analyst operates it
+through a terminal UI, follows the investigation live, reviews the evidence and exact KQL, and
+records the final classification.
 
 ```text
-Microsoft Sentinel Training Lab telemetry
-              ↓
-      Kusto Emulator
-              ↓
-       Mock Sentinel REST
-              ↓
-        Sentinel Client
-              ↓
-       Pi investigation agent
-              ↓
- run artifact + transcript + evaluation
-              ↓
-       Analyst console (TUI)
+Training Lab telemetry → Kusto Emulator → Mock Sentinel REST ─┐
+                                                             ├→ Sentinel Client
+Real Sentinel workspace ───────────────→ Azure Monitor Logs ──┘         ↓
+                                                           Pi investigation agent
+                                                                     ↓
+                                                  run artifact + transcript
+                                                                     ↓
+                                                        Analyst console (TUI)
 ```
 
 The agent chooses its own investigative path. It receives the alert and available table names, then
@@ -25,10 +21,10 @@ may query security data, research the public web, or conclude from the starting 
 `submit_investigation` tool call is the only successful outcome; there are no alert-specific
 playbooks or hidden answer-key access.
 
-PRD-1 through PRD-5 are implemented: the local Sentinel environment, autonomous investigator,
-evaluation scenarios, and console operator surface. This README is the canonical setup and usage
-guide. The files under `docs/` contain design history and decisions rather than a second getting
-started path.
+The local Sentinel environment, autonomous investigator, evaluation scenarios, console operator
+surface, run comparison, and real Sentinel connector are implemented. This README is the canonical
+setup and usage guide. The files under `docs/` contain design history and decisions rather than a
+second getting started path.
 
 ## Quick start
 
@@ -63,10 +59,10 @@ Alternatively, configure one llama-server model through its OpenAI-compatible en
 
 ```dotenv
 INVESTIGATOR_PROVIDER=llamacpp
-INVESTIGATOR_MODEL=local-model
-INVESTIGATOR_THINKING_LEVEL=off
+INVESTIGATOR_MODEL=qwen3.8-27b
+INVESTIGATOR_THINKING_LEVEL=low
 LLAMA_SERVER_BASE_URL=https://host.example/v1
-LLAMA_SERVER_MODEL=local-model
+LLAMA_SERVER_MODEL=qwen3.8-27b
 LLAMA_SERVER_CONTEXT_WINDOW=65536
 LLAMA_SERVER_MAX_TOKENS=4096
 # Optional; omit for a keyless endpoint.
@@ -76,10 +72,12 @@ LLAMA_SERVER_BEARER_TOKEN=...
 The endpoint must implement `/v1/chat/completions` and return standard `message.tool_calls`.
 When configured, `LLAMA_SERVER_BEARER_TOKEN` is sent in the `Authorization: Bearer` header and is
 never written to run artifacts. Model loading, server presets, and lifecycle remain operator
-responsibilities. Support is text-only. Reasoning is disabled per request, even when a server preset
-defaults it on; model-specific reasoning levels and tool syntax embedded in message content are not
-interpreted. Run artifacts record endpoint URL and model limits, so results from different server
-configurations remain distinct measurements.
+responsibilities. Replace `qwen3.8-27b` with the exact id exposed by the endpoint. Support is
+text-only. `INVESTIGATOR_THINKING_LEVEL=low` or `medium` sends Qwen3.8's `enable_thinking=true`
+and matching `reasoning_effort` chat-template arguments; use `off` for a local model without that
+contract. Other local reasoning levels are rejected. Tool syntax embedded in message content is
+not interpreted. Run artifacts record endpoint URL and model limits, so results from different
+server configurations remain distinct measurements.
 
 ### Start the lab
 
@@ -114,7 +112,7 @@ session move into the Runs pane normally.
 The console is the primary way to operate the system:
 
 ```text
-[1] Alerts   outstanding alerts from Mock Sentinel; ◆ means ground truth exists
+[1] Alerts   outstanding alerts from the selected Sentinel connector; ◆ means ground truth exists
 [2] Runs     investigations visible in this session, newest first
 [3] Case     facts for the active queue alert or selected run
 [4] Main     Verdict · Agent stream · Activity · Transcript
@@ -190,6 +188,54 @@ be re-derived — only bought again — and a benchmark that cannot be reproduce
 not a benchmark. Expect `git status` to show new artifacts after an investigation. Transcripts stay
 local: `runs/traces/` is gitignored and runs to hundreds of megabytes.
 
+### Use a real Microsoft Sentinel workspace
+
+The selected Microsoft Entra identity needs the workspace-scoped `Log Analytics Data Reader` role.
+Role assignment can take time to propagate. This project does not create identities, secrets or
+role assignments and never writes to Azure.
+
+Set the connector, workspace and local artifact paths in `.env`:
+
+```dotenv
+SENTINEL_CONNECTOR=azure
+AZURE_LOG_ANALYTICS_WORKSPACE_ID=<workspace-guid>
+
+RUNS_DIR=.data/azure-runs
+INVESTIGATOR_TRACE_DIR=.data/azure-runs/traces
+```
+
+For a service principal, also set the complete credential group:
+
+```dotenv
+AZURE_TENANT_ID=<tenant-guid>
+AZURE_CLIENT_ID=<application-client-guid>
+AZURE_CLIENT_SECRET=<local-secret>
+```
+
+For local development, omit all three values and sign in first with either `az login` or
+`Connect-AzAccount`. The connector tries Azure CLI before Azure PowerShell. When the complete
+service-principal group is present it uses only that identity; a partial group is rejected instead
+of falling back to a personal account.
+
+`AZURE_LOG_ANALYTICS_WORKSPACE_ID` is the Workspace ID shown on the Log Analytics workspace, not
+the workspace name or ARM resource ID. Azure investigations refuse paths outside ignored `.data/`
+so alert and assessment content cannot enter the committed benchmark corpus. Log Analytics
+workspace shared keys authorize ingestion, not queries, and are not supported by this connector.
+
+The first connector slice lists at most 500 alerts. An unbounded queue fails visibly when a
+workspace contains more; targeted `bun run investigate --alert <system-alert-id>` remains available.
+Pagination waits for an observed operator need.
+
+Run the model-free live boundary check before a real investigation:
+
+```bash
+AZURE_SENTINEL_LIVE_TEST=true \
+  bun test packages/sentinel-client/test/integration/azure.test.ts
+```
+
+It loads workspace schema, queries `SecurityAlert`, round-trips one alert, and verifies that invalid
+KQL returns an actionable diagnostic. It neither calls a model nor writes an artifact.
+
 ### Evaluate runs
 
 Evaluation joins run results with hidden scenario metadata outside the agent boundary. It prints;
@@ -264,21 +310,14 @@ Sentinel fixture repositories.
 The system is a one-directional chain, and each hop is the *only* path to the next:
 
 ```text
-   fixtures/telemetry/          pinned Training Lab CSVs, at a fixed revision
-            │
-            │  scripts/bootstrap-sentinel-data.ts
-            ▼
-   ┌───────────────────┐
-   │  Kusto Emulator   │        internal — nothing downstream may address it
-   └───────────────────┘
-            │  KQL
-            ▼
-   ┌───────────────────┐        GET  /alerts  /alerts/:id  /schema
-   │   Mock Sentinel   │ :8787  POST /query   (read-only KQL)
-   └───────────────────┘        owns the entire domain surface; /health is operational
-            │
-            │  packages/sentinel-client — typed, over packages/contracts
-            ▼
+ fixtures/telemetry/ → Kusto Emulator → Mock Sentinel REST ─┐
+                                                            │
+ real Sentinel workspace ─────────────→ Azure Monitor Logs ─┤
+                                                            ▼
+                                              packages/sentinel-client
+                                              typed Zod boundary
+                                                            │
+                                                            ▼
    ┌───────────────────┐
    │   Investigator    │        harness.ts is the only Pi boundary; five tools
    └───────────────────┘
@@ -301,7 +340,7 @@ The repository is a Bun/TypeScript monorepo:
 apps/mock-sentinel/        REST facade, alert generation, Kusto integration
 apps/investigator/         Pi harness, tools, run execution, cancellation
 apps/console/              OpenTUI analyst queue and operator surface
-packages/sentinel-client/  typed client for the Mock Sentinel boundary
+packages/sentinel-client/  Mock and Azure implementations of the Sentinel capability
 packages/contracts/        shared Zod network contracts
 fixtures/telemetry/        pinned Training Lab telemetry
 fixtures/scenarios/        hidden evaluation answer key
@@ -359,6 +398,7 @@ All supported variables and defaults are documented in [`.env.example`](./.env.e
 groups are:
 
 - Mock Sentinel and Kusto endpoints;
+- Sentinel connector selection and Azure service-principal credentials;
 - provider, model, thinking level, timeouts, and turn limits;
 - OpenAI, Anthropic, or Google credentials, or one llama-server endpoint;
 - optional Brave Search credentials;
@@ -392,6 +432,7 @@ implementation rules are in [`AGENTS.md`](./AGENTS.md).
 - [PRD-4 — Ground-truth expansion](./docs/prd-4-ground-truth-expansion.md)
 - [PRD-5 — Console operator surface](./docs/prd-5-console-operator-surface.md)
 - [PRD-6 — Run comparability](./docs/prd-6-run-comparability.md)
+- [PRD-7 — Real Microsoft Sentinel connector](./docs/prd-7-real-sentinel-connector.md)
 - [Architecture decision records](./docs/adr/)
 - [Roadmap](./docs/roadmap.md)
 

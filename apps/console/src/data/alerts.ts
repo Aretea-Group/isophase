@@ -1,6 +1,6 @@
 import type { SecurityAlertResource } from "@soc/contracts";
 import { SentinelApiError } from "@soc/sentinel-client";
-import type { SentinelApiClient } from "@soc/sentinel-client";
+import type { SentinelClient } from "@soc/sentinel-client";
 import { z } from "zod";
 
 /**
@@ -14,11 +14,11 @@ import { z } from "zod";
 /**
  * Narrowed on purpose, and load-bearing rather than tidy.
  *
- * `SentinelApiClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole client
+ * `SentinelClient` also exposes `query(kql)` and `getSchema()`. Handing `data/` the whole client
  * would compile ad-hoc KQL execution into the console from the first increment — which PRD-3 §14
  * excludes by name, and which this PRD does not reopen. The queue needs two reads and gets two.
  */
-export type AlertReader = Pick<SentinelApiClient, "listAlerts" | "getAlert">;
+export type AlertReader = Pick<SentinelClient, "listAlerts" | "getAlert">;
 
 /** One entry of the generated ids-only scenario map (PRD-5 §7). */
 const BenchmarkMapEntry = z.object({
@@ -53,8 +53,11 @@ export interface AlertsSnapshot {
  * Today 100% of console sessions run with no Sentinel at all, so this is the common path rather
  * than the exceptional one and deserves better than a stack trace (PRD-5 §7).
  */
-export function describeAlertError(error: unknown): string {
+export function describeAlertError(error: unknown, connector: "mock" | "azure" = "mock"): string {
   if (error instanceof SentinelApiError) {
+    if (connector === "azure") {
+      return `Azure Sentinel returned ${error.code}: ${error.message}`;
+    }
     if (error.code === "unreachable") {
       return "Mock Sentinel is not reachable — start it with `bun run dev:mock-sentinel`.";
     }
@@ -115,12 +118,13 @@ function toQueueAlert(resource: SecurityAlertResource, scenarios: Map<string, st
 export async function readAlerts(
   client: AlertReader,
   benchmarkMapPath: string,
+  connector: "mock" | "azure" = "mock",
 ): Promise<AlertsSnapshot> {
   const scenarios = await readBenchmarkMap(benchmarkMapPath);
   try {
     const resources = await client.listAlerts();
     return { alerts: resources.map((resource) => toQueueAlert(resource, scenarios)) };
   } catch (error) {
-    return { alerts: [], error: describeAlertError(error) };
+    return { alerts: [], error: describeAlertError(error, connector) };
   }
 }

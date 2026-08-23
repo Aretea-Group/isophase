@@ -1,3 +1,5 @@
+import { azureWorkspaceUrl } from "@soc/sentinel-client";
+
 import type { RunArtifact } from "../data/runs.ts";
 import type { ConsoleEnv } from "../env.ts";
 import { duration } from "./format.ts";
@@ -9,6 +11,13 @@ export interface ConfigRow {
 }
 
 const ABSENT = "—";
+
+function sentinelTarget(env: ConsoleEnv): string {
+  if (env.SENTINEL_CONNECTOR === "mock") return env.SENTINEL_BASE_URL;
+  return env.AZURE_LOG_ANALYTICS_WORKSPACE_ID === undefined
+    ? "Azure workspace not configured"
+    : azureWorkspaceUrl(env.AZURE_LOG_ANALYTICS_WORKSPACE_ID);
+}
 
 /**
  * What a run used, beside what this machine is set up to do.
@@ -84,9 +93,9 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
       currentEnv: env.INVESTIGATOR_RESULT_MAX_CHARS.toLocaleString("en"),
     },
     {
-      label: "sentinel base url",
+      label: "sentinel target",
       thisRun: config?.sentinelBaseUrl ?? ABSENT,
-      currentEnv: env.SENTINEL_BASE_URL,
+      currentEnv: sentinelTarget(env),
     },
     ...endpointRows,
     {
@@ -111,8 +120,8 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
 
 export const DATA_SOURCES: { label: string; detail: string }[] = [
   {
-    label: "Mock Sentinel REST",
-    detail: "/alerts  /alerts/:id  /schema  /query",
+    label: "Sentinel capability",
+    detail: "alerts, schema, read-only KQL",
   },
   {
     label: "Public web",

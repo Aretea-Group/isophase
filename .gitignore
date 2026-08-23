@@ -17,6 +17,9 @@ baml_client/
 .env
 .env.local
 
+# Local implementation plans use GitHub Issues; never commit root scratch plans.
+/*-plan.md
+
 # Editor / OS
 .DS_Store
 .idea/
