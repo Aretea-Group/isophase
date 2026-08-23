@@ -1,6 +1,11 @@
 #!/usr/bin/env bun
-import { InProcessControl, type InvestigationControl } from "@soc/investigator/control";
 import {
+  InProcessControl,
+  type InProcessControlOptions,
+  type InvestigationControl,
+} from "@soc/investigator/control";
+import {
+  assertLlamaServerThinkingLevel,
   type LlamaServerAuth,
   type LlamaServerConfig,
   llamaServerAuthFromEnv,
@@ -14,7 +19,42 @@ import {
 } from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
+import type { ConsoleEnv } from "./env.ts";
 import { runApp } from "./ui/app.ts";
+
+export function buildInvestigatorConfig(
+  source: ConsoleEnv,
+  options: {
+    runsDir: string;
+    tracesDir: string;
+    sentinelBaseUrl: string;
+    llamaServer?: LlamaServerConfig;
+    llamaServerAuth?: LlamaServerAuth;
+  },
+): InProcessControlOptions["config"] {
+  assertLlamaServerThinkingLevel(
+    source.INVESTIGATOR_PROVIDER,
+    source.INVESTIGATOR_THINKING_LEVEL,
+    options.llamaServer,
+  );
+
+  return {
+    provider: source.INVESTIGATOR_PROVIDER,
+    modelId: source.INVESTIGATOR_MODEL,
+    thinkingLevel: source.INVESTIGATOR_THINKING_LEVEL,
+    maxTurns: source.INVESTIGATOR_MAX_TURNS,
+    timeoutMs: source.INVESTIGATOR_TIMEOUT_MS,
+    resultMaxChars: source.INVESTIGATOR_RESULT_MAX_CHARS,
+    sentinelBaseUrl: options.sentinelBaseUrl,
+    webSearchConfigured: source.BRAVE_API_KEY !== undefined,
+    runsDir: options.runsDir,
+    trace: true,
+    traceDir: options.tracesDir,
+    traceStream: false,
+    ...(options.llamaServer === undefined ? {} : { llamaServer: options.llamaServer }),
+    ...(options.llamaServerAuth === undefined ? {} : { llamaServerAuth: options.llamaServerAuth }),
+  };
+}
 
 /**
  * Build the in-process control (PRD-5 §5.1).
@@ -35,23 +75,15 @@ function buildControl(
   assertAzureArtifactDirectories(sentinelConfig, [runsDir, tracesDir]);
 
   return new InProcessControl({
-    config: {
-      provider: env.INVESTIGATOR_PROVIDER,
-      modelId: env.INVESTIGATOR_MODEL,
-      maxTurns: env.INVESTIGATOR_MAX_TURNS,
-      timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
-      resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
-      sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
-      webSearchConfigured: env.BRAVE_API_KEY !== undefined,
+    // Console-started runs always trace. Without it the Transcript and Stream tabs are empty for
+    // exactly the run the analyst just started and is watching (PRD-5 §18, question 2).
+    config: buildInvestigatorConfig(env, {
       runsDir,
-      // Console-started runs always trace. Without it the Transcript and Stream tabs are empty for
-      // exactly the run the analyst just started and is watching (PRD-5 §18, question 2).
-      trace: true,
-      traceDir: tracesDir,
-      traceStream: false,
+      tracesDir,
+      sentinelBaseUrl: sentinelClientTarget(sentinelConfig),
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
-    },
+    }),
     deps: { sentinel: createSentinelClient(sentinelConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
