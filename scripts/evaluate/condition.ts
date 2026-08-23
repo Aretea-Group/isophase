@@ -33,6 +33,7 @@ export interface ConditionFields {
   modelBaseUrl: string;
   modelContextWindow: string;
   modelMaxTokens: string;
+  modelReasoningProfile: string;
   /** `baseline`, or `ctx=<hash6>` of the raw premise. Never the premise text itself. */
   analystContext: string;
   /** `researchDone`, `nextAction` or `?`, inferred from field presence when unrecorded. */
@@ -155,6 +156,7 @@ export function conditionOf(run: InvestigationRun): Condition {
     modelContextWindow:
       config?.modelContextWindow === undefined ? UNKNOWN : String(config.modelContextWindow),
     modelMaxTokens: config?.modelMaxTokens === undefined ? UNKNOWN : String(config.modelMaxTokens),
+    modelReasoningProfile: config?.modelReasoningProfile ?? UNKNOWN,
     analystContext:
       config?.analystContext === undefined || config.analystContext === ""
         ? "baseline"
@@ -190,6 +192,7 @@ export function conditionOf(run: InvestigationRun): Condition {
 const LABEL_AXES: { key: keyof ConditionFields; render: (value: string) => string }[] = [
   { key: "model", render: (value) => value },
   { key: "thinkingLevel", render: (value) => `think=${value}` },
+  { key: "modelReasoningProfile", render: (value) => `reason=${value}` },
   { key: "submission", render: (value) => `sub=${value}` },
   { key: "webSearch", render: (value) => `web=${value}` },
   { key: "resultMaxChars", render: (value) => `rows=${value}` },

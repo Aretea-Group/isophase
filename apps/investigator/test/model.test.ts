@@ -15,11 +15,15 @@ const CONFIG: LlamaServerConfig = {
   modelId: "local-model",
   contextWindow: 65_536,
   maxTokens: 4_096,
+  reasoningProfile: "off",
 };
+
+const EFFORT_CONFIG: LlamaServerConfig = { ...CONFIG, reasoningProfile: "effort" };
 
 async function sendTestRequest(
   llamaServerAuth?: LlamaServerAuth,
-  reasoning?: "low" | "medium",
+  config = CONFIG,
+  reasoning?: "low" | "medium" | "xhigh",
 ): Promise<{
   requestUrl: string | undefined;
   authorization: string | null | undefined;
@@ -28,7 +32,7 @@ async function sendTestRequest(
   const { model, streamFn } = await resolveModel(
     "llamacpp",
     "local-model",
-    CONFIG,
+    config,
     llamaServerAuth,
   );
   let requestUrl: string | undefined;
@@ -60,7 +64,7 @@ async function sendTestRequest(
   const stream = streamFn(
     model,
     { messages: [{ role: "user", content: "hello", timestamp: Date.now() }] },
-    { fetch: fetchStub, reasoning },
+    { fetch: fetchStub, ...(reasoning === undefined ? {} : { reasoning }) },
   );
 
   await stream.result();
@@ -135,13 +139,19 @@ describe("llama-server configuration", () => {
     ).toThrow("must not exceed");
   });
 
-  test("allows only mapped thinking levels when the local provider is active", () => {
-    expect(() => assertLlamaServerThinkingLevel("llamacpp", "high")).toThrow(
-      'must be "off", "low", or "medium"',
-    );
+  test("validates thinking levels against the configured reasoning profile", () => {
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).toThrow('must be "off"');
     expect(() => assertLlamaServerThinkingLevel("llamacpp", "off")).not.toThrow();
-    expect(() => assertLlamaServerThinkingLevel("llamacpp", "low")).not.toThrow();
-    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).not.toThrow();
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "xhigh", EFFORT_CONFIG)).not.toThrow();
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "high", EFFORT_CONFIG)).toThrow(
+      '"off", "low", "medium", or "xhigh"',
+    );
+    expect(() =>
+      assertLlamaServerThinkingLevel("llamacpp", "medium", {
+        ...CONFIG,
+        reasoningProfile: "binary",
+      }),
+    ).not.toThrow();
     expect(() => assertLlamaServerThinkingLevel("openai", "medium")).not.toThrow();
   });
 });
@@ -160,7 +170,7 @@ describe("llama-server model registration", () => {
       id: "local-model",
       api: "openai-completions",
       baseUrl: "https://host.example/v1",
-      reasoning: true,
+      reasoning: false,
       input: ["text"],
       contextWindow: 65_536,
       maxTokens: 4_096,
@@ -188,18 +198,14 @@ describe("llama-server model registration", () => {
     expect(JSON.stringify(payload)).not.toContain("reasoning_effort");
   });
 
-  test("requests low reasoning through Qwen chat-template arguments", async () => {
-    const { payload } = await sendTestRequest(undefined, "low");
-    expect(payload).toMatchObject({
-      chat_template_kwargs: { enable_thinking: true, reasoning_effort: "low" },
-    });
+  test("maps supported effort levels to llama-server reasoning_effort", async () => {
+    const { payload } = await sendTestRequest(undefined, EFFORT_CONFIG, "low");
+    expect(payload).toMatchObject({ reasoning_effort: "low" });
   });
 
-  test("requests medium reasoning through Qwen chat-template arguments", async () => {
-    const { payload } = await sendTestRequest(undefined, "medium");
-    expect(payload).toMatchObject({
-      chat_template_kwargs: { enable_thinking: true, reasoning_effort: "medium" },
-    });
+  test("sends none when an effort-capable model is configured off", async () => {
+    const { payload } = await sendTestRequest(undefined, EFFORT_CONFIG);
+    expect(payload).toMatchObject({ reasoning_effort: "none" });
   });
 
   test("sends the configured bearer token through the existing adapter", async () => {

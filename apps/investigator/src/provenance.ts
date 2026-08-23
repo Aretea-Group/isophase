@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import packageJson from "../package.json" with { type: "json" };
 import { buildInitialContext } from "./context.ts";
 import { InvestigationSummarySchema } from "./contracts/summary.ts";
-import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
+import {
+  DEFAULT_INSTRUCTIONS,
+  SUBMISSION_DEADLINE_REMINDER,
+  SUBMISSION_FOLLOW_UP,
+} from "./instructions.ts";
+import { SENTINEL_QUERY_INSTRUCTIONS, SENTINEL_QUERY_TOOL_NAMES } from "./query-instructions.ts";
 import { toolDescriptors } from "./tools/index.ts";
 
 /**
@@ -21,7 +26,7 @@ import { toolDescriptors } from "./tools/index.ts";
  */
 
 /** Legibility only — the hash is the truth. Two runs sharing this with different hashes is a defect. */
-export const INSTRUCTIONS_LABEL = "soc-triage-v2";
+export const INSTRUCTIONS_LABEL = "soc-triage-v10-aggregate-alias";
 
 function hash12(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 12);
@@ -74,6 +79,12 @@ export function computePromptHash(): string {
   return hash12(
     JSON.stringify({
       instructions: DEFAULT_INSTRUCTIONS,
+      sentinelQueryInstructions: {
+        triggerTools: SENTINEL_QUERY_TOOL_NAMES,
+        instructions: SENTINEL_QUERY_INSTRUCTIONS,
+      },
+      submissionDeadlineReminder: SUBMISSION_DEADLINE_REMINDER,
+      submissionFollowUp: SUBMISSION_FOLLOW_UP,
       tools,
       contextTemplate,
     }),

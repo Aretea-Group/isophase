@@ -35,7 +35,9 @@ export const env = createEnv({
 
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
-    INVESTIGATOR_THINKING_LEVEL: z.string().min(1).default("medium"),
+    INVESTIGATOR_THINKING_LEVEL: z
+      .enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+      .default("medium"),
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(1_200_000),
     INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
@@ -43,6 +45,7 @@ export const env = createEnv({
     LLAMA_SERVER_MODEL: z.string().min(1).optional(),
     LLAMA_SERVER_CONTEXT_WINDOW: z.coerce.number().int().positive().optional(),
     LLAMA_SERVER_MAX_TOKENS: z.coerce.number().int().positive().optional(),
+    LLAMA_SERVER_REASONING_PROFILE: z.enum(["off", "binary", "effort"]).default("off"),
     LLAMA_SERVER_BEARER_TOKEN: z.string().min(1).optional(),
     BRAVE_API_KEY: z.string().min(1).optional(),
     INVESTIGATOR_TRACE: z
