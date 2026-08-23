@@ -160,7 +160,7 @@ export class InvestigationHarness {
   ): Promise<InvestigationSummary> {
     const { sentinel, webSearch, webFetch, model, streamFn, instructions } = this.#options;
     const maxTurns = this.#options.maxTurns ?? 50;
-    const timeoutMs = this.#options.timeoutMs ?? 600_000;
+    const timeoutMs = this.#options.timeoutMs ?? 1_200_000;
 
     // Fetched once per investigation, and deliberately not placed into model context. The agent
     // gets table names and pulls the schemas it decides are relevant (PRD-2 §7).

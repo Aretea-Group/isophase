@@ -19,7 +19,7 @@ const CONFIG: LlamaServerConfig = {
 
 async function sendTestRequest(
   llamaServerAuth?: LlamaServerAuth,
-  reasoning?: "low",
+  reasoning?: "low" | "medium",
 ): Promise<{
   requestUrl: string | undefined;
   authorization: string | null | undefined;
@@ -136,11 +136,12 @@ describe("llama-server configuration", () => {
   });
 
   test("allows only mapped thinking levels when the local provider is active", () => {
-    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).toThrow(
-      'must be "off" or "low"',
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "high")).toThrow(
+      'must be "off", "low", or "medium"',
     );
     expect(() => assertLlamaServerThinkingLevel("llamacpp", "off")).not.toThrow();
     expect(() => assertLlamaServerThinkingLevel("llamacpp", "low")).not.toThrow();
+    expect(() => assertLlamaServerThinkingLevel("llamacpp", "medium")).not.toThrow();
     expect(() => assertLlamaServerThinkingLevel("openai", "medium")).not.toThrow();
   });
 });
@@ -191,6 +192,13 @@ describe("llama-server model registration", () => {
     const { payload } = await sendTestRequest(undefined, "low");
     expect(payload).toMatchObject({
       chat_template_kwargs: { enable_thinking: true, reasoning_effort: "low" },
+    });
+  });
+
+  test("requests medium reasoning through Qwen chat-template arguments", async () => {
+    const { payload } = await sendTestRequest(undefined, "medium");
+    expect(payload).toMatchObject({
+      chat_template_kwargs: { enable_thinking: true, reasoning_effort: "medium" },
     });
   });
 

@@ -73,11 +73,11 @@ The endpoint must implement `/v1/chat/completions` and return standard `message.
 When configured, `LLAMA_SERVER_BEARER_TOKEN` is sent in the `Authorization: Bearer` header and is
 never written to run artifacts. Model loading, server presets, and lifecycle remain operator
 responsibilities. Replace `qwen3.8-27b` with the exact id exposed by the endpoint. Support is
-text-only. `INVESTIGATOR_THINKING_LEVEL=low` sends Qwen3.8's `enable_thinking=true` and
-`reasoning_effort=low` chat-template arguments; use `off` for a local model without that contract.
-Other local reasoning levels are rejected. Tool syntax embedded in message content is not
-interpreted. Run artifacts record endpoint URL and model limits, so results from different server
-configurations remain distinct measurements.
+text-only. `INVESTIGATOR_THINKING_LEVEL=low` or `medium` sends Qwen3.8's `enable_thinking=true`
+and matching `reasoning_effort` chat-template arguments; use `off` for a local model without that
+contract. Other local reasoning levels are rejected. Tool syntax embedded in message content is
+not interpreted. Run artifacts record endpoint URL and model limits, so results from different
+server configurations remain distinct measurements.
 
 ### Start the lab
 

@@ -24,13 +24,13 @@ export const RUN_GLYPH: Record<RunState, string> = {
  *
  * The threshold is derived from the run rather than fixed. PRD-3 §10.2 asks for "several minutes",
  * but the artifact is only flushed between alerts and one alert may legitimately take up to
- * `limits.timeoutMs` — 600 s by default. A fixed few-minute threshold would therefore report a
+ * `limits.timeoutMs` — 1,200 s by default. A fixed few-minute threshold would therefore report a
  * perfectly healthy sweep as stale whenever tracing was off. Waiting out the ceiling the run was
  * actually configured with keeps the intent — a dead run stops being shown as active — without
  * that false positive.
  */
 const STALE_GRACE_MS = 60_000;
-const FALLBACK_TIMEOUT_MS = 600_000;
+const FALLBACK_TIMEOUT_MS = 1_200_000;
 
 /** A run's state, as a tone. The glyph in `RUN_GLYPH` carries it without colour (PRD-3 §9.8). */
 /**

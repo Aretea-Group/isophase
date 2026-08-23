@@ -112,10 +112,11 @@ export function assertLlamaServerThinkingLevel(
     provider === "llamacpp" &&
     thinkingLevel !== undefined &&
     thinkingLevel !== "off" &&
-    thinkingLevel !== "low"
+    thinkingLevel !== "low" &&
+    thinkingLevel !== "medium"
   ) {
     throw new Error(
-      'INVESTIGATOR_THINKING_LEVEL must be "off" or "low" when INVESTIGATOR_PROVIDER is "llamacpp".',
+      'INVESTIGATOR_THINKING_LEVEL must be "off", "low", or "medium" when INVESTIGATOR_PROVIDER is "llamacpp".',
     );
   }
 }

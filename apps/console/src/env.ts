@@ -37,7 +37,7 @@ export const env = createEnv({
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
     INVESTIGATOR_THINKING_LEVEL: z.string().min(1).default("medium"),
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
-    INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+    INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(1_200_000),
     INVESTIGATOR_RESULT_MAX_CHARS: z.coerce.number().int().positive().default(40_000),
     LLAMA_SERVER_BASE_URL: z.string().min(1).optional(),
     LLAMA_SERVER_MODEL: z.string().min(1).optional(),

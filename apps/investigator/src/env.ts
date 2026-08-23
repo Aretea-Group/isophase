@@ -37,7 +37,7 @@ export const env = createEnv({
     /** Ceiling on completed agent turns. Guards against runaway reasoning (PRD-2 §17). */
     INVESTIGATOR_MAX_TURNS: z.coerce.number().int().positive().default(50),
     /** Ceiling on elapsed time for one investigation. A different failure mode to max turns. */
-    INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(600_000),
+    INVESTIGATOR_TIMEOUT_MS: z.coerce.number().int().positive().default(1_200_000),
     /**
      * Character budget for a single query result (ADR 002, "result-size limits"). Measured against
      * this environment, one unbounded wide-table query serialises to ~88k tokens compact, which
