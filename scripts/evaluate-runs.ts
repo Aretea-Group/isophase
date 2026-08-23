@@ -138,6 +138,7 @@ function signed(value: number, digits = 3): string {
 function drawList(cell: Cell): string {
   return cell.draws
     .map((draw) => (draw.status === "failed" ? "✗" : String(draw.tpPercent ?? "?")))
+    .toSorted((a, b) => a.localeCompare(b, undefined, { numeric: true }))
     .join(", ");
 }
 
