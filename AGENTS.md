@@ -1,68 +1,74 @@
 # AGENTS.md — SOC Investigation Agent
 
-This file is the implementation contract for coding agents working in this repository.
+The implementation contract for coding agents working in this repository.
+
+**Precedence.** ADRs decide, this file constrains, `CLAUDE.md` orients. Where an ADR and this file
+disagree the ADR wins and this file is stale — fix it here rather than working around it.
+
+Section numbers are an interface: `AGENTS.md §N` is cited from other documents and from source.
+Append new sections; never renumber or reuse one. Gaps in the numbering are deliberate.
+
+## Commands
+
+| | |
+|---|---|
+| `bun run check` | fmt:check → lint → typecheck → test. Every change must keep this green |
+| `bun test <file>` | one test file. `bun test -t "<name>"` matches by test name |
+| `bun run infra:up` / `infra:down` / `infra:logs` | Kusto Emulator + Mock Sentinel over Docker Compose |
+| `bun run data:bootstrap` | create tables and ingest telemetry; safe to re-run. Also `data:reset`, `data:verify`, `data:manifest` |
+| `bun run dev:mock-sentinel` | REST facade on `:8787`, watch mode |
+| `bun run investigate [--alert <systemAlertId>]` | one sweep of the agent; needs a provider key in `.env` |
+| `bun run evaluate [--run <id>] [--compare <a> <b>] [--gaps]` | score runs against the hidden ground truth |
+| `bun run console [--runs <dir>] [--traces <dir>]` | read-only TUI over `runs/` |
+
+There is no build step: workspace packages are consumed as TypeScript **source** through their
+`exports`, so `tsc` only ever type-checks. Integration suites under `**/test/integration/` probe for
+their live dependency and `describe.skipIf` themselves out with a printed reason — `bun test` stays
+green without Docker and proves nothing about them.
 
 ## 1. Mission
 
-Build the smallest end-to-end system in which an autonomous LLM agent can investigate a realistic mocked Microsoft Sentinel alert.
+Build the smallest end-to-end system in which an autonomous LLM agent can investigate a realistic
+mocked Microsoft Sentinel alert.
 
-Do not implement future roadmap features before their PRD exists.
-
-The current sequence is:
-
-```text
-Mock Sentinel
--> manual investigation through REST
--> selected security data-source bundle
--> Investigation Runner
--> Pi autonomous agent
--> structured submission
--> run artifact
--> evaluation against ground truth
-```
+Do not implement a roadmap feature before its PRD exists.
 
 ## 2. Current Scope
 
-Implement:
-- TypeScript/Bun monorepo;
-- Mock Sentinel REST service;
-- Microsoft Kusto Emulator;
-- Microsoft Sentinel Training Lab telemetry loader;
-- alert fixtures;
-- schema endpoint;
-- read-only KQL endpoint;
-- Mock and Azure Sentinel connectors;
-- the alert-oriented tabular security data-source boundary (PRD-8, ADR 010);
-- investigation runtime;
-- Pi agent integration;
-- the five agent tools (§10);
-- structured submission as the Definition of Done;
-- run artifacts, and evaluation against the hidden scenario metadata.
-- a read-only Azure Monitor Logs implementation of the Sentinel capability (PRD-7, ADR 009).
-- an in-memory non-KQL contract fixture used only to prove the source boundary (PRD-8, ADR 010).
+In scope: a TypeScript/Bun monorepo; the Mock Sentinel REST service over a Kusto Emulator loaded
+with Training Lab telemetry; Mock and Azure Sentinel connectors behind the alert-oriented tabular
+security data-source boundary (ADR 010), plus an in-memory non-KQL fixture that exists only to prove
+that boundary (ADR 010 §6); the investigation runtime and its Pi integration; the five agent tools
+(§10); structured submission as the Definition of Done; run artifacts and evaluation against the
+hidden scenario metadata; and a local operator console.
 
-Do not implement:
+Out of scope — these are the non-goals other documents cite:
+
 - cross-investigation memory;
 - human-feedback retrieval;
 - generalized ingestion;
 - SOAR forwarding;
-- web/product frontend — a local operator console is in scope from PRD-3 and PRD-5 (ADR 006 §1,
+- web/product frontend — a *local operator console* is in scope from PRD-3 and PRD-5 (ADR 006 §1,
   ADR 007);
 - RBAC/authentication;
 - threat intelligence;
 - alert grouping;
 - multi-tenancy;
-- production HA.
+- production HA;
 - a live second-SIEM connector.
+
+Delivery status is not kept here — see [`docs/README.md`](./docs/README.md).
 
 ## 3. Architecture Rules
 
+The system is a one-directional chain in which each hop is the only path to the next. These are the
+rules an implementation can actually violate.
+
 ### Security data-source boundary
 
-Investigation consumers interact with the selected source through `SecurityDataSource` and its
-immutable query profile (PRD-8, ADR 010). Mock and Azure Sentinel remain concrete connectors in
-`@soc/sentinel-client`; their transport and native contracts do not enter investigation control
-flow.
+Investigation consumers reach the selected source through `SecurityDataSource` and its immutable
+query profile (ADR 010 §4). Mock and Azure Sentinel are concrete connectors in `@soc/sentinel-client`;
+their transport and native contracts do not enter investigation control flow.
 
 Never:
 - import Mock Sentinel fixture repositories from investigator code;
@@ -72,415 +78,150 @@ Never:
 
 ### Agent boundary
 
-Use:
-- `@earendil-works/pi-agent-core`;
-- `@earendil-works/pi-ai`.
+Use `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai`. Not the deprecated
+`@mariozechner/pi-*` packages.
 
-Do not implement a custom LLM/tool `while` loop unless an ADR is added documenting a concrete Pi limitation.
-
-Do not use the deprecated `@mariozechner/pi-*` packages.
+`apps/investigator/src/harness.ts` is the single Pi boundary ADR 002 asks for and the only file that
+imports Pi. Do not implement a custom LLM/tool `while` loop without an ADR documenting a concrete Pi
+limitation, and do not wrap the harness in a package — that is the generic agent framework §2 and
+PRD-2 §24 exclude.
 
 ### Investigation strategy
 
-The agent owns the investigative path.
+The agent owns the investigative path. Do not implement alert-specific deterministic playbooks, and
+do not force a security-data query — the agent may conclude the starting alert is sufficient.
 
-Do not implement alert-specific deterministic playbooks.
+### Ground truth flows one way
 
-Do not force a security-data query. The agent may conclude that the starting alert contains
-sufficient evidence.
+`fixtures/scenarios/` is reachable from `scripts/` and from nothing the agent can touch. Two guards,
+because either alone is insufficient: an oxlint `no-restricted-imports` rule blocks static imports,
+and `apps/investigator/test/ground-truth-isolation.test.ts` scans agent-side source *text* for the
+runtime `Bun.file` read no import rule can see. Adding a source root the agent can reach means adding
+it to that test's `ROOTS`.
 
 ### Contracts
 
-Use Zod 4 for runtime and network validation — REST, configuration, run artifacts.
+Zod 4 for runtime and network validation — REST, configuration, run artifacts. TypeBox at the Pi
+tool boundary, which is forced rather than preferred: `pi-agent-core` types `AgentTool.parameters` as
+a TypeBox `TSchema` and offers no Zod path (ADR 005 §5). BAML is deferred (ADR 005 §1).
 
-Use TypeBox for the Pi tool boundary: tool parameters and the submission contract. This is forced
-rather than preferred — `pi-agent-core` types `AgentTool.parameters` as a TypeBox `TSchema` and
-offers no Zod path. It is re-exported by `pi-ai`, so it adds no dependency (ADR 005 §5).
-
-BAML is deferred (ADR 005 §1).
-
-Avoid duplicate hand-written TypeScript interfaces when a schema already generates the type.
+Never hand-write a TypeScript interface parallel to a schema that already generates the type.
 
 ## 4. Technology Baseline
 
-- TypeScript, `strict: true`
-- Bun runtime and package manager
-- Bun workspaces
-- Hono REST APIs
-- Zod 4
-- Pi Agent Core + Pi AI
-- TypeBox (via `@earendil-works/pi-ai`)
-- `@t3-oss/env-core`
-- OpenTUI (`@opentui/core`) — analyst console renderer
-- Microsoft Kusto Emulator
-- Docker Compose
-- Oxlint
-- Oxfmt
-- `tsc --noEmit`
-- `bun test`
+TypeScript `strict` on Bun and Bun workspaces; Hono for REST; Zod 4; Pi Agent Core + Pi AI with
+TypeBox via `pi-ai`; `@t3-oss/env-core`; OpenTUI for the console; Kusto Emulator over Docker Compose;
+Oxlint, Oxfmt, `tsc --noEmit`, `bun test`. Versions live in `package.json`.
 
 Do not introduce ESLint or Prettier.
 
-## 5. Expected Repository Shape
+## 5. Repository Shape
 
 ```text
-apps/
-  mock-sentinel/
-  investigator/
-  console/
-
-packages/
-  sentinel-client/
-  contracts/
-
-baml_src/
-
-fixtures/
-  alerts/
-  scenarios/
-
-infra/
-  docker-compose.yml
-  kusto/
-
-scripts/
-  bootstrap-sentinel-data.ts
-
-docs/
-  architecture.md
-  prd-mock-sentinel.md
-  adr/
-
-runs/          committed run artifacts; runs/traces/ is not (PRD-6 §6.9)
-
-AGENTS.md
+apps/         mock-sentinel/  investigator/  console/
+packages/     sentinel-client/  contracts/
+fixtures/     telemetry/  scenarios/  benchmark-map.generated.json
+infra/        docker-compose.yml  kusto/
+scripts/      bootstrap, evaluate, benchmark map, queue reset
+docs/         architecture.md  roadmap.md  prd-*.md  adr/
+runs/         committed run artifacts; runs/.archive/ too; runs/traces/ is not
+feedback/     analyst classifications, recorded and never fed back to the agent
 ```
 
-Do not create empty future-capability packages.
+Do not create empty future-capability packages. `agent-runtime`, `persistence` and `testkit` are
+deliberately absent.
 
-`runs/` is a committed root, and the only one that grows by running the software rather than by
-someone writing a file. ADR 008 §8 records why: a run artifact is a measurement bought with real
-money against a model that exposes no seed, so it cannot be re-derived, and `scripts/evaluate-runs.ts`
-must be able to score the same corpus from a fresh clone. Nothing may remove one from the scored set
-as a side effect — `runs/.archive/` takes an alert out of the *queue* and is still scored. Transcripts
-under `runs/traces/` are the opposite: optional, off by default, megabytes apiece, and ignored.
-
-`agent-runtime` is deliberately absent: `apps/investigator/src/harness.ts` is the single
-Pi boundary ADR 002 asks for, and wrapping one class in a package would be the generic
-agent framework PRD-2 §24 excludes. `persistence` and `testkit` remain unbuilt.
+`runs/` is the only committed root that grows by running the software rather than by someone writing
+a file. ADR 008 §8 records why: a run artifact is a measurement bought with real money against a
+model that exposes no seed, so it cannot be re-derived, and `scripts/evaluate-runs.ts` must score the
+same corpus from a fresh clone. Nothing may remove one from the scored set as a side effect —
+`runs/.archive/` takes an alert out of the *queue* and is still scored. Transcripts under
+`runs/traces/` are the opposite: optional, off by default, megabytes apiece, ignored.
 
 ## 6. Quality Rules
 
-Every change must keep:
+`bun run check` must stay green — `fmt:check`, `lint`, `typecheck`, `test`, in that order.
 
-```text
-bun run fmt:check
-bun run lint
-bun run typecheck
-bun test
-```
-
-green.
-
-Preferred root scripts:
-
-```json
-{
-  "scripts": {
-    "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check",
-    "lint": "oxlint --deny-warnings",
-    "lint:fix": "oxlint --fix",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "check": "bun run fmt:check && bun run lint && bun run typecheck && bun test"
-  }
-}
-```
-
-Adapt command flags only if the installed Oxc version requires it.
+TypeScript is strict beyond `strict: true`: `noUncheckedIndexedAccess`,
+`noPropertyAccessFromIndexSignature` (`process.env["FOO"]`, never `.FOO`), `verbatimModuleSyntax`
+(`import type` is required), `erasableSyntaxOnly`. Oxlint errors on `any` and on non-null assertions
+outside tests. Relative imports carry explicit `.ts` extensions. Oxfmt covers source and config only
+— Markdown is excluded so the architecture documents are not rewritten by tooling.
 
 ## 7. Testing Policy
 
-Write tests for deterministic boundaries.
+Test deterministic boundaries: the telemetry bootstrap, Mock Sentinel REST contracts, the Sentinel
+client, query error propagation, the investigation runner, and ground-truth isolation.
 
-Priority:
-1. telemetry bootstrap;
-2. Mock Sentinel REST contracts;
-3. Sentinel Client;
-4. query error propagation;
-5. investigation runner;
-6. ground-truth isolation — the agent must never be able to reach `fixtures/scenarios/`.
-
-Do not mock KQL with query-string conditionals such as:
-
-```text
-if query contains "CommonSecurityLog" -> canned response
-```
-
-Use Kusto Emulator for integration behavior.
-
-Tests that require a paid/live LLM must be opt-in and excluded from default CI unless explicitly configured.
+Do not mock KQL with query-string conditionals (`if query contains "CommonSecurityLog" -> canned
+response`) — use the Kusto Emulator for integration behavior. Tests needing a paid or live LLM are
+opt-in and excluded from default CI.
 
 ## 8. Training Lab Data Rules
 
-Use Microsoft Sentinel Training Lab telemetry from a pinned Azure-Sentinel repository revision.
+Training Lab telemetry comes from a pinned Azure-Sentinel revision; never consume unpinned `master`.
+Bootstrap creates the database and schemas, ingests, validates representative tables and rows, and
+fails clearly on drift. Timestamps are shifted by one constant `TELEMETRY_TIME_ANCHOR` offset for the
+whole dataset so relative-time KQL matches while every interval is preserved exactly — one offset,
+never one per era (ADR 001).
 
-Never dynamically consume unpinned `master` in CI.
-
-The bootstrap process must:
-- create the local Kusto database;
-- create schemas;
-- ingest telemetry;
-- validate representative tables/rows;
-- fail clearly on drift.
-
-Treat an upstream revision update as a dependency upgrade.
-
-Do not deploy Azure simply to obtain the lab telemetry unless ADR 001 is amended because a required dataset cannot be reproduced locally.
+Bumping the revision is a dependency upgrade: re-vendor, `bun run data:manifest`, review the
+generated diff, re-run the bootstrap. Do not deploy Azure to obtain the telemetry unless ADR 001 is
+amended because a dataset cannot be reproduced locally.
 
 ## 9. Mock Sentinel API
 
-Initial public surface:
+`apps/mock-sentinel/src/routes/` is the public surface and `packages/contracts` is its schema — read
+those rather than a copy kept here. Three rules that the code does not state:
 
-```text
-GET  /health
-GET  /alerts
-GET  /alerts/:id
-GET  /schema
-POST /query
-GET  /corpus
-```
-
-All requests/responses crossing the public boundary must have Zod validation where applicable.
-
-`GET /corpus` is PRD-6 §6.8's addition and the first since this surface was specified. It reports
-the identity of the loaded corpus — time anchor, offset, telemetry revision, alert-set hash — so a
-run artifact can record which data it was scored against. It reads a `_CorpusManifest` marker table
-that bootstrap writes into the database it has just built, and returns 404 when there is none, so an
-older Mock Sentinel degrades rather than breaking `bun run investigate`.
-
-Tables whose name begins with `_` are infrastructure, not telemetry: `GET /schema` drops them and
-`POST /query` rejects them. The agent's opening context is built from the table names `/schema`
-returns, so a table added to that database would otherwise be a table the agent is invited to
-query — and a benchmarking change that alters turn-0 context is a change to the thing being
-measured.
-
-The Mock Sentinel service owns the REST facade. Kusto is internal.
-
-Return useful query errors. Do not silently rewrite invalid KQL.
+- Mock Sentinel owns the REST facade; Kusto is internal and no consumer may address it.
+- Tables whose name begins with `_` are infrastructure: `/schema` drops them and `/query` rejects
+  them. The agent's opening context is built from the names `/schema` returns, so a table added to
+  that database would otherwise be a table the agent is invited to query — and a change to turn-0
+  context is a change to the thing being measured.
+- Return useful query errors. Never silently rewrite invalid KQL.
 
 ## 10. Agent Tooling
 
-Current surface (PRD-2 §9, extended by ADR 005):
+Five tools, and they are the agent's whole capability surface: `get_security_schema`,
+`query_security_data`, `web_search`, `web_fetch`, `submit_investigation` (PRD-2 §9, extended by
+ADR 005). A valid `submit_investigation` call is the Definition of Done; Pi validates it
+against the tool schema first, so an invalid submission returns to the model as a correctable
+error (ADR 005 §1).
 
-```text
-get_security_schema(tables)
-query_security_data(query)
-web_search(query)
-web_fetch(url)
-submit_investigation(...)
-```
+`query_security_data` returns the raw tabular result. Do not summarise, extract or normalise it —
+anything this layer emphasises is a playbook smuggled in through formatting. Its description and
+lazy syntax guidance come from the selected query profile, not from this layer.
 
-`query_security_data` calls the selected `SecurityDataSource` and returns the raw tabular result to
-the agent. Its description, `{ query }` parameter description and lazy syntax guidance come from
-the selected profile.
-Do not summarise, extract or normalise it — anything this layer emphasises is a playbook
-smuggled in through formatting.
+Web content is untrusted: it returns inside a provenance envelope and the system prompt
+standing-orders it as data rather than instructions (ADR 005 §3).
 
-Web content is untrusted. It is returned inside a provenance envelope and the system
-prompt standing-orders it as data rather than instructions. See ADR 005 §3.
+Do not add semantic tools such as `get_user` or `investigate_signin`. Add a tool only when a real
+investigation failure demonstrates the need.
 
-Do not add semantic tools such as `get_user`, `investigate_powershell`, or
-`investigate_signin`.
-
-Add new tools only when a real investigation failure demonstrates the need.
-
-## 11. Context
-
-Each investigation starts with:
-- system instructions;
-- current source-neutral alert, including its source-native evidence;
-- available table names;
-- available tools.
-
-The complete schema is fetched once per investigation and held by the harness, but only
-table names enter model context — 22 tables and 1,168 columns would spend the window
-before the agent knows what matters. It requests schemas it wants (ADR 005 §4).
-
-No prior-case memory in the current slice.
-
-Do not build vector search or generalized memory.
-
-## 12. Persistence
-
-PRD-2 persists one `runs/<run-id>.json` artifact per invocation, holding per-alert
-outcomes only — not a trace (ADR 005 §2). The list below is the eventual target for a
-trace store, deferred until evaluation shows a concrete need:
-- source alert;
-- schema snapshot/version;
-- configured provider/model;
-- relevant agent events/messages;
-- tool calls;
-- exact source query;
-- query result or result reference;
-- assessment;
-- errors;
-- lifecycle timestamps.
-
-PRD-3 adds optional `status`, `traceDir` and `config` fields to that artifact and flushes it
-after each alert, so an in-flight run is observable (ADR 006 §4). It stays one JSON file of
-per-alert outcomes — it is not the trace store above.
-
-PRD-5 lets the local console drive the investigator through `InvestigationControl` while keeping
-the investigator as the sole writer of `runs/` (ADR 007). Analyst classifications live separately
-under `feedback/` and are recorded but never fed back to the agent.
-
-PRD-6 adds an optional `provenance` block to the run and optional `turns`, `toolCalls` and `usage`
-to each result (ADR 008 §1). Evaluation showed the concrete need this list was always conditioned
-on: 47 artifacts that cannot say what a run cost, and a comparison that inverts when a file moves.
-One rule governs the addition, and it is what keeps "not a trace store" true in substance:
-
-> **Nothing added to the run artifact may grow with the length of an investigation.** No per-event
-> records, no messages, no tool arguments, no query text, no query results. A count of
-> `query_security_data` calls is a number; the queries themselves are a trace.
-
-PRD-8 adds `config.source = { kind, connector, target, queryLanguage }` to new artifacts. The reader
-keeps `sentinelBaseUrl` only for committed legacy artifacts; it never infers missing source values
-from that URL, and no artifact is rewritten (ADR 010 §5).
-
-The trace store list above is unchanged and still deferred. `runs/` is also a committed root now
-(§5) — a run is a measurement that cannot be re-derived, so nothing may remove one from the scored
-set as a side effect.
-
-Do not store hidden chain-of-thought as a product requirement.
-
-## 13. Structured Assessment
-
-The agent submits its own assessment through the `submit_investigation` tool, and a valid
-call is the Definition of Done. Pi validates it against the tool schema before execution,
-so an invalid submission returns to the model as a correctable error (ADR 005 §1).
-
-BAML is deferred, not rejected. Revisit if free-form submissions prove unreliable.
-
-Do not weaken the assessment into unvalidated free text, and never convert a final
-assistant message into a result.
+Each investigation starts with system instructions, the source-neutral alert including its
+source-native evidence, the available table names, and the tools. The full schema is fetched once
+and held by the harness; only table names enter model context, because 22 tables and 1,168 columns
+would spend the window before the agent knows what matters (ADR 005 §4).
 
 ## 14. Implementation Order
 
-Do not skip ahead.
+Phases 1–12 are delivered. Status lives in [`docs/README.md`](./docs/README.md); what each phase
+decided lives in its ADR. New work gets a PRD before it gets code (§1).
 
-### Phase 1
-Repository/tooling bootstrap.
+## 15. When to Stop and Ask
 
-### Phase 2
-Kusto Emulator + Training Lab loader.
+Stop and surface the decision rather than implementing, if:
 
-Acceptance:
-- repeatable bootstrap;
-- representative table queries work.
+- Training Lab assets cannot map into Kusto without material semantic loss;
+- the Kusto Emulator differs from required Sentinel KQL behavior in a way that breaks the experiment;
+- Pi cannot support a required agent, tool or context behavior;
+- a second investigation capability is needed outside the alert-oriented, tabular, read-only query
+  boundary ADR 010 approved;
+- the full schema becomes too large for useful startup context;
+- an implementation would require a roadmap feature listed as a §2 non-goal;
+- a change would alter turn-0 context, the run artifact's shape, or what `evaluate` scores — those
+  change the measurement, not just the code.
 
-### Phase 3
-Mock Sentinel REST API.
-
-Acceptance:
-- alert, schema, and KQL are usable only through REST;
-- manual scenario investigation succeeds.
-
-### Phase 4
-Sentinel Client.
-
-Acceptance:
-- application can perform the same manual investigation through the client without knowing the mock internals.
-
-### Phase 5
-Investigator + Pi (PRD-2).
-
-Acceptance:
-- agent receives the alert and available table names;
-- agent may call any of the five tools, or none;
-- a valid `submit_investigation` is required for success;
-- each invocation writes a run artifact.
-
-### Phase 6
-Evaluation against the hidden scenario metadata, then BAML/trace persistence if
-demonstrated necessary (ADR 005 §1, §2).
-
-### Phase 7
-Analyst Console (PRD-3).
-
-Acceptance:
-- the console reads run artifacts and transcripts only, and never writes to `runs/`;
-- an in-flight run is visible while it runs, with its turns and tool calls;
-- a finished investigation's verdict, tool calls, exact KQL and web research are readable;
-- token and cost figures state how many runs they cover.
-
-### Phase 8
-Ground-Truth Expansion (PRD-4).
-
-Returns to Phase 6 evaluation work rather than skipping ahead: six scenarios covering four
-clusters, three of them one incident, is too thin a baseline to measure a change against.
-
-Acceptance:
-- analytics rules surface the cluster-3 attack, so its stages can start an investigation;
-- every scenario pins an alert that resolves against a bootstrapped database;
-- `disabled-account-signins` states evidence that matches what its query actually returns.
-
-### Phase 9
-Console Operator Surface (PRD-5).
-
-Acceptance:
-- the alert queue is derived from alerts and run artifacts rather than persisted separately;
-- the console starts, extends and cancels investigations only through `InvestigationControl`;
-- the investigator remains the sole writer of `runs/`;
-- analyst classifications are recorded outside `runs/` and never enter agent context.
-
-### Phase 10
-Run Comparability (PRD-6).
-
-Acceptance:
-- runs are grouped by a condition key derived in `scripts/` from what each artifact recorded, never
-  by model name and never by a field declared on a contract;
-- a cell holds every repeat, and no draw is discarded, overwritten or silently excluded;
-- every run ever recorded is scored, including `runs/.archive/`, and the report fingerprints the set
-  it scored;
-- the verdict bands partition the range, with a blind-constant baseline row printed under every
-  report;
-- the artifact records prompt, runtime and corpus identity, and cost and effort, with tracing off;
-- no scored artifact is written to disk, and ground-truth isolation is unchanged.
-
-### Phase 11
-Real Microsoft Sentinel Connector (PRD-7).
-
-Acceptance:
-- Mock Sentinel remains the default and both runtime entry points select one shared capability;
-- Azure Monitor Logs supplies alerts, schema and read-only KQL through a configured service
-  principal or an existing Azure CLI/Azure PowerShell session;
-- real tenant artifacts are written only to an ignored operator-selected directory;
-- deterministic connector tests pass, followed by an opt-in model-free live smoke test.
-
-### Phase 12
-Tabular Security Data Sources (PRD-8).
-
-Acceptance:
-- investigation control flow depends on a source-neutral alert and `SecurityDataSource`;
-- one selected bundle supplies the client, source identity and immutable query profile;
-- Mock and Azure Sentinel behavior remains covered through the common capability;
-- new artifacts record source kind, connector, target and query language while committed legacy
-  artifacts remain readable without rewriting;
-- console and evaluation render recorded source/query identity and safely fall back to raw query
-  text for non-KQL or unknown languages;
-- an in-memory non-KQL fixture completes a deterministic investigation without a harness branch.
-
-## 15. When to Stop and Ask for Architecture Input
-
-Stop implementation and surface the decision if any of these occur:
-- Training Lab assets cannot be mapped into Kusto without material semantic loss;
-- Kusto Emulator differs from required Sentinel KQL behavior in a way that breaks the experiment;
-- Pi cannot support a required agent/tool/context behavior;
-- a second investigation capability is required outside the alert-oriented, tabular, read-only
-  query boundary approved by PRD-8 and ADR 010;
-- the full schema is too large for useful startup context;
-- an implementation would require introducing a roadmap feature listed as non-goal.
-
-Prefer a small ADR over silently changing architecture.
+Prefer a small ADR over silently changing architecture. When implementation deviates from an
+approved PRD, record it in the ADR — never edit the PRD to match what was built.
