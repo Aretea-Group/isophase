@@ -33,6 +33,16 @@ Potential capabilities:
 * Automatic relevant-schema selection
 * Context budgeting
 
+PRD-8 raised the pressure here without triggering it. With two sources active, startup context
+lists both the Sentinel workspace tables and the Defender advanced hunting table set. **PRD-8 §7 Q2
+is answered: about 274 tokens for both table-name blocks** (18 Defender + 23 Mock Sentinel tables),
+measured in `research-defender-api.md` §9.9 — so `AGENTS.md` §15's oversized-startup-schema
+stop-and-ask did not fire and PRD-8 Phase 2 proceeded.
+
+That number is names only, on two small tenants. It says nothing about what `get_security_schema`
+costs once the agent pulls column lists — one Defender tenant alone reports 366 columns across 18
+tables — which is the half this section still exists to solve.
+
 ### 4. Safe Web Search Harness
 
 Strengthen the boundary between the investigation agent and untrusted public internet content.

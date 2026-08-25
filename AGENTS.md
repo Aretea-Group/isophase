@@ -38,7 +38,9 @@ Do not implement a roadmap feature before its PRD exists.
 In scope: a TypeScript/Bun monorepo; the Mock Sentinel REST service over a Kusto Emulator loaded
 with Training Lab telemetry; Mock and Azure Sentinel connectors behind the alert-oriented tabular
 security data-source boundary (ADR 010), plus an in-memory non-KQL fixture that exists only to prove
-that boundary (ADR 010 §6); the investigation runtime and its Pi integration; the five agent tools
+that boundary (ADR 010 §6); a read-only Microsoft Defender XDR connector over the Graph security API,
+with several sources active in one investigation and exactly one of them producing alerts (ADR 011);
+the investigation runtime and its Pi integration; the five agent tools
 (§10); structured submission as the Definition of Done; run artifacts and evaluation against the
 hidden scenario metadata; and a local operator console.
 
@@ -55,7 +57,10 @@ Out of scope — these are the non-goals other documents cite:
 - alert grouping;
 - multi-tenancy;
 - production HA;
-- a live second-SIEM connector.
+- ~~a live second-SIEM connector~~ — **reversed by ADR 011.** Microsoft Defender XDR is a live second
+  product, in scope and delivered. What stays out is merging or deduplicating alerts across sources
+  (ADR 011 §4), the Defender incidents API (§1), any write path, and Defender ground truth or
+  scoring — Defender runs are unscored by construction.
 
 Delivery status is not kept here — see [`docs/README.md`](./docs/README.md).
 
@@ -66,15 +71,24 @@ rules an implementation can actually violate.
 
 ### Security data-source boundary
 
-Investigation consumers reach the selected source through `SecurityDataSource` and its immutable
-query profile (ADR 010 §4). Mock and Azure Sentinel are concrete connectors in `@soc/sentinel-client`;
-their transport and native contracts do not enter investigation control flow.
+Investigation consumers reach the active sources through `SecurityDataSource` and their immutable
+query profiles (ADR 010 §4, ADR 011 §3). Mock Sentinel, Azure Sentinel and Microsoft Defender are
+concrete connectors in `@soc/sentinel-client`; their transport and native contracts do not enter
+investigation control flow.
+
+Startup selects an ordered set of sources with exactly one primary. The primary is the only source
+that produces alerts (`listAlerts`, `getAlert`, `getCorpus`); every active source is queryable
+(ADR 011 §4). Primacy is a configured role, not a property of a connector.
 
 Never:
 - import Mock Sentinel fixture repositories from investigator code;
 - query Kusto directly from investigator code;
 - couple the agent runtime to Mock Sentinel URLs;
-- branch investigation control flow on source kind, connector or query language.
+- branch investigation control flow on source **kind**, connector or query language.
+
+`sources.get(id)` is routing and is allowed — ADR 011 §5 narrows ADR 010 §4's "no source-id branch"
+to the rule that was load-bearing. `if (kind === "defender")` inside investigation control flow stays
+forbidden.
 
 ### Agent boundary
 
@@ -206,8 +220,12 @@ would spend the window before the agent knows what matters (ADR 005 §4).
 
 ## 14. Implementation Order
 
-Phases 1–12 are delivered. Status lives in [`docs/README.md`](./docs/README.md); what each phase
+Phases 1–13 are delivered. Status lives in [`docs/README.md`](./docs/README.md); what each phase
 decided lives in its ADR. New work gets a PRD before it gets code (§1).
+
+One measurement discontinuity is worth knowing before reading `runs/`: PRD-8 moved the prompt hash,
+so Sentinel runs written from 2026-08-25 are a different condition from the committed corpus and
+`evaluate` will not compare across the boundary. ADR 011 §14 records why that was accepted.
 
 ## 15. When to Stop and Ask
 

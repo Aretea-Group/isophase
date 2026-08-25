@@ -1,14 +1,17 @@
 # SOC Investigation Agent
 
-An autonomous LLM agent that investigates Microsoft Sentinel alerts through either a local,
-deterministic security lab or a read-only Azure Monitor Logs connector. The analyst operates it
-through a terminal UI, follows the investigation live, reviews the evidence and exact KQL, and
-records the final classification.
+An autonomous LLM agent that investigates security alerts through a local deterministic security
+lab, a read-only Azure Monitor Logs connector, or Microsoft Defender XDR — one of them, or several
+at once with exactly one producing the alerts. The analyst operates it through a terminal UI,
+follows the investigation live, reviews the evidence and exact KQL, and records the final
+classification.
 
 ```text
 Training Lab telemetry → Kusto Emulator → Mock Sentinel REST ─┐
-                                                             ├→ Sentinel Client
-Real Sentinel workspace ───────────────→ Azure Monitor Logs ──┘         ↓
+                                                              │
+Real Sentinel workspace ───────────────→ Azure Monitor Logs ──┼→ Security data sources
+                                                              │   (ordered set, one primary)
+Microsoft Defender XDR ──────────────→ Graph security API ────┘         ↓
                                                            Pi investigation agent
                                                                      ↓
                                                   run artifact + transcript
@@ -22,7 +25,7 @@ may query security data, research the public web, or conclude from the starting 
 playbooks or hidden answer-key access.
 
 The local Sentinel environment, autonomous investigator, evaluation scenarios, console operator
-surface, run comparison, and real Sentinel connector are implemented. This README is the canonical
+surface, run comparison, the real Sentinel connector and the Defender connector are implemented. This README is the canonical
 setup and usage guide. The files under `docs/` contain design history and decisions rather than a
 second getting started path.
 
@@ -112,7 +115,7 @@ session move into the Runs pane normally.
 The console is the primary way to operate the system:
 
 ```text
-[1] Alerts   outstanding alerts from the selected Sentinel connector; ◆ means ground truth exists
+[1] Alerts   outstanding alerts from the primary source; ◆ means ground truth exists
 [2] Runs     investigations visible in this session, newest first
 [3] Case     facts for the active queue alert or selected run
 [4] Main     Verdict · Agent stream · Activity · Transcript
@@ -235,6 +238,64 @@ AZURE_SENTINEL_LIVE_TEST=true \
 
 It loads workspace schema, queries `SecurityAlert`, round-trips one alert, and verifies that invalid
 KQL returns an actionable diagnostic. It neither calls a model nor writes an artifact.
+
+### Use Microsoft Defender XDR
+
+Defender is reached through the Microsoft Graph security API: alerts from `alerts_v2`, telemetry
+from advanced hunting. It runs alone — no Sentinel credential, no workspace, no Mock Sentinel
+process — or alongside Sentinel with one of them producing alerts.
+
+The app registration needs the Graph **application** permissions `SecurityAlert.Read.All` and
+`ThreatHunting.Read.All`, with admin consent granted.
+[`docs/defender-setup.md`](./docs/defender-setup.md) is the walkthrough.
+
+```dotenv
+SECURITY_SOURCES=defender
+DEFENDER_TENANT_ID=<tenant-guid>
+DEFENDER_CLIENT_ID=<application-client-guid>
+DEFENDER_CLIENT_SECRET=<local-secret>
+
+RUNS_DIR=.data/defender-runs
+INVESTIGATOR_TRACE_DIR=.data/defender-runs/traces
+```
+
+All three credentials are required together and there is **no developer fallback** — unlike Azure,
+`az login` is not a verified path to `ThreatHunting.Read.All`. A partial group is rejected by name.
+
+Defender runs refuse paths outside ignored `.data/`, and so does any run with Defender active even
+when Sentinel is `mock`: a mixed run may carry tenant data and must not enter the committed
+benchmark corpus. Those runs are also unscored by construction, because evaluation joins to the
+local scenario corpus. Standalone Defender investigates; it does not benchmark.
+
+`DEFENDER_ALERT_WINDOW` (default `P7D`) bounds the alert queue. `alerts_v2` supports no `$orderby`,
+so "the newest 500" is not expressible; a window is. More than 500 alerts in the window is refused
+with the count rather than silently truncated.
+
+Before a real investigation:
+
+```bash
+DEFENDER_LIVE_TEST=true \
+  bun test packages/sentinel-client/test/integration/defender.test.ts
+```
+
+It loads the tenant's advanced-hunting schema, runs an aggregate query, round-trips one alert, and
+verifies that an invalid query returns the engine's own diagnostic. It neither calls a model nor
+writes an artifact.
+
+### Use several sources at once
+
+```dotenv
+SECURITY_SOURCES=defender,sentinel
+PRIMARY_ALERT_SOURCE=defender
+```
+
+The primary is the only source that produces alerts; every active source is queryable through the
+`source` parameter on the schema and query tools, which defaults to the primary when omitted. With
+more than one active source `PRIMARY_ALERT_SOURCE` is required rather than guessed.
+
+Primacy is a configured role, not a property of a connector — moving it moves which product's
+detections start an investigation, and the run artifact records both the primary and the ordered
+active set so two runs over different source sets are different conditions.
 
 ### Evaluate runs
 
@@ -398,7 +459,9 @@ All supported variables and defaults are documented in [`.env.example`](./.env.e
 groups are:
 
 - Mock Sentinel and Kusto endpoints;
+- security source selection (`SECURITY_SOURCES`, `PRIMARY_ALERT_SOURCE`);
 - Sentinel connector selection and Azure service-principal credentials;
+- Defender credentials, alert window and query row cap;
 - provider, model, thinking level, timeouts, and turn limits;
 - OpenAI, Anthropic, or Google credentials, or one llama-server endpoint;
 - optional Brave Search credentials;
@@ -433,6 +496,8 @@ implementation rules are in [`AGENTS.md`](./AGENTS.md).
 - [PRD-5 — Console operator surface](./docs/prd-5-console-operator-surface.md)
 - [PRD-6 — Run comparability](./docs/prd-6-run-comparability.md)
 - [PRD-7 — Real Microsoft Sentinel connector](./docs/prd-7-real-sentinel-connector.md)
+- [PRD-8 — Microsoft Defender data source](./docs/prd-8-microsoft-defender-data-source.md)
+- [Defender setup — app registration and consent](./docs/defender-setup.md)
 - [Architecture decision records](./docs/adr/)
 - [Roadmap](./docs/roadmap.md)
 

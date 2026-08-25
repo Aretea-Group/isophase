@@ -1,8 +1,13 @@
 # ADR 010 — Tabular Security Data-Source Boundary
 
-**Status:** Accepted
+**Status:** Accepted; §4's single-bundle startup is reversed by ADR 011
 
 **Date:** 2026-08-23
+
+**Reversed in part by:** [ADR 011](./011-multi-source-security-data.md) §3 (startup selects an
+ordered *set* of sources with one primary, not one bundle) and §5 (the harness routes through a
+source-id keyed map; the surviving rule is no branch on source *kind*, connector or query language).
+ADR 011 §14 extends prompt provenance to hash every active profile. Everything else here stands.
 
 **Amends:** PRD-2 §5.2, §11, §22, §24 and §26; ADR 004 (the Sentinel alert shape remains the Mock
 REST contract, not the investigator contract); ADR 005 §3 and §4 (query descriptions, argument and
@@ -80,6 +85,13 @@ document or graph backend is a second capability and needs separate architecture
 
 ### 4. Select client and query behavior as one immutable bundle
 
+> **Reversed by ADR 011 §3 and §5 (2026-08-25).** Startup now selects an ordered set of bundles with
+> exactly one primary, and the harness holds a source-id keyed map and routes through it. The rule
+> that survived, and the one that was load-bearing, is **no branch on source kind, connector or
+> query language** — `sources.get(id)` is routing, `if (kind === "defender")` stays forbidden. The
+> rest of this section — one immutable bundle per source, stable tool names, no dynamic tool
+> schemas, provenance excluding inactive profiles and credentials — is unchanged.
+
 Startup selects one bundle containing `SecurityDataSource` and one profile. The profile supplies
 source kind, connector, target, query-language identity, tool descriptions, `{ query }` parameter
 description, initial-context framing, lazy syntax guidance and its activation tools.
@@ -88,8 +100,8 @@ Tool names remain stable. The harness consumes profile values and contains no Se
 source-id branch or hard-coded language tool set. Mock and Azure select different clients and the
 same Sentinel/KQL profile.
 
-Prompt provenance hashes generic prompt content plus only the active profile's prompt-visible
-content, activation rules, context template and active descriptors. It excludes inactive profiles,
+Prompt provenance hashes generic prompt content plus every *active* profile's prompt-visible
+content, activation rules, context template and active descriptors (plural since ADR 011 §14). It excludes inactive profiles,
 client implementations, credentials and identity values never shown to the model. Operational
 identity is recorded separately in run configuration.
 
