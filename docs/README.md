@@ -10,14 +10,14 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | Document | Status |
 |---|---|
 | [`architecture.md`](./architecture.md) | v0.2 — project-wide implementation architecture |
-| [`prd-1-mock-sentinel.md`](./prd-1-mock-sentinel.md) | **Delivered** — the mock Sentinel environment |
+| [`prd-1-mock-sentinel.md`](./prd-1-mock-sentinel.md) | **Complete** — the mock Sentinel environment |
 | [`prd-2-Core Investigation Agent.md`](./prd-2-Core%20Investigation%20Agent.md) | **Complete** — the autonomous investigation agent |
 | [`prd-3-analyst-console.md`](./prd-3-analyst-console.md) | **Complete** — the read-only analyst console (TUI) |
 | [`prd-4-ground-truth-expansion.md`](./prd-4-ground-truth-expansion.md) | **Complete** — expanding the evaluation answer key |
 | [`prd-5-console-operator-surface.md`](./prd-5-console-operator-surface.md) | **Complete** — the alert queue and investigation operator surface |
-| [`prd-6-run-comparability.md`](./prd-6-run-comparability.md) | **Draft** — making runs comparable across models, parameters, tools, prompts, steering and memory, and accumulating a durable baseline to compare them on. Partitions the scoring bands and makes the run corpus append-only |
-| [`prd-7-real-sentinel-connector.md`](./prd-7-real-sentinel-connector.md) | **Approved** — a read-only Azure Monitor Logs implementation of the Sentinel capability |
-| [`prd-8-tabular-security-data-sources.md`](./prd-8-tabular-security-data-sources.md) | **Approved** — a source-neutral boundary for alert-oriented tabular security data sources |
+| [`prd-6-run-comparability.md`](./prd-6-run-comparability.md) | **Complete** — making runs comparable across models, parameters, tools, prompts, steering and memory, and accumulating a durable baseline to compare them on. Partitions the scoring bands and makes the run corpus append-only |
+| [`prd-7-real-sentinel-connector.md`](./prd-7-real-sentinel-connector.md) | **Complete** — a read-only Azure Monitor Logs implementation of the Sentinel capability |
+| [`prd-9-microsoft-defender-data-source.md`](./prd-9-microsoft-defender-data-source.md) | **Draft** — Microsoft Defender as a second alert source alongside Sentinel, with a selectable primary alert source and cross-source querying within one investigation. Number 8 is retired with its PRD; see ADR 010 |
 | [`research-console-write-path.md`](./research-console-write-path.md) | **Research** — roadmap §6, the console write path. Verdict: buildable in ~1k lines, no new dependency. Not a PRD; nothing in it is built |
 | [`research-run-comparability.md`](./research-run-comparability.md) | **Research** — roadmap §9, why runs are not comparable today. The measurements behind PRD-6 |
 | [`roadmap.md`](./roadmap.md) | Forward-looking capabilities and follow-up work |
@@ -34,7 +34,7 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [005 — Investigation agent boundary](./adr/005-investigation-agent-boundary.md) | Accepted |
 | [006 — Analyst console boundary](./adr/006-analyst-console.md) | Accepted |
 | [007 — Console control surface](./adr/007-console-control-surface.md) | Accepted |
-| [008 — The comparability record](./adr/008-comparability-record.md) | Proposed; amends 005 §2, `AGENTS.md` §5/§9/§12/§14 and roadmap §7 |
+| [008 — The comparability record](./adr/008-comparability-record.md) | Accepted; amends 005 §2, `AGENTS.md` §5/§9/§12/§14 and roadmap §7 |
 | [009 — Azure Monitor Logs connector](./adr/009-azure-monitor-logs-connector.md) | Accepted |
 | [010 — Tabular security data-source boundary](./adr/010-tabular-security-data-source-boundary.md) | Accepted; amends the Sentinel-only investigation boundary |
 
