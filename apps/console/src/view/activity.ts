@@ -1,3 +1,4 @@
+import type { RunArtifact } from "../data/runs.ts";
 import type { ToolCall, TraceIndex } from "../data/trace-index.ts";
 import { chars, clockTime, cost, tokens, truncate } from "./format.ts";
 
@@ -14,18 +15,64 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * display convenience for the "which tables did it look at" summary, so an unrecognised query is
  * left out rather than guessed at.
  */
+/**
+ * KQL statements that open a query without naming a table.
+ *
+ * `let` is the one that actually shows up: Defender's advanced hunting encourages binding an alert
+ * id or a hash before the query proper, and the agent does it routinely. Reading the first word
+ * blindly turned those into a table called `let`, which then reached the "which tables did it look
+ * at" tally — inventing a table nobody queried and hiding the real ones behind it.
+ *
+ * `print`, `range`, `search` and `union` are here for the same reason rather than because they were
+ * observed: none of them names a single leading table either.
+ */
+const NON_TABLE_LEADERS = new Set(["let", "print", "range", "search", "union", "declare", "set"]);
+
 export function leadingTable(kql: string): string | undefined {
   for (const raw of kql.split("\n")) {
     const line = raw.trim();
     if (line === "" || line.startsWith("//") || line.startsWith("|")) continue;
     const match = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(line);
-    return match?.[1];
+    const word = match?.[1];
+    if (word === undefined) return undefined;
+    // A `let` line binds a name and the real query follows, so keep scanning rather than guessing.
+    // Everything else that is not a table name is simply not summarisable as one, and the caller
+    // falls back to bounded raw query text — which is honest where a made-up table name is not.
+    if (NON_TABLE_LEADERS.has(word.toLowerCase())) {
+      if (word.toLowerCase() === "let") continue;
+      return undefined;
+    }
+    return word;
   }
   return undefined;
 }
 
 /** A one-line description of what a call asked for. */
-export function summariseArgs(call: ToolCall, width = 40, queryLanguage?: string): string {
+export type QueryLanguageResolver = string | ((call: ToolCall) => string | undefined);
+
+function languageFor(call: ToolCall, resolver?: QueryLanguageResolver): string | undefined {
+  return typeof resolver === "function" ? resolver(call) : resolver;
+}
+
+export function queryLanguageForCall(
+  run: RunArtifact | undefined,
+  call: ToolCall,
+): string | undefined {
+  const primary = run?.config?.source?.queryLanguage;
+  const sources = run?.config?.sources;
+  if (sources === undefined) return primary;
+  const args = asRecord(call.args);
+  const requested = args?.["source"];
+  if (requested === undefined) return primary;
+  if (typeof requested !== "string") return undefined;
+  return sources.find((source) => source.id === requested)?.queryLanguage;
+}
+
+export function summariseArgs(
+  call: ToolCall,
+  width = 40,
+  queryLanguage?: QueryLanguageResolver,
+): string {
   const args = asRecord(call.args);
   if (args === undefined) return "";
 
@@ -37,7 +84,7 @@ export function summariseArgs(call: ToolCall, width = 40, queryLanguage?: string
     case "query_security_data": {
       const query = args["query"];
       if (typeof query !== "string") return "";
-      return queryLanguage === "kql"
+      return languageFor(call, queryLanguage) === "kql"
         ? (leadingTable(query) ?? truncate(query, width))
         : truncate(query, width);
     }
@@ -87,7 +134,10 @@ export interface ActivityView {
   callCount: number;
 }
 
-export function toActivityView(index: TraceIndex, queryLanguage?: string): ActivityView {
+export function toActivityView(
+  index: TraceIndex,
+  queryLanguage?: QueryLanguageResolver,
+): ActivityView {
   const rows: ActivityRow[] = [];
   const tableCounts = new Map<string, number>();
   const searches: string[] = [];
@@ -153,7 +203,7 @@ export function toActivityView(index: TraceIndex, queryLanguage?: string): Activ
       }
     }
     if (
-      queryLanguage === "kql" &&
+      languageFor(call, queryLanguage) === "kql" &&
       call.toolName === "query_security_data" &&
       typeof args["query"] === "string"
     ) {

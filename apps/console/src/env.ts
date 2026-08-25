@@ -33,6 +33,19 @@ export const env = createEnv({
     AZURE_CLIENT_SECRET: z.string().min(1).optional(),
     AZURE_LOG_ANALYTICS_WORKSPACE_ID: z.string().min(1).optional(),
 
+    // Defender, on the same terms as everything else here: defaulted or optional, never required.
+    // A console must open a two-week-old run without a credential for a tenant it will never call
+    // (PRD-8 §4.1 D13 — nothing in the console may assume a Sentinel profile exists either).
+    SECURITY_SOURCES: z.string().min(1).default("sentinel"),
+    PRIMARY_ALERT_SOURCE: z.string().min(1).optional(),
+    DEFENDER_TENANT_ID: z.string().min(1).optional(),
+    DEFENDER_CLIENT_ID: z.string().min(1).optional(),
+    DEFENDER_CLIENT_SECRET: z.string().min(1).optional(),
+    DEFENDER_WORKSPACE_ID: z.string().min(1).optional(),
+    DEFENDER_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    DEFENDER_QUERY_MAX_ROWS: z.coerce.number().int().positive().default(500),
+    DEFENDER_ALERT_WINDOW: z.string().min(1).default("P7D"),
+
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
     INVESTIGATOR_THINKING_LEVEL: z

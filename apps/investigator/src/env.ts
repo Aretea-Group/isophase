@@ -22,6 +22,39 @@ export const env = createEnv({
     AZURE_CLIENT_SECRET: z.string().min(1).optional(),
     AZURE_LOG_ANALYTICS_WORKSPACE_ID: z.string().min(1).optional(),
 
+    /**
+     * Which security sources this run selects, in order (PRD-8 §4.1 D6).
+     *
+     * Defaults to `sentinel` so a zero-credential checkout keeps working against Mock Sentinel.
+     * Standalone Defender is `SECURITY_SOURCES=defender` — an explicit opt-in rather than an
+     * accident of configuration, and a first-class deployment rather than a degraded one (D13).
+     * Phase 1 accepts exactly one id; the list shape is what Phase 2 grows into.
+     */
+    SECURITY_SOURCES: z.string().min(1).default("sentinel"),
+    PRIMARY_ALERT_SOURCE: z.string().min(1).optional(),
+
+    // All three required together, with no developer fallback (D2). Deliberately a divergence from
+    // ADR 009 §3's Azure CLI / Azure PowerShell chain: developer sign-in is not a verified path to
+    // ThreatHunting.Read.All. See docs/defender-setup.md.
+    DEFENDER_TENANT_ID: z.string().min(1).optional(),
+    DEFENDER_CLIENT_ID: z.string().min(1).optional(),
+    DEFENDER_CLIENT_SECRET: z.string().min(1).optional(),
+    /** Optional. Targets one Log Analytics workspace onboarded into the Defender portal. */
+    DEFENDER_WORKSPACE_ID: z.string().min(1).optional(),
+    DEFENDER_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    /**
+     * Row cap pushed into the query text, with `take` and `truncation` derived from it (D15).
+     *
+     * A fetch-cost bound, not an evidence bound: `INVESTIGATOR_RESULT_MAX_CHARS` below is what
+     * limits what reaches the model, it is a property of the model rather than of any source, and
+     * it stays source-neutral. Probe measurement behind the 500: the widest table sampled
+     * (`CloudAppEvents`) serialises at ~5,000 characters per whole row, so the character budget
+     * binds first for any realistic projection — which is the band D15 asks the cap to sit in.
+     */
+    DEFENDER_QUERY_MAX_ROWS: z.coerce.number().int().positive().default(500),
+    /** ISO 8601 duration bounding `listAlerts()`. `alerts_v2` has no `$orderby` (D14). */
+    DEFENDER_ALERT_WINDOW: z.string().min(1).default("P7D"),
+
     INVESTIGATOR_PROVIDER: z.string().min(1).default("openai"),
     INVESTIGATOR_MODEL: z.string().min(1).default("gpt-5.6-luna"),
     INVESTIGATOR_THINKING_LEVEL: z

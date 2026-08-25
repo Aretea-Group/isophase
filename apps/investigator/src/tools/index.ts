@@ -1,25 +1,24 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
-import type { SchemaTable } from "@soc/contracts";
 
 import type { WebSearchClient } from "../clients/brave.ts";
 import type { WebFetchClient } from "../clients/fetch.ts";
 import type { InvestigationSummary } from "../contracts/summary.ts";
-import type { SecuritySourceBundle, SecuritySourceProfile } from "../source-profile.ts";
+import type { SecuritySourceProfile } from "../source-profile.ts";
 import { createGetSecuritySchemaTool, GET_SECURITY_SCHEMA } from "./get-security-schema.ts";
 import {
   createQuerySecurityDataTool,
   QUERY_SECURITY_DATA,
   querySecurityDataParameters,
 } from "./query-security-data.ts";
+import type { SecurityToolSources } from "./source-routing.ts";
 import { createSubmitInvestigationTool, SUBMIT_INVESTIGATION } from "./submit-investigation.ts";
 import { createWebFetchTool, WEB_FETCH } from "./web-fetch.ts";
 import { createWebSearchTool, WEB_SEARCH } from "./web-search.ts";
 
 export interface InvestigationToolDeps {
-  /** The complete schema, loaded once at investigation startup. */
-  tables: Map<string, SchemaTable>;
-  source: SecuritySourceBundle;
+  /** Active clients and their complete schemas, loaded once at investigation startup. */
+  security: SecurityToolSources;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   onSubmit: (summary: InvestigationSummary) => void;
@@ -68,13 +67,17 @@ const TOOLS = [
 export const INVESTIGATION_TOOL_NAMES = TOOLS.map((tool) => tool.name);
 
 export function createInvestigationTools(deps: InvestigationToolDeps): AgentTool[] {
+  const profiles = new Map(
+    [...deps.security.sources].map(([id, source]) => [id, source.profile] as const),
+  );
+  const descriptions = securityToolDescriptions(profiles, deps.security.primaryId);
   // Same order as `TOOLS`; `tool-surface.test.ts` asserts it stays that way.
   return [
-    createGetSecuritySchemaTool(deps.tables, deps.source.profile.schemaToolDescription),
+    createGetSecuritySchemaTool(deps.security, descriptions.schema),
     createQuerySecurityDataTool(
-      deps.source.client,
-      deps.source.profile.queryToolDescription,
-      deps.source.profile.queryParameterDescription,
+      deps.security,
+      descriptions.query,
+      descriptions.queryParameter,
       deps.resultMaxChars,
     ),
     createWebSearchTool(deps.webSearch),
@@ -89,6 +92,29 @@ export interface ToolDescriptor {
   parameters: TSchema;
 }
 
+function securityToolDescriptions(
+  profiles: ReadonlyMap<string, SecuritySourceProfile>,
+  primaryId: string,
+): { schema: string; query: string; queryParameter: string } {
+  const entries = [...profiles];
+  if (entries.length === 1) {
+    const profile = entries[0]?.[1];
+    if (profile === undefined) throw new Error("At least one security source is required.");
+    return {
+      schema: profile.schemaToolDescription,
+      query: profile.queryToolDescription,
+      queryParameter: profile.queryParameterDescription,
+    };
+  }
+  const describe = (select: (profile: SecuritySourceProfile) => string): string =>
+    entries.map(([id, profile]) => `${id}: ${select(profile)}`).join("\n");
+  return {
+    schema: `Return schemas from an active security source. Omitted source uses primary "${primaryId}".\n${describe((profile) => profile.schemaToolDescription)}`,
+    query: `Query an active security source. Omitted source uses primary "${primaryId}".\n${describe((profile) => profile.queryToolDescription)}`,
+    queryParameter: describe((profile) => profile.queryParameterDescription),
+  };
+}
+
 /**
  * The tool surface as the model sees it, without building one (PRD-6 §6.6).
  *
@@ -100,17 +126,24 @@ export interface ToolDescriptor {
  * surface: a tool added to `createInvestigationTools` and not to this list would change the agent's
  * capabilities without changing its prompt hash, which is why both read the same five constants.
  */
-export function toolDescriptors(profile: SecuritySourceProfile): ToolDescriptor[] {
+export function toolDescriptors(
+  profileInput: ReadonlyMap<string, SecuritySourceProfile> | SecuritySourceProfile,
+  requestedPrimaryId?: string,
+): ToolDescriptor[] {
+  const profiles =
+    profileInput instanceof Map ? profileInput : new Map([["primary", profileInput]]);
+  const primaryId = requestedPrimaryId ?? "primary";
+  const descriptions = securityToolDescriptions(profiles, primaryId);
   return [
     {
       name: GET_SECURITY_SCHEMA.name,
-      description: profile.schemaToolDescription,
+      description: descriptions.schema,
       parameters: GET_SECURITY_SCHEMA.parameters,
     },
     {
       name: QUERY_SECURITY_DATA.name,
-      description: profile.queryToolDescription,
-      parameters: querySecurityDataParameters(profile.queryParameterDescription),
+      description: descriptions.query,
+      parameters: querySecurityDataParameters(descriptions.queryParameter),
     },
     ...[WEB_SEARCH, WEB_FETCH, SUBMIT_INVESTIGATION].map((tool) => ({
       name: tool.name,

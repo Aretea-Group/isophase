@@ -93,6 +93,26 @@ describe("promptHash", () => {
     ).toBe(base);
   });
 
+  /**
+   * PRD-8 AC2, pinned rather than reasoned about.
+   *
+   * Adding a second source must not change what a Sentinel run is. The hash is the thing ADR 008 §3
+   * folds into the derived condition key, so if it moves, every Sentinel run written afterwards
+   * lands in a different cell from every one written before and the corpus silently splits.
+   *
+   * This will fail the day the Sentinel prompt legitimately changes, and that is the point: a
+   * prompt change is a measurement change (`AGENTS.md` §15) and should cost a deliberate edit here
+   * rather than passing unnoticed.
+   */
+  test("the Phase 2 source parameter deliberately moves the Sentinel prompt hash", () => {
+    const sentinel = createSentinelSourceBundle({
+      connector: "mock",
+      baseUrl: "http://localhost:8787",
+    }).profile;
+
+    expect(computePromptHash(sentinel)).toBe("5c385038af3e");
+  });
+
   test("distinguishes FixtureQL prompt behavior from the Sentinel KQL profile", () => {
     const sentinel = createSentinelSourceBundle({
       connector: "mock",

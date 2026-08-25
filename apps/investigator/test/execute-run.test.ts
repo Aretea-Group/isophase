@@ -7,7 +7,7 @@ import type { InvestigationRun } from "../src/contracts/run.ts";
 import { InvestigationAbortedError } from "../src/errors.ts";
 import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "../src/execute-run.ts";
 import type { ResolvedModel } from "../src/model.ts";
-import { testSourceBundle } from "./fixtures/source.ts";
+import { testSourceSet } from "./fixtures/source.ts";
 
 /**
  * `executeRun` was `main()` until PRD-5 §5.2, and `main()` had no test — its flush ordering, its
@@ -64,8 +64,8 @@ function recorder(): { writes: InvestigationRun[]; write: NonNullable<Investigat
   };
 }
 
-function sourceStub(alerts: SecurityAlert[]): InvestigatorDeps["source"] {
-  return testSourceBundle({
+function sourceStub(alerts: SecurityAlert[]): InvestigatorDeps["securitySources"] {
+  return testSourceSet({
     listAlerts: () => Promise.resolve(alerts),
     getAlert: (id: string) => {
       const found = alerts.find((candidate) => candidate.id === id);
@@ -83,7 +83,7 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
   test("an unknown model writes a failed artifact under the supplied runId, then rethrows", async () => {
     const { writes, write } = recorder();
     const deps: InvestigatorDeps = {
-      source: sourceStub([alert("a1")]),
+      securitySources: sourceStub([alert("a1")]),
       webSearch: { search: () => Promise.resolve([]) } as unknown as InvestigatorDeps["webSearch"],
       webFetch: { fetch: () => Promise.resolve("") } as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -114,7 +114,7 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
   test("an unreachable Sentinel is recorded the same way", async () => {
     const { writes, write } = recorder();
     const deps: InvestigatorDeps = {
-      source: testSourceBundle({
+      securitySources: testSourceSet({
         listAlerts: () => Promise.reject(new Error("Sentinel is unreachable at localhost:8787")),
       } as unknown as SecurityDataSource),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
@@ -131,7 +131,7 @@ describe("executeRun — startup failure is recorded (PRD-5 §5.2)", () => {
 
   test("a write failure during startup does not mask the real error", async () => {
     const deps: InvestigatorDeps = {
-      source: sourceStub([]),
+      securitySources: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write: () => Promise.reject(new Error("disk full")),
@@ -148,7 +148,7 @@ describe("executeRun — cancellation (PRD-5 §6)", () => {
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      source: sourceStub([alert("a1"), alert("a2")]),
+      securitySources: sourceStub([alert("a1"), alert("a2")]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -171,7 +171,7 @@ describe("executeRun — cancellation (PRD-5 §6)", () => {
     const controller = new AbortController();
     controller.abort();
     const deps: InvestigatorDeps = {
-      source: sourceStub([alert("a1")]),
+      securitySources: sourceStub([alert("a1")]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -195,7 +195,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     const seen: { provider: string; id: string }[] = [];
 
     const deps: InvestigatorDeps = {
-      source: sourceStub([]),
+      securitySources: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -230,7 +230,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     const llamaServerAuth = { bearerToken: "test-bearer-token" };
     const seen: unknown[] = [];
     const deps: InvestigatorDeps = {
-      source: sourceStub([]),
+      securitySources: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -272,7 +272,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      source: sourceStub([]),
+      securitySources: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -298,7 +298,7 @@ describe("executeRun — the artifact records the configuration that applied (PR
     controller.abort();
 
     const deps: InvestigatorDeps = {
-      source: sourceStub([]),
+      securitySources: sourceStub([]),
       webSearch: {} as unknown as InvestigatorDeps["webSearch"],
       webFetch: {} as unknown as InvestigatorDeps["webFetch"],
       write,
@@ -313,6 +313,27 @@ describe("executeRun — the artifact records the configuration that applied (PR
     expect(run.provenance?.piVersion).toMatch(/^core@/);
     // No investigation ran, so nothing reported a tally and capability-versus-use is unknown.
     expect(run.config?.webSearchUsed).toBeUndefined();
+  });
+
+  test("records source query limits that affect the evidence returned", async () => {
+    const { write } = recorder();
+    const controller = new AbortController();
+    controller.abort();
+    const deps: InvestigatorDeps = {
+      securitySources: sourceStub([]),
+      webSearch: {} as unknown as InvestigatorDeps["webSearch"],
+      webFetch: {} as unknown as InvestigatorDeps["webFetch"],
+      write,
+      resolveModel: () =>
+        Promise.resolve({ model: {}, streamFn: () => undefined } as unknown as ResolvedModel),
+    };
+
+    const run = await executeRun({ ...CONFIG, alertWindow: "P30D", queryMaxRows: 1_234 }, deps, {
+      runId: "run-source-limits",
+      signal: controller.signal,
+    });
+
+    expect(run.config).toMatchObject({ alertWindow: "P30D", queryMaxRows: 1_234 });
   });
 });
 

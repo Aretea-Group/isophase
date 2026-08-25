@@ -104,6 +104,8 @@ export const RunSecuritySource = z.object({
 
 export type RunSecuritySource = z.infer<typeof RunSecuritySource>;
 
+export const RunSecuritySourceEntry = RunSecuritySource.extend({ id: z.string().min(1) });
+
 /**
  * How a run was configured beyond model and limits (PRD-3 §7).
  *
@@ -124,6 +126,22 @@ export const InvestigationRunConfig = z.object({
   thinkingLevel: z.string().min(1).optional(),
   resultMaxChars: z.number().int().positive(),
   source: RunSecuritySource.optional(),
+  /** Ordered active set. Absent on artifacts written before PRD-8 Phase 2. */
+  sources: z.array(RunSecuritySourceEntry).min(1).optional(),
+  /**
+   * The time window a Defender primary drew its alert queue from (PRD-8 §4.1 D14).
+   *
+   * `alerts_v2` supports no `$orderby`, so "the newest 500" is not expressible and the window is
+   * the only selection criterion the API can state. Two runs that drew from different windows saw
+   * different queues, so ADR 008 §3 folds this into the derived condition key and they correctly
+   * do not merge into one cell.
+   *
+   * Absent on every run that did not use a windowed source, and absent means absent — never
+   * defaulted to `P7D` at read time, which would claim a window the run did not use.
+   */
+  alertWindow: z.string().min(1).optional(),
+  /** Connector-side query row cap, when the selected source exposes one. */
+  queryMaxRows: z.number().int().positive().optional(),
   /** Retained only so artifacts written before the neutral source boundary remain readable. */
   sentinelBaseUrl: z.string().min(1).optional(),
   modelBaseUrl: z.string().min(1).optional(),

@@ -34,7 +34,12 @@ describe("query_security_data selected profile", () => {
       },
     } as unknown as SecurityDataSource;
     const tool = createQuerySecurityDataTool(
-      source,
+      {
+        primaryId: "fixture",
+        sources: new Map([
+          ["fixture", { client: source, profile: TEST_SOURCE_PROFILE, tables: new Map() }],
+        ]),
+      },
       TEST_SOURCE_PROFILE.queryToolDescription,
       TEST_SOURCE_PROFILE.queryParameterDescription,
     );
@@ -53,6 +58,7 @@ describe("query_security_data selected profile", () => {
     expect(result.content).toEqual([{ type: "text", text: JSON.stringify(RESULT) }]);
     expect(result.details).toMatchObject({
       query: "MATCH NativeEvents RETURN opaque",
+      source: "fixture",
       keptRows: 1,
       totalRows: 1,
     });
@@ -76,7 +82,12 @@ describe("query_security_data selected profile", () => {
   test("propagates an actionable FixtureQL diagnostic without interpreting the query", async () => {
     const fixture = createFixtureSourceBundle({ queryError: FIXTURE_QUERY_ERROR });
     const tool = createQuerySecurityDataTool(
-      fixture.source,
+      {
+        primaryId: "fixture",
+        sources: new Map([
+          ["fixture", { client: fixture.source, profile: TEST_SOURCE_PROFILE, tables: new Map() }],
+        ]),
+      },
       TEST_SOURCE_PROFILE.queryToolDescription,
       TEST_SOURCE_PROFILE.queryParameterDescription,
     );

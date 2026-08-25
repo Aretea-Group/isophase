@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import {
-  createSentinelSourceBundle,
+  alertWindowOf,
+  createSecuritySources,
   InProcessControl,
+  queryMaxRowsOf,
   type InProcessControlOptions,
   type InvestigationControl,
 } from "@soc/investigator/control";
@@ -12,7 +14,10 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "@soc/investigator/model";
-import { assertAzureArtifactDirectories, sentinelClientConfigFromEnv } from "@soc/sentinel-client";
+import {
+  assertLiveTenantArtifactDirectories,
+  securitySourceConfigSetFromEnv,
+} from "@soc/sentinel-client";
 
 import { env } from "./env.ts";
 import type { ConsoleEnv } from "./env.ts";
@@ -25,6 +30,10 @@ export function buildInvestigatorConfig(
     tracesDir: string;
     llamaServer?: LlamaServerConfig;
     llamaServerAuth?: LlamaServerAuth;
+    /** The selected source's alert-queue window, when it bounds its queue by one (PRD-8 D14). */
+    alertWindow?: string;
+    /** Connector-side query row cap, when the selected source exposes one (PRD-8 D15). */
+    queryMaxRows?: number;
   },
 ): InProcessControlOptions["config"] {
   assertLlamaServerThinkingLevel(
@@ -40,6 +49,8 @@ export function buildInvestigatorConfig(
     maxTurns: source.INVESTIGATOR_MAX_TURNS,
     timeoutMs: source.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: source.INVESTIGATOR_RESULT_MAX_CHARS,
+    ...(options.alertWindow === undefined ? {} : { alertWindow: options.alertWindow }),
+    ...(options.queryMaxRows === undefined ? {} : { queryMaxRows: options.queryMaxRows }),
     webSearchConfigured: source.BRAVE_API_KEY !== undefined,
     runsDir: options.runsDir,
     trace: true,
@@ -65,8 +76,10 @@ function buildControl(
   llamaServer: LlamaServerConfig | undefined,
   llamaServerAuth: LlamaServerAuth | undefined,
 ): InvestigationControl {
-  const sentinelConfig = sentinelClientConfigFromEnv(env);
-  assertAzureArtifactDirectories(sentinelConfig, [runsDir, tracesDir]);
+  const sourceConfig = securitySourceConfigSetFromEnv(env);
+  // Generalised over the active set: any active source that reads a live tenant forces run and
+  // trace directories under `.data/`, including when Sentinel is `mock` (PRD-8 §4.1 D10).
+  assertLiveTenantArtifactDirectories(sourceConfig.sources, [runsDir, tracesDir]);
 
   return new InProcessControl({
     // Console-started runs always trace. Without it the Transcript and Stream tabs are empty for
@@ -74,10 +87,16 @@ function buildControl(
     config: buildInvestigatorConfig(env, {
       runsDir,
       tracesDir,
+      ...(alertWindowOf(sourceConfig.primary) === undefined
+        ? {}
+        : { alertWindow: alertWindowOf(sourceConfig.primary) }),
+      ...(queryMaxRowsOf(sourceConfig.sources) === undefined
+        ? {}
+        : { queryMaxRows: queryMaxRowsOf(sourceConfig.sources) }),
       ...(llamaServer === undefined ? {} : { llamaServer }),
       ...(llamaServerAuth === undefined ? {} : { llamaServerAuth }),
     }),
-    deps: { source: createSentinelSourceBundle(sentinelConfig) },
+    deps: { securitySources: createSecuritySources(sourceConfig) },
     ...(env.BRAVE_API_KEY === undefined ? {} : { web: { braveApiKey: env.BRAVE_API_KEY } }),
     maxConcurrent: env.CONSOLE_MAX_CONCURRENT_RUNS,
   });

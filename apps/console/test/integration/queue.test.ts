@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { createTestRenderer } from "@opentui/core/testing";
-import { createSentinelSourceBundle, InProcessControl } from "@soc/investigator/control";
+import {
+  createSentinelSourceBundle,
+  InProcessControl,
+  type SecuritySourceSet,
+} from "@soc/investigator/control";
 
 import { env } from "../../src/env.ts";
 import { runApp } from "../../src/ui/app.ts";
@@ -46,9 +50,14 @@ describe.skipIf(!reachable)("the alert queue against a live Mock Sentinel", () =
         traceDir: env.INVESTIGATOR_TRACE_DIR,
         traceStream: false,
       },
-      deps: {
-        source: createSentinelSourceBundle({ connector: "mock", baseUrl: BASE_URL }),
-      },
+      deps: (() => {
+        const primary = createSentinelSourceBundle({ connector: "mock", baseUrl: BASE_URL });
+        const securitySources: SecuritySourceSet = {
+          sources: new Map([["sentinel", primary]]),
+          primary,
+        };
+        return { securitySources };
+      })(),
     });
 
     const alerts = await control.listAlerts();

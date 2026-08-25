@@ -2,7 +2,12 @@ import type { RunArtifact, RunResult } from "../../data/runs.ts";
 import type { Aggregate, RunTotals } from "../../data/stats.ts";
 import type { TraceIndex } from "../../data/trace-index.ts";
 import type { ConsoleEnv } from "../../env.ts";
-import { summariseArgs, toActivityView, type ActivityRow } from "../../view/activity.ts";
+import {
+  summariseArgs,
+  toActivityView,
+  type ActivityRow,
+  type QueryLanguageResolver,
+} from "../../view/activity.ts";
 import { entityPairs, remediationLines, type AlertFacts } from "../../view/alert.ts";
 import { DATA_SOURCES, toConfigRows } from "../../view/config.ts";
 import {
@@ -147,7 +152,7 @@ export function progressBody(
   index: TraceIndex | undefined,
   traced: boolean,
   width: number,
-  queryLanguage?: string,
+  queryLanguage?: QueryLanguageResolver,
 ): Line[] {
   const lines: Line[] = [...factsHead(facts, width)];
 
@@ -359,7 +364,7 @@ export function activityBody(
   index: TraceIndex,
   width: number,
   selected: number,
-  queryLanguage?: string,
+  queryLanguage?: QueryLanguageResolver,
 ): ActivityRender {
   const view = toActivityView(index, queryLanguage);
   const lines: Line[] = [];
@@ -491,7 +496,11 @@ export function callDetail(row: ActivityRow, width: number): Line[] {
  * on the row to say nothing new. If §8.4 is meant to be literal parity rather than the same shape,
  * this is the line to change back.
  */
-export function streamBody(index: TraceIndex, width: number, queryLanguage?: string): Line[] {
+export function streamBody(
+  index: TraceIndex,
+  width: number,
+  queryLanguage?: QueryLanguageResolver,
+): Line[] {
   const lines: Line[] = [
     [
       { text: `  ${clockTime(index.startedAt)}  `, tone: "dim" },

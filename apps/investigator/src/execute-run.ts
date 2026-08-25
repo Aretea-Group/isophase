@@ -10,9 +10,9 @@ import { DEFAULT_INSTRUCTIONS } from "./instructions.ts";
 import { investigateAlerts } from "./investigate-alerts.ts";
 import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
-import { provenanceForProfile } from "./provenance.ts";
+import { provenanceForProfiles } from "./provenance.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
-import type { SecuritySourceBundle } from "./source-profile.ts";
+import type { SecuritySourceSet } from "./source-profile.ts";
 import { createTracer } from "./trace.ts";
 
 /** The run's lifecycle, distinct from the per-alert `InvestigationResult.status` (PRD-3 §7). */
@@ -36,6 +36,10 @@ export interface InvestigatorConfig {
   maxTurns: number;
   timeoutMs: number;
   resultMaxChars: number;
+  /** The alert-queue window, when the selected source bounds its queue by one (PRD-8 D14). */
+  alertWindow?: string;
+  /** Connector-side query row cap, when the selected source exposes one (PRD-8 D15). */
+  queryMaxRows?: number;
   webSearchConfigured: boolean;
   runsDir: string;
   trace: boolean;
@@ -47,7 +51,7 @@ export interface InvestigatorConfig {
 }
 
 export interface InvestigatorDeps {
-  source: SecuritySourceBundle;
+  securitySources: SecuritySourceSet;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   /**
@@ -117,7 +121,14 @@ export async function executeRun(
   const log = options.log ?? ((): undefined => undefined);
   const { runId } = options;
   const startedAt = new Date().toISOString();
-  const provenance = provenanceForProfile(deps.source.profile);
+  const sourceEntries = [...deps.securitySources.sources];
+  const primaryEntry = sourceEntries.find(([, bundle]) => bundle === deps.securitySources.primary);
+  if (primaryEntry === undefined) throw new Error("Primary security source is not active.");
+  const [primaryId, primary] = primaryEntry;
+  const provenance = provenanceForProfiles({
+    primaryId,
+    sources: new Map(sourceEntries.map(([id, bundle]) => [id, bundle.profile] as const)),
+  });
 
   const collected: InvestigationResult[] = [];
   let alerts: SecurityAlert[] = [];
@@ -164,12 +175,21 @@ export async function executeRun(
         // pi-agent-core falls back to `off` and writing "medium" here was a lie (**D12**).
         ...(config.thinkingLevel === undefined ? {} : { thinkingLevel: config.thinkingLevel }),
         resultMaxChars: config.resultMaxChars,
+        ...(config.alertWindow === undefined ? {} : { alertWindow: config.alertWindow }),
+        ...(config.queryMaxRows === undefined ? {} : { queryMaxRows: config.queryMaxRows }),
         source: {
-          kind: deps.source.profile.kind,
-          connector: deps.source.profile.connector,
-          target: deps.source.profile.target,
-          queryLanguage: deps.source.profile.queryLanguage,
+          kind: primary.profile.kind,
+          connector: primary.profile.connector,
+          target: primary.profile.target,
+          queryLanguage: primary.profile.queryLanguage,
         },
+        sources: sourceEntries.map(([id, bundle]) => ({
+          id,
+          kind: bundle.profile.kind,
+          connector: bundle.profile.connector,
+          target: bundle.profile.target,
+          queryLanguage: bundle.profile.queryLanguage,
+        })),
         webSearchConfigured: config.webSearchConfigured,
         // Capability is not use. Derived from the tally rather than declared, so it costs nothing and
         // cannot disagree with what happened (**D14**). Absent until a result carries a tally at all.
@@ -231,7 +251,7 @@ export async function executeRun(
     );
 
     harness = new InvestigationHarness({
-      source: deps.source,
+      securitySources: deps.securitySources,
       webSearch: deps.webSearch,
       webFetch: deps.webFetch,
       model,
@@ -245,14 +265,14 @@ export async function executeRun(
 
     alerts =
       options.alertId === undefined
-        ? await deps.source.client.listAlerts()
-        : [await deps.source.client.getAlert(options.alertId)];
+        ? await primary.client.listAlerts()
+        : [await primary.client.getAlert(options.alertId)];
 
     // Which data this run was actually scored against (PRD-6 §6.8). `undefined` on an older Mock
     // Sentinel, and that is the point: the artifact records no corpus rather than a fabricated one,
     // and a bootstrap that re-pins the content-addressed alert ids becomes a visible hash change
     // instead of a silently empty evaluation report.
-    corpus = await deps.source.client.getCorpus().catch(() => undefined);
+    corpus = await primary.client.getCorpus().catch(() => undefined);
   } catch (error) {
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not

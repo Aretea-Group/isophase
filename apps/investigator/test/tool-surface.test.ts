@@ -22,8 +22,18 @@ import { testSourceBundle } from "./fixtures/source.ts";
 describe("the advertised tool surface matches the built one (PRD-5 §8)", () => {
   test("names and order are identical to what the factory returns", () => {
     const tools = createInvestigationTools({
-      tables: new Map(),
-      source: testSourceBundle({} as SecurityDataSource),
+      security: {
+        primaryId: "fixture",
+        sources: new Map([
+          [
+            "fixture",
+            {
+              ...testSourceBundle({} as SecurityDataSource),
+              tables: new Map(),
+            },
+          ],
+        ]),
+      },
       webSearch: {} as WebSearchClient,
       webFetch: {} as WebFetchClient,
       onSubmit: () => undefined,

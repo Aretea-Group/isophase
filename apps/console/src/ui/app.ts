@@ -14,9 +14,9 @@ import { pollRuns, pollTrace, type Stoppable } from "../data/poll.ts";
 import type { RunArtifact, RunResult, UnreadableRun } from "../data/runs.ts";
 import { aggregate, indexAll, resolveTracePath, runTotals, type Aggregate } from "../data/stats.ts";
 import { readAlert, readEvent, readToolResult } from "../data/trace-detail.ts";
-import { indexTrace, type TraceIndex } from "../data/trace-index.ts";
+import { indexTrace, type ToolCall, type TraceIndex } from "../data/trace-index.ts";
 import type { ConsoleEnv } from "../env.ts";
-import type { ActivityRow } from "../view/activity.ts";
+import { queryLanguageForCall, type ActivityRow } from "../view/activity.ts";
 import {
   alertFactsFromAlert,
   alertFactsFromResult,
@@ -1382,7 +1382,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     // this alert is the one being investigated right now.
     const traced = currentRun()?.traceDir !== undefined;
     const waiting = traced && isPending(result);
-    const queryLanguage = currentRun()?.config?.source?.queryLanguage;
+    const activeRun = currentRun();
+    const queryLanguage = (call: ToolCall): string | undefined =>
+      queryLanguageForCall(activeRun, call);
 
     // An in-flight investigation has no verdict — the agent submits one call at the end — so the
     // Verdict tab reports progress instead of an empty assessment (PRD-3 §13).

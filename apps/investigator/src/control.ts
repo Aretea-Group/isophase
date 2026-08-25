@@ -9,7 +9,15 @@ import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "./ex
 import { listAvailableModels, type ModelChoice } from "./model.ts";
 import { INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
-export { createSentinelSourceBundle } from "./source-profile.ts";
+export {
+  alertWindowOf,
+  createDefenderSourceBundle,
+  createSecuritySourceBundle,
+  createSecuritySources,
+  createSentinelSourceBundle,
+  queryMaxRowsOf,
+  type SecuritySourceSet,
+} from "./source-profile.ts";
 
 /**
  * The surface an operator interface drives the investigator through (PRD-5 §5.3).
@@ -188,7 +196,7 @@ export class InProcessControl implements InvestigationControl {
   }
 
   listAlerts(): Promise<SecurityAlert[]> {
-    return this.#deps.source.client.listAlerts();
+    return this.#deps.securitySources.primary.client.listAlerts();
   }
 
   listModels(): Promise<ModelChoice[]> {

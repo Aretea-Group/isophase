@@ -454,12 +454,23 @@ export function incidentDate(iso: string | undefined): string {
 export type Severity = "High" | "Medium" | "Low" | "Informational" | "Unknown";
 
 export function severityOf(value: string | undefined): Severity {
-  switch (value) {
-    case "High":
-    case "Medium":
-    case "Low":
-    case "Informational":
-      return value;
+  // Case-folded, because severity stays source-native by design: ADR 010 §2 keeps these as the
+  // product's own strings rather than mapping them into a shared taxonomy, and the two products
+  // disagree on case — Sentinel emits `Informational`, Defender's Graph API emits `informational`.
+  // Matching PascalCase alone rendered every Defender alert as `???`, in the queue and in the case
+  // pane, which reads as missing data rather than as a display bug.
+  //
+  // Folding case is not the same as normalising the value: nothing here rewrites what the artifact
+  // records, and a severity neither product uses still lands on `Unknown`.
+  switch (value?.toLowerCase()) {
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+      return "Low";
+    case "informational":
+      return "Informational";
     default:
       return "Unknown";
   }

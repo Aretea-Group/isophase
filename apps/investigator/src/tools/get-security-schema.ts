@@ -2,12 +2,20 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import type { SchemaTable } from "@soc/contracts";
 
+import { resolveToolSource, type SecurityToolSources } from "./source-routing.ts";
+
 const Params = Type.Object(
   {
     tables: Type.Array(Type.String({ minLength: 1 }), {
       minItems: 1,
       description: "Table names to describe. Request several at once when that is useful.",
     }),
+    source: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description: "Active security source id. Omit to use the primary alert source.",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -31,13 +39,15 @@ function renderTable(table: SchemaTable): string {
 }
 
 export function createGetSecuritySchemaTool(
-  tables: Map<string, SchemaTable>,
+  sources: SecurityToolSources,
   description: string,
 ): AgentTool<typeof Params> {
   return {
     ...GET_SECURITY_SCHEMA,
     description,
     execute: async (_toolCallId, params) => {
+      const { id, source } = resolveToolSource(sources, params.source, GET_SECURITY_SCHEMA.name);
+      const { tables } = source;
       const unknown = params.tables.filter((name) => !tables.has(name));
       if (unknown.length > 0) {
         // Naming what is available turns a typo into a one-turn correction.
@@ -62,7 +72,7 @@ export function createGetSecuritySchemaTool(
             text: `Only listed columns exist.\n${requested.map(renderTable).join("\n")}`,
           },
         ],
-        details: { tables: params.tables },
+        details: { source: id, tables: params.tables },
       };
     },
   };
