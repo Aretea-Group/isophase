@@ -23,6 +23,7 @@
     "data:verify": "bun scripts/bootstrap-sentinel-data.ts --verify-only",
     "data:manifest": "bun scripts/generate-telemetry-manifest.ts && bun scripts/generate-benchmark-map.ts",
     "queue:reset": "bun scripts/reset-queue.ts",
+    "probe:defender": "bun scripts/probe-defender.ts",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"

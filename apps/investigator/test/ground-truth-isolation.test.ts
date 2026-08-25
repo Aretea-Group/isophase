@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 /**
  * The load-bearing test for PRD-2 §20.
@@ -28,6 +29,17 @@ const ROOTS = [
   "apps/console/src",
 ] as const;
 
+/**
+ * Individual files outside those trees that still have to be scanned (PRD-8 AC14).
+ *
+ * `scripts/` as a whole can never be a root: `evaluate-runs.ts` reads the answer key on purpose,
+ * which is the entire point of ground truth flowing one way, and .oxlintrc.json exempts the
+ * directory for exactly that reason. But `scripts/probe-defender.ts` talks to a live security
+ * tenant and writes what it learns to disk, so it is agent-adjacent in the way this scan cares
+ * about — named here one file at a time rather than by widening the exemption.
+ */
+const FILES = ["scripts/probe-defender.ts"] as const;
+
 /** Anything naming the answer key, however it is reached. */
 const FORBIDDEN: string[] = [
   "fixtures/scenarios",
@@ -40,7 +52,10 @@ const FORBIDDEN: string[] = [
 
 function sourceFiles(): Promise<{ path: string; text: string }[]> {
   const glob = new Bun.Glob("**/*.ts");
-  const paths = ROOTS.flatMap((root) => Array.from(glob.scanSync({ cwd: root, absolute: true })));
+  const paths = [
+    ...ROOTS.flatMap((root) => Array.from(glob.scanSync({ cwd: root, absolute: true }))),
+    ...FILES.map((file) => resolve(repositoryRoot, file)),
+  ];
   return Promise.all(paths.map(async (path) => ({ path, text: await Bun.file(path).text() })));
 }
 
@@ -54,6 +69,16 @@ function sourceFiles(): Promise<{ path: string; text: string }[]> {
 function stripComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
+
+/**
+ * The repository root, derived from this file rather than from the working directory.
+ *
+ * `ROOTS` are relative and `Bun.Glob` resolves them against `process.cwd()`, which is the
+ * repository root under `bun test`. `FILES` must resolve the same way whether the suite is run from
+ * the root or from a package directory, and a scan that silently found nothing would pass every
+ * assertion below.
+ */
+const repositoryRoot = resolve(import.meta.dir, "../../..");
 
 const files = await sourceFiles();
 
