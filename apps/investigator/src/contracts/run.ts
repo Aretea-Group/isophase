@@ -94,7 +94,7 @@ export const InvestigationResult = z.object({
     .optional(),
 });
 
-/** Fixed-size operational identity for the selected tabular security source (PRD-8 §7). */
+/** Fixed-size operational identity for the selected tabular security source (ADR 010 §5). */
 export const RunSecuritySource = z.object({
   kind: z.string().min(1),
   connector: z.string().min(1),

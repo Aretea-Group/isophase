@@ -4,8 +4,6 @@
 
 **Date:** 2026-08-23
 
-**Implements:** PRD-8 — Tabular Security Data Sources
-
 **Amends:** PRD-2 §5.2, §11, §22, §24 and §26; ADR 004 (the Sentinel alert shape remains the Mock
 REST contract, not the investigator contract); ADR 005 §3 and §4 (query descriptions, argument and
 lazy context are selected); ADR 009 §2, §4 and §5 (the Sentinel capability becomes a source-neutral
@@ -39,7 +37,7 @@ The existing `@soc/sentinel-client` package remains. A package rename or split w
 without improving the runtime seam. `SentinelApiClient` and `AzureSentinelClient` become concrete
 implementations that normalise at their boundary.
 
-This amends PRD-2's deferral only for the bounded capability in PRD-8. It does not approve arbitrary
+This amends PRD-2's deferral only for the bounded capability defined here. It does not approve arbitrary
 connectors or ingestion.
 
 ### 2. Preserve native alert evidence inside a small common envelope
@@ -144,7 +142,6 @@ architecture work.
 - [PRD-2 — Core Investigation Agent](../prd-2-Core%20Investigation%20Agent.md)
 - [PRD-6 — Run Comparability](../prd-6-run-comparability.md)
 - [PRD-7 — Real Microsoft Sentinel Connector](../prd-7-real-sentinel-connector.md)
-- [PRD-8 — Tabular Security Data Sources](../prd-8-tabular-security-data-sources.md)
 - [ADR 004 — Alert API Shape](./004-alert-api-shape.md)
 - [ADR 005 — Investigation Agent Boundary](./005-investigation-agent-boundary.md)
 - [ADR 008 — The Comparability Record](./008-comparability-record.md)

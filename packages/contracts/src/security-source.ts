@@ -3,7 +3,7 @@ import { z } from "zod";
 import { SchemaTable } from "./schema.ts";
 
 /**
- * Source-neutral alert presented to investigation control flow (PRD-8 §4.1, ADR 010 §2).
+ * Source-neutral alert presented to investigation control flow (ADR 010 §2).
  *
  * Common fields are only what current triage consumes. Source taxonomies remain strings and the
  * validated native evidence stays available to the model instead of being discarded by mapping.
