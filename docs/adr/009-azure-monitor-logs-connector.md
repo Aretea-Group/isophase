@@ -1,10 +1,14 @@
 # ADR 009 — Azure Monitor Logs Connector
 
-**Status:** Accepted
+**Status:** Accepted; §3 and §5 amended by ADR 011
 
 **Date:** 2026-08-22
 
 **Implements:** PRD-7 — Real Microsoft Sentinel Connector
+
+**Amended by:** [ADR 011](./011-multi-source-security-data.md) §13 (the `.data/` rule generalises
+from Azure to *any* active source that reads a live tenant) and §2 (Defender deliberately has no
+developer-credential fallback, diverging from §3's chain below).
 
 ## Context
 
@@ -39,7 +43,9 @@ caches the result in memory until shortly before expiry, and shares one in-fligh
 Metadata and query calls continue to use `fetch`, `AbortSignal.timeout` and Zod directly.
 
 A complete service-principal triple creates a standalone `ClientSecretCredential`. With no triple,
-an explicit chain tries `AzureCliCredential` and then `AzurePowerShellCredential`. The two modes are
+an explicit chain tries `AzureCliCredential` and then `AzurePowerShellCredential`. (ADR 011 §2
+deliberately does *not* extend that chain to Defender: developer sign-in is not a verified path to
+`ThreatHunting.Read.All`, so its credential group is all-or-none with no fallback.) The two modes are
 separate so an invalid deployment credential cannot silently fall back to a personal login.
 `DefaultAzureCredential` is rejected because managed identity, environment variants and interactive
 developer credentials are outside this slice. Azure Monitor and ARM client SDKs are also rejected;
@@ -48,13 +54,21 @@ one Azure Identity dependency covers the observed authentication need.
 ### 4. Azure responses retain existing contracts
 
 Query tables keep Azure's positional shape and gain the repository's existing truncation sibling.
-The client appends `take 501`, returns at most 500 rows and rejects Azure `PartialError` responses.
+The client caps at 500 rows and rejects Azure `PartialError` responses. (ADR 011 §12: the `take` it
+sends and the `truncation.maxRows` it reports now derive from one constant through a shared helper.
+They were a constant beside a hard-coded `| take 501` — two places that had to agree by hand, where
+raising one alone would report a complete result for a truncated response.)
 
 `SecurityAlert` rows are projected to the existing `SecurityAlertResource` contract. Alert resource
 IDs use the workspace ARM resource ID from metadata plus `SystemAlertId`. `getCorpus()` returns
 `undefined` without a network request.
 
 ### 5. Real tenant artifacts stay outside the benchmark corpus
+
+> **Generalised by ADR 011 §13 (2026-08-25).** The rule is no longer Azure-specific: if *any* active
+> source reads a live tenant, run and trace directories must sit under `.data/` — including when
+> Sentinel is `mock` alongside an active Defender. The rule is about tenant data being present
+> anywhere in the run, not about which source produced the alert.
 
 Azure startup refuses the committed `runs/` directory and requires run and trace paths under one
 ignored operator-selected root. Only the non-secret Logs workspace target is recorded in the

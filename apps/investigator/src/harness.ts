@@ -20,7 +20,7 @@ import {
   InvestigationTimeoutError,
 } from "./errors.ts";
 import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "./instructions.ts";
-import type { SecuritySourceBundle } from "./source-profile.ts";
+import type { SecuritySourceSet } from "./source-profile.ts";
 import { createInvestigationTools, INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
 export interface InvestigateOptions {
@@ -80,7 +80,7 @@ export interface InvestigationMetrics {
 }
 
 export interface InvestigationHarnessOptions {
-  source: SecuritySourceBundle;
+  securitySources: SecuritySourceSet;
   webSearch: WebSearchClient;
   webFetch: WebFetchClient;
   model: Model<Api>;
@@ -159,22 +159,33 @@ export class InvestigationHarness {
     alert: SecurityAlert,
     options: InvestigateOptions = {},
   ): Promise<InvestigationSummary> {
-    const { source, webSearch, webFetch, model, streamFn, instructions } = this.#options;
-    const { client, profile } = source;
+    const { securitySources, webSearch, webFetch, model, streamFn, instructions } = this.#options;
+    const primaryEntry = [...securitySources.sources].find(
+      ([, bundle]) => bundle === securitySources.primary,
+    );
+    if (primaryEntry === undefined) throw new Error("Primary security source is not active.");
+    const [primaryId, primary] = primaryEntry;
     const maxTurns = this.#options.maxTurns ?? 50;
     const timeoutMs = this.#options.timeoutMs ?? 1_200_000;
 
     // Fetched once per investigation, and deliberately not placed into model context. The agent
     // gets table names and pulls the schemas it decides are relevant (PRD-2 §7).
-    const schema = await client.getSchema();
-    const tables = new Map(schema.tables.map((table) => [table.name, table]));
+    const loaded = await Promise.all(
+      [...securitySources.sources].map(async ([id, bundle]) => {
+        const schema = await bundle.client.getSchema();
+        return [id, bundle, new Map(schema.tables.map((table) => [table.name, table]))] as const;
+      }),
+    );
+    const toolSources = new Map(
+      loaded.map(([id, bundle, tables]) => [id, { ...bundle, tables }] as const),
+    );
 
     let submission: InvestigationSummary | undefined;
     let turns = 0;
     let timedOut = false;
     let aborted = false;
-    let queryGuidanceInjected = false;
-    const guidanceActivationTools = new Set(profile.guidanceActivationTools);
+    const pendingGuidance = new Set<string>();
+    const injectedGuidance = new Set<string>();
 
     const agent = new Agent({
       initialState: {
@@ -196,27 +207,34 @@ export class InvestigationHarness {
       // Source syntax guidance is irrelevant until the agent chooses telemetry. Add the selected
       // profile's guidance after its first activating tool result so query repair and subsequent
       // telemetry turns see it without spending initial context or repeating tool-result text.
-      prepareNextTurnWithContext: ({ context, toolResults }) => {
-        if (
-          queryGuidanceInjected ||
-          !toolResults.some((result) => guidanceActivationTools.has(result.toolName))
-        ) {
-          return undefined;
-        }
-
-        queryGuidanceInjected = true;
+      prepareNextTurnWithContext: ({ context }) => {
+        const profiles = [...securitySources.sources].flatMap(([id, bundle]) => {
+          if (!pendingGuidance.has(id) || injectedGuidance.has(id)) return [];
+          pendingGuidance.delete(id);
+          injectedGuidance.add(id);
+          return [bundle.profile.queryGuidance];
+        });
+        if (profiles.length === 0) return undefined;
         return {
           context: {
             ...context,
-            systemPrompt: `${context.systemPrompt}\n\n${profile.queryGuidance}`,
+            systemPrompt: `${context.systemPrompt}\n\n${profiles.join("\n\n")}`,
           },
         };
       },
     });
 
     agent.state.tools = createInvestigationTools({
-      tables,
-      source,
+      security: {
+        sources: toolSources,
+        primaryId,
+        onUse: (sourceId, toolName) => {
+          const profile = toolSources.get(sourceId)?.profile;
+          if (profile?.guidanceActivationTools.includes(toolName) === true) {
+            pendingGuidance.add(sourceId);
+          }
+        },
+      },
       webSearch,
       webFetch,
       ...(this.#options.resultMaxChars === undefined
@@ -285,7 +303,16 @@ export class InvestigationHarness {
     try {
       if (aborted) throw new InvestigationAbortedError();
       await agent.prompt(
-        buildInitialContext(profile, alert, [...tables.keys()], options.analystContext),
+        buildInitialContext(
+          primary.profile,
+          alert,
+          loaded.map(([id, bundle, tables]) => ({
+            id,
+            profile: bundle.profile,
+            tableNames: [...tables.keys()],
+          })),
+          options.analystContext,
+        ),
       );
     } finally {
       clearTimeout(timer);

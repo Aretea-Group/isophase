@@ -9,6 +9,8 @@
  *   bun run apps/console/test/capture-frame.ts 120 40
  *   bun run apps/console/test/capture-frame.ts 90 30 2,down,down,]
  *   bun run apps/console/test/capture-frame.ts 120 40 '?'
+ *   TUI_RUNS=.data/defender-runs TUI_TRACES=.data/defender-runs/traces \\
+ *     bun run apps/console/test/capture-frame.ts 120 40
  *
  * Keys are comma-separated. `up`/`down`/`left`/`right` are sent as arrows; everything else is sent
  * as a keypress. Not a test file — the name keeps it out of `bun test`'s glob.
@@ -29,8 +31,11 @@ const keys = (process.argv[4] ?? "").split(",").filter((key) => key !== "");
 
 const setup = await createTestRenderer({ width, height });
 const app = await runApp({
-  runsDir: join(FIXTURES, "runs"),
-  tracesDir: join(FIXTURES, "traces"),
+  // Overridable so a real run can be rendered without editing this file — `TUI_RUNS=.data/my-runs
+  // bun run apps/console/test/capture-frame.ts 120 40`. That is how the Defender severity and
+  // `let`-as-a-table defects were found: both were invisible in the fixtures, which are Sentinel.
+  runsDir: process.env["TUI_RUNS"] ?? join(FIXTURES, "runs"),
+  tracesDir: process.env["TUI_TRACES"] ?? join(FIXTURES, "traces"),
   env,
   renderer: setup.renderer,
   exit: () => undefined,

@@ -4,6 +4,12 @@
 **Date:** 2026-08-19
 **Amends:** `AGENTS.md` §2 (frontend non-goal), §4 (technology baseline), §5 (repository shape), §14 (implementation order)
 **Extends:** ADR 005 §2 (run artifact)
+**Amended by:** ADR 007 §1, §3 (the console drives a control surface, so it is no longer a
+read-only reader that never imports the investigator)
+**Extended by:** ADR 007 §4 (observable run lifecycle); ADR 008 §4, §5 (run artifact lifecycle;
+ground-truth scoring stays in `scripts/`)
+**Amended:** 2026-08-25 — §2's stated blocker for `@opentui/keymap` was factually wrong; the
+decision it supported is unchanged. Detail: [`../research-console-write-path.md`](../research-console-write-path.md).
 
 ## Context
 
@@ -57,11 +63,10 @@ A hand-rolled ANSI renderer avoids every dependency, but trades them for roughly
 of terminal plumbing — raw mode, resize, wrapping, clipping, scrollback, focus — that we would own,
 test and debug for no product benefit.
 
-OpenTUI's core is imperative, so it needs no JSX and no shared-config change:
-`createCliRenderer()`, `BoxRenderable`, `TextRenderable`, `SelectRenderable`, `ScrollBoxRenderable`,
-`TabSelectRenderable`, Yoga flexbox layout, and `renderer.keyInput.on("keypress", …)`. It requires
-Bun 1.3.0 or later, which `engines` already mandates. Native cores ship as per-platform optional
-dependencies, so no Zig toolchain is involved.
+OpenTUI's core is imperative, so it needs no JSX and no shared-config change; the surface the
+console actually uses is `apps/console/src/ui/`. It requires Bun 1.3.0 or later, which `engines`
+already mandates. Native cores ship as per-platform optional dependencies, so no Zig toolchain is
+involved.
 
 **The risk is real and accepted.** 0.5.4 was published 2026-08-18 and the package is pre-1.0, so a
 breaking change between now and PRD-3 landing is likely rather than hypothetical. Two mitigations:
@@ -70,23 +75,25 @@ OpenTUI-aware code is confined to `apps/console/src/ui/`, with reading, indexing
 pure beneath it. Replacing the renderer should not require touching a single line that parses a
 transcript.
 
-`@opentui/keymap` is not usable — it peer-depends on React or Solid — so the keymap is
-application-owned. That is the same shape as PRD-2 owning its turn ceiling because Pi has no
-built-in one.
+`@opentui/keymap` is not adopted, so the keymap is application-owned. That is the same shape as
+PRD-2 owning its turn ceiling because Pi has no built-in one.
+
+**Correction, 2026-08-25.** This paragraph originally read "`@opentui/keymap` is not usable — it
+peer-depends on React or Solid". That reason was wrong: at 0.5.4 those peers are marked optional,
+so the package was never technically unusable here. The decision stands on cost instead — adopting
+a second pre-1.0 dependency and rewriting `onKey` in `apps/console/src/ui/app.ts`, the console's
+highest-risk code, buys nothing the console needs. Established in
+[`../research-console-write-path.md`](../research-console-write-path.md).
 
 `CodeRenderable` is avoided: it pulls the `web-tree-sitter` peer dependency, and no KQL grammar
 exists for it in any case.
 
-**Verified before adoption, 2026-08-19**, by a throwaway spike outside the repository. `bun add
-@opentui/core@0.5.4` resolved to 12 packages and pulled only `@opentui/core-darwin-arm64`, with no
-`web-tree-sitter` peer warning. Under `createTestRenderer` the flexbox split-pane layout, bordered
-titled panes, `SelectRenderable`, `ScrollBoxRenderable` and `resize()` all behaved, and
-`captureCharFrame()` returns the rendered frame as plain text — which is what makes the console's
-panes snapshot-testable. A global `keyInput` listener runs before the focused renderable and
-`stopPropagation()` shields it, which is the mechanism the pane keymap depends on; `SelectRenderable`
-already ships vim-style bindings. Under a real pty the renderer entered and left the alternate screen
-exactly once (`CSI ?1049h` / `CSI ?1049l`), restored the cursor and disabled every mouse mode it
-enabled, and exited 0.
+**Verified before adoption, 2026-08-19**, by a throwaway spike outside the repository: clean
+resolution, correct alternate-screen and cursor handling under a real pty, and no `web-tree-sitter`
+peer warning. Two findings from it still bind code. `captureCharFrame()` returns the rendered frame
+as plain text, which is what makes the console's panes snapshot-testable. And a global `keyInput`
+listener runs before the focused renderable, with `stopPropagation()` shielding it — the mechanism
+the pane keymap depends on.
 
 ### 3. The console reads files; it does not import the investigator
 
@@ -260,13 +267,10 @@ much as for replaceability.
 
 `runs/` is gitignored, so fixtures are committed under `apps/console/test/fixtures/` — a trimmed real
 transcript plus artifacts in the current shape, the legacy `nextAction` shape, and a failed-result
-shape that no run on disk has yet produced.
-
-Rendering is better covered than expected. `@opentui/core/testing` renders panes with no terminal
-attached and returns the frame as plain text, so pane layouts are snapshot-tested rather than
-smoke-tested; those tests are guarded on the native binary in the style of
-`apps/mock-sentinel/test/integration/*` skipping when Kusto is absent, so `bun test` stays green in
-environments without it.
+shape that no run on disk has yet produced. Pane layouts are snapshot-tested through
+`@opentui/core/testing` (§2), guarded on the native binary in the style of
+`apps/mock-sentinel/test/integration/*` skipping when Kusto is absent, so `bun test` stays green
+without it.
 
 The cost is worth stating, as ADR 005 did. The live-tail path — a transcript growing while the
 console reads it — needs a running sweep and is verified by hand rather than in `bun test`, so a
@@ -290,4 +294,5 @@ free to change.
 - ADR 005 (investigation agent boundary), particularly §2 on the run artifact and §6 on configuration
 - `docs/architecture.md` §14 (current non-goals) and §15 (capability roadmap, PRD 7 "UI / Operations")
 - `@opentui/core` 0.5.4 — MIT, Bun ≥ 1.3.0, imperative core API; per-platform native cores ship as
-  optional dependencies. `@opentui/keymap` is unusable here: it peer-depends on React or Solid.
+  optional dependencies. `@opentui/keymap` is not adopted — see §2 and its 2026-08-25 correction;
+  the peer-dependency reason first given there was inaccurate.

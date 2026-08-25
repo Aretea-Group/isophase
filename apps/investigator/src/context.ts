@@ -14,24 +14,35 @@ import type { SecuritySourceProfile } from "./source-profile.ts";
  * run-specific data never contaminates the replaceable part (PRD-2 §8).
  */
 export function buildInitialContext(
-  profile: SecuritySourceProfile,
+  primaryProfile: SecuritySourceProfile,
   alert: SecurityAlert,
-  tableNames: string[],
+  sources: readonly {
+    id: string;
+    profile: SecuritySourceProfile;
+    tableNames: readonly string[];
+  }[],
   analystContext?: string,
 ): string {
   const lines = [
-    profile.initialContext.alertIntroduction,
+    primaryProfile.initialContext.alertIntroduction,
     "",
     "<alert>",
     JSON.stringify(alert, null, 2),
     "</alert>",
     "",
-    profile.initialContext.tablesIntroduction,
-    "",
-    "<available_tables>",
-    tableNames.join("\n"),
-    "</available_tables>",
   ];
+
+  for (const source of sources) {
+    lines.push(
+      source.profile.initialContext.tablesIntroduction,
+      "",
+      `<available_tables source="${source.id}">`,
+      source.tableNames.join("\n"),
+      "</available_tables>",
+      "",
+    );
+  }
+  if (lines.at(-1) === "") lines.pop();
 
   const premise = sanitiseAnalystContext(analystContext);
   if (premise !== undefined) {

@@ -3,6 +3,9 @@
 **Status:** Accepted
 **Date:** 2026-08-19
 **Supersedes in part:** ADR 002 (Structured Final Output), ADR 003 (Initial Integration, Zod responsibilities)
+**Amended by:** ADR 008 §2 (the run artifact holds per-alert outcomes only); ADR 010 §3, §4
+(query descriptions, argument and lazy context are selected)
+**Extended by:** ADR 006 §2 (run artifact)
 
 ## Context
 

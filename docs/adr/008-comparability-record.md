@@ -1,6 +1,6 @@
 # ADR 008 — The Comparability Record
 
-**Status:** Proposed — the decisions PRD-6 (Draft) rests on; none is implemented yet
+**Status:** Accepted
 **Date:** 2026-08-20
 **Implements:** PRD-6 — Run Comparability
 **Amends:** ADR 005 §2 (the run artifact holds per-alert outcomes only); PRD-2 §23 (formal

@@ -11,6 +11,11 @@ import {
 import type { SecuritySourceProfile } from "./source-profile.ts";
 import { toolDescriptors } from "./tools/index.ts";
 
+export interface SecurityProfileSet {
+  readonly sources: ReadonlyMap<string, SecuritySourceProfile>;
+  readonly primaryId: string;
+}
+
 /**
  * What produced this run (PRD-6 §6.6, ADR 008 §1).
  *
@@ -63,15 +68,24 @@ function canonical(value: unknown): unknown {
  * vary per investigation and per bootstrap, and hashing them would mint a fresh condition for every
  * alert. What is captured is the framing around them, which is the part that is a prompt decision.
  */
-export function computePromptHash(profile: SecuritySourceProfile): string {
-  const tools = toolDescriptors(profile).map((tool) => ({
+function profileSet(value: SecurityProfileSet | SecuritySourceProfile): SecurityProfileSet {
+  return "sources" in value
+    ? value
+    : { primaryId: "primary", sources: new Map([["primary", value]]) };
+}
+
+export function computePromptHash(value: SecurityProfileSet | SecuritySourceProfile): string {
+  const profiles = profileSet(value);
+  const primary = profiles.sources.get(profiles.primaryId);
+  if (primary === undefined) throw new Error("Primary security profile is not active.");
+  const tools = toolDescriptors(profiles.sources, profiles.primaryId).map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: canonical(tool.parameters),
   }));
 
   const contextTemplate = buildInitialContext(
-    profile,
+    primary,
     {
       id: "",
       title: "",
@@ -81,17 +95,18 @@ export function computePromptHash(profile: SecuritySourceProfile): string {
       entities: [],
       native: null,
     },
-    [],
+    [...profiles.sources].map(([id, profile]) => ({ id, profile, tableNames: [] })),
     undefined,
   );
 
   return hash12(
     JSON.stringify({
       instructions: DEFAULT_INSTRUCTIONS,
-      queryGuidance: {
+      queryGuidance: [...profiles.sources].map(([id, profile]) => ({
+        source: id,
         triggerTools: profile.guidanceActivationTools,
         instructions: profile.queryGuidance,
-      },
+      })),
       submissionDeadlineReminder: SUBMISSION_DEADLINE_REMINDER,
       submissionFollowUp: SUBMISSION_FOLLOW_UP,
       tools,
@@ -126,11 +141,16 @@ export function computePiVersion(): string {
   return `core@${core}+ai@${ai}`;
 }
 
-export function provenanceForProfile(profile: SecuritySourceProfile) {
+export function provenanceForProfiles(profiles: SecurityProfileSet) {
   return {
-    promptHash: computePromptHash(profile),
+    promptHash: computePromptHash(profiles),
     submissionHash: computeSubmissionHash(),
     piVersion: computePiVersion(),
     instructionsLabel: INSTRUCTIONS_LABEL,
   } as const;
+}
+
+/** Compatibility for single-source callers; Phase 2 runtime uses the plural form. */
+export function provenanceForProfile(profile: SecuritySourceProfile) {
+  return provenanceForProfiles(profileSet(profile));
 }

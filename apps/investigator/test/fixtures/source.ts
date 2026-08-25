@@ -6,6 +6,7 @@ import type { SecurityDataSource } from "@soc/sentinel-client";
 import type {
   SecuritySourceBundle,
   SecuritySourceProfile,
+  SecuritySourceSet,
 } from "../../src/source-profile.ts";
 
 export const TEST_QUERY_GUIDANCE =
@@ -30,6 +31,11 @@ export const TEST_SOURCE_PROFILE: SecuritySourceProfile = Object.freeze({
 
 export function testSourceBundle(client: SecurityDataSource): SecuritySourceBundle {
   return Object.freeze({ client, profile: TEST_SOURCE_PROFILE });
+}
+
+export function testSourceSet(client: SecurityDataSource, id = "fixture"): SecuritySourceSet {
+  const primary = testSourceBundle(client);
+  return Object.freeze({ sources: new Map([[id, primary]]), primary });
 }
 
 /** Source-native shape: deliberately unrelated to Microsoft Sentinel's resource envelope. */

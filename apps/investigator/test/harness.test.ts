@@ -15,7 +15,7 @@ import { SUBMISSION_DEADLINE_REMINDER, SUBMISSION_FOLLOW_UP } from "../src/instr
 import {
   createFixtureSourceBundle,
   TEST_QUERY_GUIDANCE,
-  testSourceBundle,
+  testSourceSet,
 } from "./fixtures/source.ts";
 
 const SUMMARY = {
@@ -56,7 +56,7 @@ function createHarness(
   } as unknown as SecurityDataSource;
 
   return new InvestigationHarness({
-    source: testSourceBundle(source),
+    securitySources: testSourceSet(source),
     webSearch: { search: async () => [] },
     webFetch: {
       fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),
@@ -233,7 +233,7 @@ describe("FixtureQL source contract", () => {
     ]);
     let metrics: InvestigationMetrics | undefined;
     const harness = new InvestigationHarness({
-      source: fixture.bundle,
+      securitySources: testSourceSet(fixture.source),
       webSearch: { search: async () => [] },
       webFetch: {
         fetchPage: async () => ({ url: "https://example.test", title: "", content: "" }),

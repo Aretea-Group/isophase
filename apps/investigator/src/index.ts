@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import {
-  assertAzureArtifactDirectories,
-  sentinelClientConfigFromEnv,
-  type SentinelClientConfig,
+  assertLiveTenantArtifactDirectories,
+  securitySourceConfigSetFromEnv,
+  type SecuritySourceConfigSet,
 } from "@soc/sentinel-client";
 
 import { BraveSearchClient } from "./clients/brave.ts";
@@ -14,7 +14,7 @@ import {
   llamaServerAuthFromEnv,
   llamaServerConfigFromEnv,
 } from "./model.ts";
-import { createSentinelSourceBundle } from "./source-profile.ts";
+import { alertWindowOf, createSecuritySources, queryMaxRowsOf } from "./source-profile.ts";
 
 export interface CliArgs {
   alertId?: string;
@@ -57,9 +57,11 @@ function log(message: string): void {
 
 /** The CLI's whole configuration contract: `env` in, a `InvestigatorConfig` out (PRD-5 §5.2). */
 export function configFromEnv(
-  sentinelConfig: SentinelClientConfig = sentinelClientConfigFromEnv(env),
+  sourceConfig: SecuritySourceConfigSet = securitySourceConfigSetFromEnv(env),
 ): InvestigatorConfig {
-  assertAzureArtifactDirectories(sentinelConfig, [
+  // Generalised over the active set (PRD-8 §4.1 D10): any active source that reads a live tenant
+  // forces the whole run under `.data/`, including when Sentinel is `mock`.
+  assertLiveTenantArtifactDirectories(sourceConfig.sources, [
     env.RUNS_DIR,
     ...(env.INVESTIGATOR_TRACE ? [env.INVESTIGATOR_TRACE_DIR] : []),
   ]);
@@ -77,6 +79,14 @@ export function configFromEnv(
     maxTurns: env.INVESTIGATOR_MAX_TURNS,
     timeoutMs: env.INVESTIGATOR_TIMEOUT_MS,
     resultMaxChars: env.INVESTIGATOR_RESULT_MAX_CHARS,
+    // Read from the resolved source rather than from `env` directly, so a run that did not select a
+    // windowed source records no window instead of the environment's unused default.
+    ...(alertWindowOf(sourceConfig.primary) === undefined
+      ? {}
+      : { alertWindow: alertWindowOf(sourceConfig.primary) }),
+    ...(queryMaxRowsOf(sourceConfig.sources) === undefined
+      ? {}
+      : { queryMaxRows: queryMaxRowsOf(sourceConfig.sources) }),
     webSearchConfigured: env.BRAVE_API_KEY !== undefined,
     runsDir: env.RUNS_DIR,
     trace: env.INVESTIGATOR_TRACE,
@@ -96,9 +106,9 @@ export function configFromEnv(
  */
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
-  const sentinelConfig = sentinelClientConfigFromEnv(env);
-  const config = configFromEnv(sentinelConfig);
-  const source = createSentinelSourceBundle(sentinelConfig);
+  const sourceConfig = securitySourceConfigSetFromEnv(env);
+  const config = configFromEnv(sourceConfig);
+  const securitySources = createSecuritySources(sourceConfig);
 
   if (env.BRAVE_API_KEY === undefined) {
     log("[investigator] BRAVE_API_KEY is not set — web_search will fail if the agent uses it.");
@@ -132,7 +142,7 @@ async function main(): Promise<void> {
 
   const run = await executeRun(
     config,
-    { source, webSearch, webFetch },
+    { securitySources, webSearch, webFetch },
     {
       runId,
       ...(args.alertId === undefined ? {} : { alertId: args.alertId }),

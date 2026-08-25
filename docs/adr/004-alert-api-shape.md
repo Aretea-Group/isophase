@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-08-18
+**Amended by:** ADR 010 (the Sentinel alert shape remains the Mock REST contract, not the
+investigator contract)
 
 ## Context
 

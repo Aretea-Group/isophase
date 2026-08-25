@@ -32,7 +32,10 @@ export interface ConditionFields {
   sourceKind: string;
   sourceConnector: string;
   sourceTarget: string;
+  activeSources: string;
   queryLanguage: string;
+  alertWindow: string;
+  queryMaxRows: string;
   /** Present only on pre-boundary artifacts; never inferred into the neutral source fields. */
   legacySentinelBaseUrl: string;
   modelBaseUrl: string;
@@ -159,7 +162,15 @@ export function conditionOf(run: InvestigationRun): Condition {
     sourceKind: config?.source?.kind ?? UNKNOWN,
     sourceConnector: config?.source?.connector ?? UNKNOWN,
     sourceTarget: config?.source?.target ?? UNKNOWN,
+    activeSources:
+      config?.sources === undefined
+        ? config?.source === undefined
+          ? UNKNOWN
+          : "legacy-single"
+        : config.sources.map((source) => source.id).join(">"),
     queryLanguage: config?.source?.queryLanguage ?? UNKNOWN,
+    alertWindow: config?.alertWindow ?? UNKNOWN,
+    queryMaxRows: config?.queryMaxRows === undefined ? UNKNOWN : String(config.queryMaxRows),
     legacySentinelBaseUrl: config?.sentinelBaseUrl ?? UNKNOWN,
     modelBaseUrl: config?.modelBaseUrl ?? UNKNOWN,
     modelContextWindow:
@@ -202,7 +213,10 @@ const LABEL_AXES: { key: keyof ConditionFields; render: (value: string) => strin
   { key: "model", render: (value) => value },
   { key: "sourceKind", render: (value) => `source=${value}` },
   { key: "sourceConnector", render: (value) => `connector=${value}` },
+  { key: "activeSources", render: (value) => `sources=${value}` },
   { key: "queryLanguage", render: (value) => `lang=${value}` },
+  { key: "alertWindow", render: (value) => `window=${value}` },
+  { key: "queryMaxRows", render: (value) => `queryRows=${value}` },
   { key: "thinkingLevel", render: (value) => `think=${value}` },
   { key: "modelReasoningProfile", render: (value) => `reason=${value}` },
   { key: "submission", render: (value) => `sub=${value}` },

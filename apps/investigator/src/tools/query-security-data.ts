@@ -1,11 +1,20 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 import type { QueryResponse } from "@soc/contracts";
-import type { SecurityDataSource } from "@soc/sentinel-client";
+
+import { resolveToolSource, type SecurityToolSources } from "./source-routing.ts";
 
 export function querySecurityDataParameters(description: string) {
   return Type.Object(
-    { query: Type.String({ minLength: 1, description }) },
+    {
+      query: Type.String({ minLength: 1, description }),
+      source: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Active security source id. Omit to use the primary alert source.",
+        }),
+      ),
+    },
     { additionalProperties: false },
   );
 }
@@ -84,7 +93,7 @@ export const QUERY_SECURITY_DATA = {
 } as const;
 
 export function createQuerySecurityDataTool(
-  source: SecurityDataSource,
+  sources: SecurityToolSources,
   description: string,
   parameterDescription: string,
   maxChars: number = DEFAULT_RESULT_MAX_CHARS,
@@ -95,13 +104,15 @@ export function createQuerySecurityDataTool(
     description,
     parameters,
     execute: async (_toolCallId, params) => {
-      const result = await source.query(params.query);
+      const { id, source } = resolveToolSource(sources, params.source, QUERY_SECURITY_DATA.name);
+      const result = await source.client.query(params.query);
       const fitted = fitResultToBudget(result, maxChars);
 
       return {
         content: [{ type: "text", text: fitted.text }],
         details: {
           query: params.query,
+          source: id,
           truncation: result.truncation,
           keptRows: fitted.keptRows,
           totalRows: fitted.totalRows,

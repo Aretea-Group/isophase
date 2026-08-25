@@ -14,7 +14,19 @@ describe("get_security_schema", () => {
       ],
     };
     const tool = createGetSecuritySchemaTool(
-      new Map([[table.name, table]]),
+      {
+        primaryId: "fixture",
+        sources: new Map([
+          [
+            "fixture",
+            {
+              client: {} as never,
+              profile: {} as never,
+              tables: new Map([[table.name, table]]),
+            },
+          ],
+        ]),
+      },
       "Describe test tables.",
     );
 
@@ -26,6 +38,6 @@ describe("get_security_schema", () => {
         text: "Only listed columns exist.\nExample_CL(CreatedAt:datetime,Properties:dynamic)",
       },
     ]);
-    expect(result.details).toEqual({ tables: [table.name] });
+    expect(result.details).toEqual({ source: "fixture", tables: [table.name] });
   });
 });

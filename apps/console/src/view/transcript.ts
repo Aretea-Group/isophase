@@ -1,5 +1,5 @@
 import type { ByteRange, ToolCall, TraceIndex } from "../data/trace-index.ts";
-import { summariseArgs } from "./activity.ts";
+import { summariseArgs, type QueryLanguageResolver } from "./activity.ts";
 import {
   chars,
   clockTime,
@@ -66,7 +66,7 @@ function callBody(call: ToolCall, width: number): string[] {
 export function toTranscript(
   index: TraceIndex,
   width: number,
-  queryLanguage?: string,
+  queryLanguage?: QueryLanguageResolver,
 ): TranscriptBlock[] {
   const blocks: TranscriptBlock[] = [];
   const body = Math.max(20, width - 6);

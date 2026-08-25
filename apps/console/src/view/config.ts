@@ -1,4 +1,4 @@
-import { azureWorkspaceUrl } from "@soc/sentinel-client";
+import { azureWorkspaceUrl, defenderGraphUrl } from "@soc/sentinel-client";
 
 import type { RunArtifact } from "../data/runs.ts";
 import type { ConsoleEnv } from "../env.ts";
@@ -12,7 +12,26 @@ export interface ConfigRow {
 
 const ABSENT = "—";
 
+/**
+ * What this machine is currently set up to query.
+ *
+ * Reads `SECURITY_SOURCES` rather than assuming Sentinel. The console must be able to sit beside a
+ * Defender-standalone deployment and describe it truthfully — PRD-8 §4.1 D13 puts the console
+ * explicitly among the things that may not assume a Sentinel profile exists.
+ */
+function selectedSourceId(env: ConsoleEnv): string {
+  const active = env.SECURITY_SOURCES.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return env.PRIMARY_ALERT_SOURCE ?? (active.length === 1 ? (active[0] ?? "sentinel") : "?");
+}
+
+function sourceKind(env: ConsoleEnv): string {
+  return selectedSourceId(env) === "defender" ? "microsoft-defender-xdr" : "microsoft-sentinel";
+}
+
 function sentinelTarget(env: ConsoleEnv): string {
+  if (selectedSourceId(env) === "defender") return defenderGraphUrl();
   if (env.SENTINEL_CONNECTOR === "mock") return env.SENTINEL_BASE_URL;
   return env.AZURE_LOG_ANALYTICS_WORKSPACE_ID === undefined
     ? "Azure workspace not configured"
@@ -20,6 +39,7 @@ function sentinelTarget(env: ConsoleEnv): string {
 }
 
 function sentinelConnector(env: ConsoleEnv): string {
+  if (selectedSourceId(env) === "defender") return "microsoft-graph-security";
   return env.SENTINEL_CONNECTOR === "mock" ? "mock-sentinel-rest" : "azure-monitor-logs";
 }
 
@@ -97,9 +117,20 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
       currentEnv: env.INVESTIGATOR_RESULT_MAX_CHARS.toLocaleString("en"),
     },
     {
+      label: "active sources",
+      thisRun:
+        config?.sources === undefined
+          ? (config?.source?.kind ?? ABSENT)
+          : config.sources.map((source) => source.id).join(", "),
+      currentEnv: env.SECURITY_SOURCES.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+        .join(", "),
+    },
+    {
       label: "source kind",
       thisRun: config?.source?.kind ?? ABSENT,
-      currentEnv: "microsoft-sentinel",
+      currentEnv: sourceKind(env),
     },
     {
       label: "source connector",
@@ -115,6 +146,22 @@ export function toConfigRows(run: RunArtifact | undefined, env: ConsoleEnv): Con
       label: "query language",
       thisRun: config?.source?.queryLanguage ?? ABSENT,
       currentEnv: "kql",
+    },
+    {
+      label: "alert window",
+      // Absent on every source that does not bound its queue by one, and absent stays absent:
+      // borrowing the environment's window would claim the run drew from a queue it never saw.
+      thisRun: config?.alertWindow ?? ABSENT,
+      currentEnv: selectedSourceId(env) === "defender" ? env.DEFENDER_ALERT_WINDOW : ABSENT,
+    },
+    {
+      label: "query row cap",
+      thisRun:
+        config?.queryMaxRows === undefined ? ABSENT : config.queryMaxRows.toLocaleString("en"),
+      currentEnv:
+        selectedSourceId(env) === "defender"
+          ? env.DEFENDER_QUERY_MAX_ROWS.toLocaleString("en")
+          : ABSENT,
     },
     ...endpointRows,
     {

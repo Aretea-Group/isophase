@@ -9,7 +9,7 @@ import { callArgsText, verdictBody } from "../src/ui/panes/main.ts";
 import { leadingTable, toActivityView } from "../src/view/activity.ts";
 import { alertFactsFromResult, enrichWithAlertJson } from "../src/view/alert.ts";
 import { toConfigRows } from "../src/view/config.ts";
-import { duration, tokens, tpBar, truncate, verdictBand } from "../src/view/format.ts";
+import { duration, severityOf, tokens, tpBar, truncate, verdictBand } from "../src/view/format.ts";
 import { lineText } from "../src/view/format.ts";
 import {
   classifyRun,
@@ -52,7 +52,116 @@ describe("format", () => {
   });
 });
 
+/**
+ * Severity is source-native (ADR 010 §2), and the two products disagree on case.
+ *
+ * Caught by rendering a real Defender run through the headless renderer: every alert showed `???`
+ * in the queue and the case pane, which reads as missing data rather than a display bug.
+ */
+/**
+ * The "which tables did it look at" summary, which is only honest if it names real tables.
+ *
+ * Caught by rendering a real Defender run: the agent binds an alert id with `let` before the query
+ * proper, which is idiomatic advanced hunting, and the summary reported a table called `let` —
+ * three times, ahead of the tables actually queried.
+ */
+describe("leadingTable", () => {
+  test("names the table a query opens with", () => {
+    expect(leadingTable("AlertInfo\n| take 1")).toBe("AlertInfo");
+    expect(leadingTable("// a comment\nDeviceInfo | take 1")).toBe("DeviceInfo");
+  });
+
+  test("looks past a let binding to the real query", () => {
+    expect(leadingTable("let aid = 'x';\nAlertEvidence | where AlertId == aid")).toBe(
+      "AlertEvidence",
+    );
+    expect(leadingTable("let a = 1;\nlet b = 2;\nAlertInfo | take 1")).toBe("AlertInfo");
+  });
+
+  test.each([
+    ["a bare let with no following table", "let aid = 'x';"],
+    ["a scoped search", 'search in (AlertInfo, AlertEvidence) "eicar"'],
+    ["a union", "union AlertInfo, AlertEvidence | take 1"],
+    ["print", "print x = 1"],
+  ] as const)("%s names no table rather than inventing one", (_label, query) => {
+    // Undefined is the honest answer: the caller falls back to bounded raw query text, where a
+    // made-up table name would reach the tally and outrank the real ones.
+    expect(leadingTable(query)).toBeUndefined();
+  });
+});
+
+describe("severity across products", () => {
+  test.each([
+    ["Sentinel PascalCase", "Informational", "Informational"],
+    ["Defender lowercase", "informational", "Informational"],
+    ["Defender lowercase high", "high", "High"],
+    ["Sentinel PascalCase high", "High", "High"],
+    ["mixed case", "MeDiUm", "Medium"],
+  ] as const)("%s maps to a known severity", (_label, raw, expected) => {
+    expect(severityOf(raw)).toBe(expected);
+  });
+
+  test("an absent severity stays Unknown rather than being guessed", () => {
+    expect(severityOf(undefined)).toBe("Unknown");
+  });
+
+  test("a value neither product uses stays Unknown", () => {
+    expect(severityOf("catastrophic")).toBe("Unknown");
+  });
+});
+
 describe("configuration", () => {
+  /**
+   * PRD-8 §4.1 D13 names the console among the things that may not assume a Sentinel profile
+   * exists. The environment column used to be the literal string "microsoft-sentinel", so a
+   * Defender-standalone deployment was described as running Sentinel.
+   */
+  test("describes a Defender deployment as Defender, not as Sentinel", () => {
+    const rows = toConfigRows(
+      run({
+        config: {
+          resultMaxChars: 40_000,
+          source: {
+            kind: "microsoft-defender-xdr",
+            connector: "microsoft-graph-security",
+            target: "https://graph.microsoft.com/v1.0/security",
+            queryLanguage: "kql",
+          },
+          alertWindow: "P365D",
+          queryMaxRows: 1_234,
+          webSearchConfigured: true,
+        },
+      }),
+      {
+        ...env,
+        SECURITY_SOURCES: "defender",
+        DEFENDER_ALERT_WINDOW: "P7D",
+        DEFENDER_QUERY_MAX_ROWS: 500,
+      },
+    );
+
+    const cell = (label: string) => rows.find((row) => row.label === label);
+    expect(cell("source kind")).toMatchObject({
+      thisRun: "microsoft-defender-xdr",
+      currentEnv: "microsoft-defender-xdr",
+    });
+    expect(cell("source connector")?.currentEnv).toBe("microsoft-graph-security");
+    expect(cell("source target")?.currentEnv).toBe("https://graph.microsoft.com/v1.0/security");
+    // The two columns are never merged: this run drew from a year, the environment is set to a
+    // week, and the drift is the point (PRD-3 §8.6).
+    expect(cell("alert window")).toMatchObject({ thisRun: "P365D", currentEnv: "P7D" });
+    expect(cell("query row cap")).toMatchObject({ thisRun: "1,234", currentEnv: "500" });
+  });
+
+  /** Absent stays absent — a Sentinel run never borrows a window it did not draw from. */
+  test("a run with no alert window shows a dash rather than the environment's", () => {
+    const rows = toConfigRows(
+      run({ config: { resultMaxChars: 40_000, webSearchConfigured: false } }),
+      { ...env, SECURITY_SOURCES: "defender", DEFENDER_ALERT_WINDOW: "P7D" },
+    );
+    expect(rows.find((row) => row.label === "alert window")?.thisRun).not.toBe("P7D");
+  });
+
   test("shows configured endpoint settings beside the values recorded on the run", () => {
     const rows = toConfigRows(
       run({

@@ -91,6 +91,25 @@ const Artifact = z.object({
           queryLanguage: z.string(),
         })
         .optional(),
+      sources: z
+        .array(
+          z.object({
+            id: z.string(),
+            kind: z.string(),
+            connector: z.string(),
+            target: z.string(),
+            queryLanguage: z.string(),
+          }),
+        )
+        .optional(),
+      /**
+       * The window a windowed source drew its alert queue from (PRD-8 §4.1 D14).
+       *
+       * Absent on every run whose source did not bound its queue by one, which is every Sentinel
+       * run. Absent renders as a dash and never borrows the current environment's value.
+       */
+      alertWindow: z.string().optional(),
+      queryMaxRows: z.number().int().positive().optional(),
       /** Legacy run identity. Never promoted into the neutral source fields. */
       sentinelBaseUrl: z.string().optional(),
       modelBaseUrl: z.string().optional(),
