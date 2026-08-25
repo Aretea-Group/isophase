@@ -10,6 +10,7 @@ import { z } from "zod";
 
 import type { SecurityDataSource } from "./client.ts";
 import { SentinelApiError, type SentinelApiErrorCode } from "./errors.ts";
+import { applyRowCap, isControlCommand, withRowCap } from "./query-text.ts";
 
 const LOGS_ENDPOINT = "https://api.loganalytics.azure.com";
 const LOGS_SCOPE = "https://api.loganalytics.io/.default";
@@ -95,15 +96,6 @@ const ALERT_PROJECTION = ALERT_COLUMNS.join(", ");
 /** Non-secret Azure Monitor target recorded in run artifacts. */
 export function azureWorkspaceUrl(workspaceId: string): string {
   return `${LOGS_ENDPOINT}/v1/workspaces/${encodeURIComponent(workspaceId)}`;
-}
-
-function isControlCommand(query: string): boolean {
-  const firstStatement = query
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line !== "" && !line.startsWith("//"));
-
-  return firstStatement?.startsWith(".") ?? false;
 }
 
 function kqlString(value: string): string {
@@ -306,10 +298,12 @@ export class AzureSentinelClient implements SecurityDataSource {
       );
     }
 
-    const body =
-      timespan === undefined
-        ? { query: `${query}\n| take 501` }
-        : { query: `${query}\n| take 501`, timespan };
+    // `take` and the reported cap derive from one constant. They used to be `QUERY_MAX_ROWS = 500`
+    // and a hard-coded `| take 501`, two places that had to agree by hand — raise the constant
+    // alone and the connector reports a complete result for a response the engine truncated
+    // (PRD-8 §4.1 D15, AC16).
+    const capped = withRowCap(query, QUERY_MAX_ROWS);
+    const body = timespan === undefined ? { query: capped } : { query: capped, timespan };
     const payload = await this.#authenticatedRequest(
       "POST",
       `${azureWorkspaceUrl(this.#workspaceId)}/query`,
@@ -328,19 +322,7 @@ export class AzureSentinelClient implements SecurityDataSource {
       throw new SentinelApiError("query_error", 200, diagnostic(parsed.data.error));
     }
 
-    const primary = parsed.data.tables[0];
-    const truncated = (primary?.rows.length ?? 0) > QUERY_MAX_ROWS;
-    const tables = parsed.data.tables.map((table, index) => ({
-      name: table.name,
-      columns: table.columns,
-      rows: index === 0 && truncated ? table.rows.slice(0, QUERY_MAX_ROWS) : table.rows,
-    }));
-    const returnedRows = tables[0]?.rows.length ?? 0;
-
-    return QueryResponse.parse({
-      tables,
-      truncation: { truncated, returnedRows, maxRows: QUERY_MAX_ROWS },
-    });
+    return QueryResponse.parse(applyRowCap(parsed.data.tables, QUERY_MAX_ROWS));
   }
 
   async getCorpus(): Promise<CorpusIdentity | undefined> {
