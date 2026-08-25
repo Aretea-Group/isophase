@@ -4,6 +4,7 @@
 **Date:** 2026-08-20
 **Amends:** ADR 006 §1 and §3; `AGENTS.md` §2, §12 and §14
 **Extends:** ADR 006 §4 (observable run lifecycle)
+**Extended by:** ADR 008 §2 (the investigator remains the sole writer of run artifacts)
 
 ## Context
 

@@ -66,6 +66,9 @@ Configured LLM provider
 ```
 
 Pi is replaceable behind the internal `agent-runtime` package.
+*(Superseded — ADR 005 §7: the replaceable boundary is `apps/investigator/src/harness.ts`;
+there is no `packages/agent-runtime`. The original sentence stands as the record of what was
+decided here.)*
 
 No Sentinel-specific logic belongs in Pi wrappers.
 
