@@ -40,6 +40,8 @@ interface RunSpec {
   modelBaseUrl?: string;
   modelContextWindow?: number;
   modelMaxTokens?: number;
+  alertWindow?: string;
+  queryMaxRows?: number;
   analystContext?: string;
   status?: "running" | "completed" | "interrupted" | "failed";
   error?: { name: string; message: string };
@@ -107,6 +109,8 @@ function artifact(spec: RunSpec): string {
         ? {}
         : { modelContextWindow: spec.modelContextWindow }),
       ...(spec.modelMaxTokens === undefined ? {} : { modelMaxTokens: spec.modelMaxTokens }),
+      ...(spec.alertWindow === undefined ? {} : { alertWindow: spec.alertWindow }),
+      ...(spec.queryMaxRows === undefined ? {} : { queryMaxRows: spec.queryMaxRows }),
       ...(spec.analystContext === undefined ? {} : { analystContext: spec.analystContext }),
     },
     ...(spec.derivedFrom === undefined ? {} : { derivedFrom: spec.derivedFrom }),
@@ -405,6 +409,24 @@ describe("evaluate — the condition key", () => {
     expect(legacy.fields.legacySentinelBaseUrl).toBe("http://localhost:8787");
   });
 
+  test("Defender queue and query limits partition and explain the condition", () => {
+    const base = conditionOf(
+      JSON.parse(artifact({ runId: "base", alertWindow: "P7D", queryMaxRows: 500 })),
+    );
+    const widerWindow = conditionOf(
+      JSON.parse(artifact({ runId: "window", alertWindow: "P30D", queryMaxRows: 500 })),
+    );
+    const higherCap = conditionOf(
+      JSON.parse(artifact({ runId: "cap", alertWindow: "P7D", queryMaxRows: 1_000 })),
+    );
+
+    expect(widerWindow.id).not.toBe(base.id);
+    expect(higherCap.id).not.toBe(base.id);
+    expect(widerWindow.fields.alertWindow).toBe("P30D");
+    expect(higherCap.fields.queryMaxRows).toBe("1000");
+    expect(labelsFor([base, widerWindow, higherCap]).get(widerWindow.id)).toContain("window=P30D");
+  });
+
   test("a label never collapses two condition ids", () => {
     const runs = [
       artifact({ runId: "a", model: "m1" }),
@@ -593,6 +615,8 @@ describe("evaluate — the legend", () => {
       expect(report.out).toContain("sourceConnector");
       expect(report.out).toContain("sourceTarget");
       expect(report.out).toContain("queryLanguage");
+      expect(report.out).toContain("alertWindow");
+      expect(report.out).toContain("queryMaxRows");
       expect(report.out).toContain("modelBaseUrl");
       expect(report.out).toContain("modelContextWindow");
       expect(report.out).toContain("modelMaxTokens");
