@@ -76,6 +76,11 @@ Azure startup refuses the committed `runs/` directory and requires run and trace
 ignored operator-selected root. Only the non-secret Logs workspace target is recorded in the
 existing `sentinelBaseUrl` artifact field.
 
+> **Superseded in part by ADR 010 (2026-08-23).** New artifacts no longer write `sentinelBaseUrl`;
+> the target moved into `config.source`, and the Zod reader keeps `sentinelBaseUrl` only as an
+> optional legacy field so committed artifacts still parse. The `.data/` rule above is untouched by
+> this — that half is generalised by ADR 011 §13, noted at the top of the section.
+
 ## Consequences
 
 - Investigator and console depend on a capability rather than either transport.
