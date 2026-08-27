@@ -114,6 +114,11 @@ deployable source.
 
 ### 5. Add one source block; preserve artifacts only at read time
 
+> **Amended by ADR 011 §14 (2026-08-25).** `config.source` keeps this shape and now carries the
+> *primary*; `config.sources` beside it carries the ordered active set. The console's per-language
+> predicate below therefore resolves per activity row rather than per run. One block per artifact is
+> no longer the rule; everything else in this section stands.
+
 New artifacts record `config.source = { kind, connector, target, queryLanguage }` and stop writing
 `config.sentinelBaseUrl`. The block is fixed-size and the whole value participates in ADR 008's
 derived condition key.
