@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 import { QueryResponse, SecurityAlert, SecuritySchema } from "@soc/contracts";
 
@@ -7,6 +7,16 @@ import {
   createSentinelClient,
   sentinelClientConfigFromEnv,
 } from "../../src/index.ts";
+
+/**
+ * Long enough that the connector's own timeout is what fires, never this one.
+ *
+ * Five sequential Log Analytics calls behind a credential acquisition, each bounded by
+ * `SENTINEL_TIMEOUT_MS` (30s by default). Bun's 5s default cannot express that, and the Defender
+ * suite next door proved the consequence on its first live run: a cold start failed at 5001ms and
+ * then passed in 3.7s, which reports a slow network as a test defect.
+ */
+setDefaultTimeout(6 * 30_000);
 
 const workspaceId = process.env["AZURE_LOG_ANALYTICS_WORKSPACE_ID"] ?? "";
 
