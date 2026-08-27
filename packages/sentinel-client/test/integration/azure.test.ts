@@ -3,15 +3,16 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { QueryResponse, SecurityAlert, SecuritySchema } from "@soc/contracts";
 
 import {
-  SentinelApiError,
   createSentinelClient,
+  type SecurityDataSource,
+  SentinelApiError,
   sentinelClientConfigFromEnv,
 } from "../../src/index.ts";
 
 /**
  * Long enough that the connector's own timeout is what fires, never this one.
  *
- * Five sequential Log Analytics calls behind a credential acquisition, each bounded by
+ * Sequential Log Analytics calls behind a credential acquisition, each bounded by
  * `SENTINEL_TIMEOUT_MS` (30s by default). Bun's 5s default cannot express that, and the Defender
  * suite next door proved the consequence on its first live run: a cold start failed at 5001ms and
  * then passed in 3.7s, which reports a slow network as a test defect.
@@ -22,35 +23,67 @@ const workspaceId = process.env["AZURE_LOG_ANALYTICS_WORKSPACE_ID"] ?? "";
 
 const enabled = process.env["AZURE_SENTINEL_LIVE_TEST"] === "true" && workspaceId !== "";
 
-describe.skipIf(!enabled)("AzureSentinelClient against a real workspace", () => {
-  test("loads schema, queries data, round-trips an alert, and preserves KQL errors", async () => {
-    const client = createSentinelClient(
-      sentinelClientConfigFromEnv({
-        SENTINEL_CONNECTOR: "azure",
-        SENTINEL_BASE_URL: "http://localhost:8787",
-        SENTINEL_TIMEOUT_MS: 30_000,
-        AZURE_TENANT_ID: process.env["AZURE_TENANT_ID"],
-        AZURE_CLIENT_ID: process.env["AZURE_CLIENT_ID"],
-        AZURE_CLIENT_SECRET: process.env["AZURE_CLIENT_SECRET"],
-        AZURE_LOG_ANALYTICS_WORKSPACE_ID: workspaceId,
-      }),
-    );
+/**
+ * Built on first use and shared by the tests below.
+ *
+ * Lazy because `sentinelClientConfigFromEnv` throws without a workspace id, and a skipped suite must
+ * not resolve configuration it does not have. Shared because the client caches its token and its
+ * workspace metadata per instance, so a second instance would pay for both again.
+ */
+let shared: SecurityDataSource | undefined;
+function client(): SecurityDataSource {
+  shared ??= createSentinelClient(
+    sentinelClientConfigFromEnv({
+      SENTINEL_CONNECTOR: "azure",
+      SENTINEL_BASE_URL: "http://localhost:8787",
+      SENTINEL_TIMEOUT_MS: 30_000,
+      AZURE_TENANT_ID: process.env["AZURE_TENANT_ID"],
+      AZURE_CLIENT_ID: process.env["AZURE_CLIENT_ID"],
+      AZURE_CLIENT_SECRET: process.env["AZURE_CLIENT_SECRET"],
+      AZURE_LOG_ANALYTICS_WORKSPACE_ID: workspaceId,
+    }),
+  );
+  return shared;
+}
 
-    const schema = SecuritySchema.parse(await client.getSchema());
+/**
+ * PRD-7 §7 asks this suite for two things: that it "loads schema, queries `SecurityAlert`,
+ * round-trips one alert" *and* that it "observes an actionable invalid-KQL error". They are two
+ * tests rather than one because they fail for unrelated reasons, and as one test the first silently
+ * destroyed the second.
+ *
+ * A workspace holding no `SecurityAlert` rows — a new one, or one whose analytics rules have not
+ * fired yet — made `expect(alerts).toHaveLength(1)` abort before the error-contract assertions ran.
+ * So an empty workspace did not merely fail: it withdrew the coverage of ADR 010 §3's "preserve
+ * actionable query errors" without saying so, and reported it as a single failure naming the
+ * connector rather than the tenant.
+ *
+ * Split, an empty workspace fails exactly one test whose name says what is missing, and the error
+ * contract is still proven. Neither assertion is weakened — `toHaveLength(1)` stays a hard failure,
+ * because whether an empty workspace is acceptable is a question about the tenant and this suite
+ * should keep asking it. That is the deliberate difference from `defender.test.ts`, which skips its
+ * round trip on an empty tenant; Defender's queue is a live product's alert feed, where a Sentinel
+ * workspace with no alerts means nobody wrote a rule.
+ */
+describe.skipIf(!enabled)("AzureSentinelClient against a real workspace", () => {
+  test("loads schema, queries data, and preserves KQL errors", async () => {
+    const schema = SecuritySchema.parse(await client().getSchema());
     expect(schema.tables.some((table) => table.name === "SecurityAlert")).toBeTrue();
 
-    QueryResponse.parse(await client.query("SecurityAlert | count"));
+    QueryResponse.parse(await client().query("SecurityAlert | count"));
 
-    const alerts = await client.listAlerts(1);
-    expect(alerts).toHaveLength(1);
-    const first = SecurityAlert.parse(alerts[0]);
-    expect(SecurityAlert.parse(await client.getAlert(first.id))).toEqual(first);
-
-    const error = await client
+    const error = await client()
       .query("SecurityAlert | project ColumnThatDoesNotExistForConnectorSmokeTest")
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SentinelApiError);
     expect(error).toMatchObject({ code: "query_error" });
     expect(String(error)).toContain("ColumnThatDoesNotExistForConnectorSmokeTest");
+  });
+
+  test("round-trips one alert", async () => {
+    const alerts = await client().listAlerts(1);
+    expect(alerts).toHaveLength(1);
+    const first = SecurityAlert.parse(alerts[0]);
+    expect(SecurityAlert.parse(await client().getAlert(first.id))).toEqual(first);
   });
 });
