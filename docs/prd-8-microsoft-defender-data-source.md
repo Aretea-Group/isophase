@@ -533,6 +533,14 @@ deterministic tests but not by a live run, and cross-source querying is proven a
 in the live two-source run every tool call went to the primary, because this tenant's Sentinel is not
 onboarded and the two sources are disjoint (§7 Q9).
 
+> **Cross-source querying was subsequently demonstrated live (2026-08-27).** With the Azure connector
+> pointed at a real Log Analytics workspace and Defender primary, the agent reached the secondary
+> source unprompted: `get_security_schema` for `sentinel`, then five `query_security_data` calls
+> against the workspace, inside one investigation. The paragraph above is left as written — it
+> records what this PRD proved at completion — but its "routing only" claim no longer describes the
+> system. Note also that §7 Q9 is a separate matter: it governs whether Sentinel *alerts* appear in
+> `alerts_v2`, not whether the workspace can be *queried*, and the two were conflated above.
+
 - [x] **AC1** — Given `DEFENDER_TENANT_ID` and `DEFENDER_CLIENT_ID` set but no
       `DEFENDER_CLIENT_SECRET`, When configuration is resolved, Then it throws naming the missing
       key and never falls back to another identity. _(test: unit)_

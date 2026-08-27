@@ -325,9 +325,18 @@ source sets, so runs across products cannot silently merge in a comparison.
 **Negative.** The advanced-hunting table list is a maintained constant, because Graph enumerates
 nothing — a newly licensed workload is invisible until someone adds the table name. `alertType` is
 unmapped until a tenant with repeated detections exists. Defender runs are unscored by construction.
-Two active sources make turn-0 context larger, and while the measured cost is small (~274 tokens for
-both table-name blocks), that is names only on two small tenants and says nothing about what
+Two active sources make turn-0 context larger. The cost first recorded here was ~274 tokens for both
+table-name blocks; re-measured against a live workspace on 2026-08-27 it is **≈4,751 tokens** (37
+Defender + 833 workspace tables), because a Log Analytics workspace returns its whole table catalogue
+where Mock Sentinel returns 23. The verdict is unchanged — that is under half what one query result
+may spend, and the live two-source run showed no ill effect — but the number is 17× the one this
+paragraph was written around, and it is still names only, saying nothing about what
 `get_security_schema` costs on wide tables.
+
+> **The tenant changed (2026-08-27).** 37 of 43 candidate tables now resolve, and `Device*` and Email
+> tables are among them — further workloads were licensed after this was written. The paragraph below
+> is kept as measured rather than rewritten, because its point survives its own numbers: what a
+> Defender investigation can reach is a licensing property of the tenant, and it moves.
 
 **Measured on one tenant, not in general.** 18 of 41 candidate tables resolve, with **no `Device*`
 event tables and no Email tables** despite the tenant's only alert being an endpoint antivirus
