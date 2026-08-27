@@ -611,6 +611,18 @@ onboarded and the two sources are disjoint (§7 Q9).
 Every question here is answered by Phase 0's probe against a real tenant. Desk research narrowed
 several and made two of them harder; where it did, that is recorded rather than smoothed over.
 
+> **Where the answers live (2026-08-27).** Only Q6, Q7 and Q9 were struck through in place; the
+> other eight read as open here and are not. `docs/research-defender-api.md` §9.1–§9.9 carries what
+> the probe measured, and its §9.10 catalogues the residue — **Q4, Q5, Q10 and Q11 remain genuinely
+> open**, each with why it stayed open and what would close it (a detection that has fired more than
+> once; a workspace onboarded to the Defender portal; a deliberately unconsented registration; a
+> `429` nobody provoked). None blocks anything: Q4 and Q5 are recorded as unmapped and unset in
+> ADR 011 §15 and §6, and Q10 and Q11 only bound what a typed error can tell an operator.
+>
+> **Q2's answer was re-measured and moved** — ~274 tokens was Mock Sentinel's 23 tables, where the
+> question asks about a Sentinel *workspace*; against a live one it is ≈4,751. The gate still
+> clears. See `research-defender-api.md` §9.9 and `roadmap.md` §3.
+
 - **Q1 — How does the connector discover the tenant's table set?** Sharpened rather than settled:
   neither `getschema` nor `union isfuzzy=true` appears in the advanced-hunting documentation, and an
   unresolved table is a hard `400`. §4.2 lists four mechanisms; Phase 0 must test 1 and 2
