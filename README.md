@@ -225,6 +225,12 @@ the workspace name or ARM resource ID. Azure investigations refuse paths outside
 so alert and assessment content cannot enter the committed benchmark corpus. Log Analytics
 workspace shared keys authorize ingestion, not queries, and are not supported by this connector.
 
+A live workspace returns its entire table catalogue from the schema call, not only the tables that
+hold data. One lab workspace reported 833 tables where about ten held anything, against Mock
+Sentinel's 23. Table names are all that reach the agent's opening context, so that cost roughly
+4,500 tokens for Sentinel alone and 4,750 with Defender also active — larger and noisier than a
+local run suggests, though still small beside the 40,000 characters a single query result may spend.
+
 The first connector slice lists at most 500 alerts. An unbounded queue fails visibly when a
 workspace contains more; targeted `bun run investigate --alert <system-alert-id>` remains available.
 Pagination waits for an observed operator need.
@@ -236,8 +242,11 @@ AZURE_SENTINEL_LIVE_TEST=true \
   bun test packages/sentinel-client/test/integration/azure.test.ts
 ```
 
-It loads workspace schema, queries `SecurityAlert`, round-trips one alert, and verifies that invalid
-KQL returns an actionable diagnostic. It neither calls a model nor writes an artifact.
+It is two tests. The first loads workspace schema, queries `SecurityAlert`, and verifies that
+invalid KQL returns an actionable diagnostic. The second round-trips one alert and fails when the
+workspace holds none, naming that as a fact about the tenant: Sentinel writes `SecurityAlert` rows
+only once an analytics rule fires, so a workspace carrying only built-in rules fails that half until
+one does. Neither test calls a model or writes an artifact.
 
 ### Use Microsoft Defender XDR
 
