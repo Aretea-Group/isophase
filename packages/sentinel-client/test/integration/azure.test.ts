@@ -82,7 +82,21 @@ describe.skipIf(!enabled)("AzureSentinelClient against a real workspace", () => 
 
   test("round-trips one alert", async () => {
     const alerts = await client().listAlerts(1);
-    expect(alerts).toHaveLength(1);
+
+    // The precondition is stated rather than discovered. `expect(alerts).toHaveLength(1)` reports
+    // "expected 1, received 0", which names the connector for a fact about the tenant — and a
+    // Sentinel workspace holds no alerts until an analytics rule produces one, so a workspace
+    // carrying only the built-in Fusion rule can stay empty indefinitely without anything being
+    // wrong with this code. Still a hard failure, deliberately: an empty workspace is a real gap
+    // in what this suite can prove, and it should keep saying so.
+    if (alerts.length === 0) {
+      throw new Error(
+        "Precondition unmet: the workspace holds no SecurityAlert rows, so no alert can be " +
+          "round-tripped. Sentinel writes them only when an analytics rule fires. This is a fact " +
+          "about the tenant, not a defect in the connector.",
+      );
+    }
+
     const first = SecurityAlert.parse(alerts[0]);
     expect(SecurityAlert.parse(await client().getAlert(first.id))).toEqual(first);
   });
