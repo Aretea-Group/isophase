@@ -1,8 +1,8 @@
 # Microsoft Defender — app registration and consent
 
 What to create in Microsoft Entra ID so this repository can read a Microsoft Defender XDR tenant,
-and how to tell whether it worked. Written for PRD-8 Phase 0: the probe is the only thing that
-consumes these credentials today, and the Phase 1 connector will consume the same three.
+and how to tell whether it worked. Two things consume these same three credentials: the probe
+(`bun run probe:defender`), and the connector that runs real investigations.
 
 **No tenant identifiers appear in this document.** Everything specific to a deployment lives in
 `.env`, which is ignored.
@@ -101,9 +101,14 @@ Defender source is simply not active and nothing else changes.
 
 `DEFENDER_WORKSPACE_ID` targets one Log Analytics workspace onboarded into the Defender portal.
 Omitted, `runHuntingQuery` uses the caller's primary workspace. Leave it unset unless you know you
-need it: the service is documented to fall back to the primary workspace *silently* when the named
-one is inaccessible, which makes a typo look like success. PRD-8 §7 Q5 sends the probe to confirm
-that.
+need it: **the silent fallback is measured, not merely documented.** A `workspaceId` no tenant owns
+is accepted with `200` and answered from the primary workspace, so a success here is not evidence
+that the workspace you named was the one queried, and a typo looks exactly like a working
+configuration (`research-defender-api.md` §9.6).
+
+What remains unsettled is narrower — whether naming a *legitimate* onboarded workspace changes any
+result. That needs a tenant with Sentinel onboarded to the Defender portal, which this one is not,
+so an identical result would prove nothing either way (PRD-8 §7 Q5).
 
 ## Verify
 

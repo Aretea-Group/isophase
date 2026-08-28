@@ -35,13 +35,20 @@ Potential capabilities:
 
 PRD-8 raised the pressure here without triggering it. With two sources active, startup context
 lists both the Sentinel workspace tables and the Defender advanced hunting table set. **PRD-8 §7 Q2
-is answered: about 274 tokens for both table-name blocks** (18 Defender + 23 Mock Sentinel tables),
-measured in `research-defender-api.md` §9.9 — so `AGENTS.md` §15's oversized-startup-schema
-stop-and-ask did not fire and PRD-8 Phase 2 proceeded.
+is answered: about 4,751 tokens for both table-name blocks** (37 Defender + 833 live workspace
+tables), so `AGENTS.md` §15's oversized-startup-schema stop-and-ask did not fire and PRD-8 Phase 2
+proceeded.
 
-That number is names only, on two small tenants. It says nothing about what `get_security_schema`
-costs once the agent pulls column lists — one Defender tenant alone reports 366 columns across 18
-tables — which is the half this section still exists to solve.
+That figure supersedes the ~274 tokens first recorded in `research-defender-api.md` §9.9, which was
+measured against Mock Sentinel's 23 tables where the question asks about a Sentinel *workspace*. The
+correction does not change the verdict — 4,751 tokens is under half what one query result may spend,
+and the live two-source run showed no ill effect — but it removes the "two small tenants" reasoning
+this section previously rested on.
+
+What it exposes instead is a signal-quality problem rather than a budget one: of those 833 workspace
+tables, roughly ten held any data, so the agent is invited to query hundreds of empty ones. That, and
+what `get_security_schema` costs once the agent pulls column lists, are the halves this section still
+exists to solve.
 
 ### 4. Safe Web Search Harness
 

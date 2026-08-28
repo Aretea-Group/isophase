@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 import { QueryResponse, SecuritySchema } from "@soc/contracts";
 
@@ -20,6 +20,20 @@ import {
  * that swept the schema on every run would be a poor citizen of somebody's production tenant. The
  * exhaustive measurement is `scripts/probe-defender.ts`, which an operator runs deliberately.
  */
+
+/**
+ * Long enough that the connector's own timeout is what fires, never this one.
+ *
+ * Five sequential Graph calls behind a credential acquisition, each bounded by
+ * `DEFENDER_TIMEOUT_MS` (30s by default), so the worst legitimate case is six of those. Bun's 5s
+ * default cannot express it: this suite's first live run failed at 5001ms on a cold start and then
+ * passed in 3.7s, reporting a slow network as a test defect and saying nothing about the tenant. A
+ * test that pre-empts the timeout under test measures the harness instead.
+ *
+ * File-scoped rather than a third argument to `test`, because there is one live test here and the
+ * per-test form pushes the whole body past the formatter's line width for no gain in precision.
+ */
+setDefaultTimeout(6 * 30_000);
 
 const config = (() => {
   try {

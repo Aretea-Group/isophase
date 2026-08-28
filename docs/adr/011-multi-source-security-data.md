@@ -314,6 +314,30 @@ correct and is never filled from another field. `native` carries the validated a
 that an alert belongs to one costs nothing and stripping it to "honour" the incidents non-goal would
 remove evidence for free.
 
+### 16. The Defender overlay is a function of the row cap, not a constant
+
+Defender ships a query-instruction overlay beside Sentinel's, activated on first use of a Defender
+tool so the initial system prompt stays free of query tactics. That much is PRD-8 §4.1 D11 as
+written, and the reason is unchanged: turn-0 is the thing being measured, and query tactics in it
+would change the measurement for every run whether or not the agent ever queries.
+
+**Deviation from D11, taken deliberately.** D11 named a `DEFENDER_QUERY_INSTRUCTIONS` constant
+mirroring `SENTINEL_QUERY_INSTRUCTIONS`. What shipped is
+`defenderQueryInstructions(maxRows: number)` — a function, because §12 made the row cap
+configurable through `DEFENDER_QUERY_MAX_ROWS` and the overlay states that cap to the agent. A
+constant would either hard-code a number §12 allows an operator to change, or omit it and leave the
+agent to discover the cap by hitting it. The two decisions interact, and D11 was written before §12
+existed.
+
+Its *content* comes from Phase 0's measured findings rather than the published schema reference, as
+D11 required. Two things the probe changed and which are worth keeping visible here, because both
+are the kind of guidance that is wrong in a way an agent cannot detect: the error contract is stated
+as fact rather than hope — a rejected query returns HTTP 400 carrying the Kusto engine's own message
+verbatim — and the unresolvable-*table* case is called out separately from a mistyped column,
+because Graph returns the same 400 for both while they mean opposite things. A table that does not
+resolve means the tenant is not licensed for that workload, so no spelling of it will work; an agent
+reading that as a typo retries the same query until it gives up.
+
 ## Consequences
 
 **Positive.** The system runs on Defender alone, with no Sentinel of any kind. Schema discovery is one
@@ -325,9 +349,18 @@ source sets, so runs across products cannot silently merge in a comparison.
 **Negative.** The advanced-hunting table list is a maintained constant, because Graph enumerates
 nothing — a newly licensed workload is invisible until someone adds the table name. `alertType` is
 unmapped until a tenant with repeated detections exists. Defender runs are unscored by construction.
-Two active sources make turn-0 context larger, and while the measured cost is small (~274 tokens for
-both table-name blocks), that is names only on two small tenants and says nothing about what
+Two active sources make turn-0 context larger. The cost first recorded here was ~274 tokens for both
+table-name blocks; re-measured against a live workspace on 2026-08-27 it is **≈4,751 tokens** (37
+Defender + 833 workspace tables), because a Log Analytics workspace returns its whole table catalogue
+where Mock Sentinel returns 23. The verdict is unchanged — that is under half what one query result
+may spend, and the live two-source run showed no ill effect — but the number is 17× the one this
+paragraph was written around, and it is still names only, saying nothing about what
 `get_security_schema` costs on wide tables.
+
+> **The tenant changed (2026-08-27).** 37 of 43 candidate tables now resolve, and `Device*` and Email
+> tables are among them — further workloads were licensed after this was written. The paragraph below
+> is kept as measured rather than rewritten, because its point survives its own numbers: what a
+> Defender investigation can reach is a licensing property of the tenant, and it moves.
 
 **Measured on one tenant, not in general.** 18 of 41 candidate tables resolve, with **no `Device*`
 event tables and no Email tables** despite the tenant's only alert being an endpoint antivirus

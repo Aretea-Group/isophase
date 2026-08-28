@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import {
   AzureSentinelClient,
+  DefenderClient,
   SentinelApiClient,
   SentinelApiError,
   type SecurityDataSource,
@@ -109,6 +110,52 @@ const azureNativeAlert = z
       azureAlertColumns.map((column, index) => [column.name, azureAlertRow[index]]),
     ),
   );
+
+/**
+ * Graph's `alert` resource, in the shape `alerts_v2` actually returns.
+ *
+ * Deliberately lowercase `severity` and camelCase `status`: values stay source-native and are never
+ * translated into a shared taxonomy, so this case expects exactly what Graph sent while the two
+ * cases above expect exactly what their own products sent.
+ */
+const defenderNativeAlert = {
+  id: "alert-1",
+  title: "Suspicious authentication",
+  description: "Authentication from an unusual network",
+  severity: "high",
+  status: "inProgress",
+  detectorId: "detector-7",
+  incidentId: "42",
+  firstActivityDateTime: "2026-08-23T10:00:00.000Z",
+  lastActivityDateTime: "2026-08-23T10:01:00.000Z",
+  createdDateTime: "2026-08-23T10:02:00.000Z",
+  categories: ["InitialAccess"],
+  mitreTechniques: ["T1078"],
+  evidence: [
+    {
+      "@odata.type": "#microsoft.graph.security.userEvidence",
+      userAccount: { userPrincipalName: "alice@example.test" },
+    },
+  ],
+};
+
+/** `SourceTable` / `ColumnName` / `ColumnType` / `ColumnOrdinal`, as the batched union projects. */
+const defenderSchemaResults = {
+  schema: [
+    { name: "SourceTable", type: "String" },
+    { name: "ColumnName", type: "String" },
+    { name: "ColumnType", type: "String" },
+    { name: "ColumnOrdinal", type: "Int32" },
+  ],
+  results: [
+    {
+      SourceTable: "AuthEvents",
+      ColumnName: "identity",
+      ColumnType: "native-scalar<identity>",
+      ColumnOrdinal: 0,
+    },
+  ],
+};
 
 interface SourceFixture {
   source: SecurityDataSource;
@@ -242,6 +289,57 @@ const cases: SourceCase[] = [
         source: new AzureSentinelClient({ credential, workspaceId: "workspace-id" }),
         queries,
       };
+    },
+  },
+  {
+    name: "Microsoft Defender XDR",
+    expected: {
+      severity: "high",
+      status: "inProgress",
+      // Deliberate, not unfinished: PRD-8 §4.2 proposed `detectorId` on an elimination argument but
+      // required confirmation against real alerts, and the probe could not confirm it. The fixture
+      // carries a `detectorId` precisely so this stays a decision the contract asserts rather than
+      // an accident of a fixture that omitted the field.
+      alertType: undefined,
+      // Graph has no equivalent, and it is left undefined rather than derived from `evidence`.
+      compromisedEntity: undefined,
+      tactics: ["InitialAccess"],
+      entities: defenderNativeAlert.evidence,
+      native: z.json().parse(defenderNativeAlert),
+    },
+    create: (options = {}) => {
+      const queries: string[] = [];
+      const credential: TokenCredential = {
+        getToken: () =>
+          Promise.resolve({ token: "token", expiresOnTimestamp: Date.now() + 3_600_000 }),
+      };
+      installFetch((url, init) => {
+        if (url.includes("/security/alerts_v2/")) return Response.json(defenderNativeAlert);
+        if (url.includes("/security/alerts_v2")) {
+          return Response.json({ value: [defenderNativeAlert], "@odata.count": 1 });
+        }
+        if (url.endsWith("/security/runHuntingQuery")) {
+          const query = (JSON.parse(String(init?.body)) as { Query: string }).Query;
+          // Schema and telemetry share one endpoint here, where the other two sources have separate
+          // ones, so the discriminator is the query text the connector actually sends.
+          if (query.includes("| getschema |")) return Response.json(defenderSchemaResults);
+          queries.push(query);
+          if (options.queryError === true) {
+            return Response.json(
+              { error: { code: "BadRequest", message: "bad column from native engine" } },
+              { status: 400 },
+            );
+          }
+          // Object-keyed, where the two cases above are positional. D4's projection through
+          // `schema` order is what makes this reach the same `queryResult` as the others.
+          return Response.json({
+            schema: [{ name: "identity", type: "native-scalar<identity>" }],
+            results: [{ identity: "alice@example.test" }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      });
+      return { source: new DefenderClient({ credential }), queries };
     },
   },
 ];

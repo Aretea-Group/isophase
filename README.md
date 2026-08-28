@@ -225,6 +225,12 @@ the workspace name or ARM resource ID. Azure investigations refuse paths outside
 so alert and assessment content cannot enter the committed benchmark corpus. Log Analytics
 workspace shared keys authorize ingestion, not queries, and are not supported by this connector.
 
+A live workspace returns its entire table catalogue from the schema call, not only the tables that
+hold data. One lab workspace reported 833 tables where about ten held anything, against Mock
+Sentinel's 23. Table names are all that reach the agent's opening context, so that cost roughly
+4,500 tokens for Sentinel alone and 4,750 with Defender also active — larger and noisier than a
+local run suggests, though still small beside the 40,000 characters a single query result may spend.
+
 The first connector slice lists at most 500 alerts. An unbounded queue fails visibly when a
 workspace contains more; targeted `bun run investigate --alert <system-alert-id>` remains available.
 Pagination waits for an observed operator need.
@@ -236,8 +242,11 @@ AZURE_SENTINEL_LIVE_TEST=true \
   bun test packages/sentinel-client/test/integration/azure.test.ts
 ```
 
-It loads workspace schema, queries `SecurityAlert`, round-trips one alert, and verifies that invalid
-KQL returns an actionable diagnostic. It neither calls a model nor writes an artifact.
+It is two tests. The first loads workspace schema, queries `SecurityAlert`, and verifies that
+invalid KQL returns an actionable diagnostic. The second round-trips one alert and fails when the
+workspace holds none, naming that as a fact about the tenant: Sentinel writes `SecurityAlert` rows
+only once an analytics rule fires, so a workspace carrying only built-in rules fails that half until
+one does. Neither test calls a model or writes an artifact.
 
 ### Use Microsoft Defender XDR
 
@@ -271,6 +280,12 @@ local scenario corpus. Standalone Defender investigates; it does not benchmark.
 so "the newest 500" is not expressible; a window is. More than 500 alerts in the window is refused
 with the count rather than silently truncated.
 
+**Too few is quieter than too many, so check the count.** A window containing no alerts is not an
+error: the run prints `0 alert(s)`, writes a valid empty artifact and exits successfully. On a tenant
+whose detections are older than the window that reads as "nothing to investigate" when it means
+"nothing in the last seven days". Widen the window, or reach a known alert directly with
+`bun run investigate --alert <id>`, which ignores the window entirely.
+
 Before a real investigation:
 
 ```bash
@@ -278,9 +293,11 @@ DEFENDER_LIVE_TEST=true \
   bun test packages/sentinel-client/test/integration/defender.test.ts
 ```
 
-It loads the tenant's advanced-hunting schema, runs an aggregate query, round-trips one alert, and
-verifies that an invalid query returns the engine's own diagnostic. It neither calls a model nor
-writes an artifact.
+It loads the tenant's advanced-hunting schema, runs an aggregate query, and verifies that an invalid
+query returns the engine's own diagnostic. It also round-trips one alert **when the window holds
+one**, and prints `round trip not exercised` when it does not — an empty queue is a property of the
+tenant rather than a defect, so it is not failed. The test neither calls a model nor writes an
+artifact.
 
 ### Use several sources at once
 

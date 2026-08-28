@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
 import { ANALYTICS_RULES } from "../../src/alerts/rules.ts";
-import { KustoClient, KustoError } from "../../src/kusto/client.ts";
+import { KustoClient, KustoError, KustoUnavailableError } from "../../src/kusto/client.ts";
 import { loadScenarios } from "../../src/scenarios/scenarios.ts";
 import { bootstrap, verifyOnly, VerificationError } from "../../src/telemetry/bootstrap.ts";
 import { TELEMETRY_TABLES } from "../../src/telemetry/tables.ts";
@@ -159,14 +159,37 @@ describe.skipIf(!reachable)("telemetry bootstrap against a live Kusto Emulator",
       checks.map(async ({ scenario, evidence }) => ({
         scenario: scenario.id,
         q: evidence.question,
-        outcome: await client
+        error: await client
           .query(database, evidence.kql)
-          .then(() => "ok")
-          .catch((error: unknown) => (error as Error).message),
+          .then((): unknown => undefined)
+          .catch((error: unknown) => error),
       })),
     );
 
-    expect(outcomes.filter((o) => o.outcome !== "ok")).toEqual([]);
+    // A dependency that went away is not a scenario whose query is wrong, and
+    // `KustoUnavailableError` already draws that line — flattening every failure to `.message`
+    // threw the distinction away, so a stalled emulator arrived as a diff of every scenario in the
+    // corpus with the one line that mattered buried inside it. The emulator throttles while it
+    // settles after `bun run data:bootstrap`, which is a documented transient (CLAUDE.md).
+    const unavailable = outcomes.filter(({ error }) => error instanceof KustoUnavailableError);
+    if (unavailable.length > 0) {
+      throw new Error(
+        `Kusto became unreachable during the run: ${unavailable.length} of ${checks.length} ` +
+          "queries did not complete. The emulator throttles while it settles after " +
+          "`bun run data:bootstrap`; this says nothing about the scenarios themselves. Re-run " +
+          "once it has settled.",
+      );
+    }
+
+    // Genuine rejections keep the per-scenario diff, which is what names the one that broke.
+    const rejected = outcomes
+      .filter(({ error }) => error !== undefined)
+      .map(({ scenario, q, error }) => ({
+        scenario,
+        q,
+        outcome: error instanceof Error ? error.message : String(error),
+      }));
+    expect(rejected).toEqual([]);
   }, 300_000);
 
   test("each scenario's stated evidence matches what its query returns", async () => {

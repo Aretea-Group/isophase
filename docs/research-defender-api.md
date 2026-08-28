@@ -716,6 +716,14 @@ before rows and low enough that a runaway query cannot drag 100,000 rows across 
 | Mock Sentinel | 23 | 557 | 140 |
 | **Both blocks** | 41 | **1,094** | **≈274** |
 
+> **Re-measured against a live workspace (2026-08-27).** The table above is Mock Sentinel's 23
+> tables, but §7 Q2 asks about *Sentinel's workspace tables*. A real Log Analytics workspace returns
+> its whole table catalogue: 833 tables, against 37 for the same Defender tenant once further
+> workloads were licensed. Both blocks together are **19,001 characters, ≈4,751 tokens** — 17× the
+> figure recorded here. The conclusion is unchanged and the gate still clears: 4,751 tokens is under half of
+> what one query result may spend, and the live two-source run showed no ill effect. What does not
+> survive is the number, and the caveat below turns out to have been the important sentence.
+
 **§7 Q2 is answered and Phase 2 was not gated on `roadmap.md` §3.** Two active sources cost about
 274 tokens of turn-0 context, which is not a context-budget problem, so PRD-8 §5's stop-and-ask
 condition did not trigger and Phase 2 proceeded.

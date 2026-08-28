@@ -9,6 +9,9 @@ REST surface gains a sixth route), §12 (the artifact gains counters), §14 (a n
 `docs/roadmap.md` §7 (which owned the band partition — decision 7)
 **Extends:** ADR 006 §4 (run artifact lifecycle), §5 (ground-truth scoring stays in `scripts/`);
 ADR 007 §2 (the investigator remains the sole writer of run artifacts)
+**Extended by:** [ADR 010](./010-tabular-security-data-source-boundary.md) §3 (§3's derived
+condition includes the configured source block); [ADR 011](./011-multi-source-security-data.md) §3
+(it folds the whole active source set in, so moving `PRIMARY_ALERT_SOURCE` is a different condition)
 
 ## Context
 

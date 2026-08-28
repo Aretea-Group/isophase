@@ -1,13 +1,15 @@
 # ADR 009 — Azure Monitor Logs Connector
 
-**Status:** Accepted; §3 and §5 amended by ADR 011
+**Status:** Accepted; §2, §4 and §5 amended by ADR 010; §3 and §5 amended by ADR 011
 
 **Date:** 2026-08-22
 
 **Implements:** PRD-7 — Real Microsoft Sentinel Connector
 
-**Amended by:** [ADR 011](./011-multi-source-security-data.md) §13 (the `.data/` rule generalises
-from Azure to *any* active source that reads a live tenant) and §2 (Defender deliberately has no
+**Amended by:** [ADR 010](./010-tabular-security-data-source-boundary.md) §2, §4 and §5 (the
+Sentinel capability becomes a source-neutral one, and new artifacts stop writing `sentinelBaseUrl`);
+[ADR 011](./011-multi-source-security-data.md) §13 (the `.data/` rule generalises from Azure to
+*any* active source that reads a live tenant) and §2 (Defender deliberately has no
 developer-credential fallback, diverging from §3's chain below).
 
 ## Context
@@ -73,6 +75,11 @@ IDs use the workspace ARM resource ID from metadata plus `SystemAlertId`. `getCo
 Azure startup refuses the committed `runs/` directory and requires run and trace paths under one
 ignored operator-selected root. Only the non-secret Logs workspace target is recorded in the
 existing `sentinelBaseUrl` artifact field.
+
+> **Superseded in part by ADR 010 (2026-08-23).** New artifacts no longer write `sentinelBaseUrl`;
+> the target moved into `config.source`, and the Zod reader keeps `sentinelBaseUrl` only as an
+> optional legacy field so committed artifacts still parse. The `.data/` rule above is untouched by
+> this — that half is generalised by ADR 011 §13, noted at the top of the section.
 
 ## Consequences
 
