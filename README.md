@@ -280,6 +280,12 @@ local scenario corpus. Standalone Defender investigates; it does not benchmark.
 so "the newest 500" is not expressible; a window is. More than 500 alerts in the window is refused
 with the count rather than silently truncated.
 
+**Too few is quieter than too many, so check the count.** A window containing no alerts is not an
+error: the run prints `0 alert(s)`, writes a valid empty artifact and exits successfully. On a tenant
+whose detections are older than the window that reads as "nothing to investigate" when it means
+"nothing in the last seven days". Widen the window, or reach a known alert directly with
+`bun run investigate --alert <id>`, which ignores the window entirely.
+
 Before a real investigation:
 
 ```bash
@@ -287,9 +293,11 @@ DEFENDER_LIVE_TEST=true \
   bun test packages/sentinel-client/test/integration/defender.test.ts
 ```
 
-It loads the tenant's advanced-hunting schema, runs an aggregate query, round-trips one alert, and
-verifies that an invalid query returns the engine's own diagnostic. It neither calls a model nor
-writes an artifact.
+It loads the tenant's advanced-hunting schema, runs an aggregate query, and verifies that an invalid
+query returns the engine's own diagnostic. It also round-trips one alert **when the window holds
+one**, and prints `round trip not exercised` when it does not — an empty queue is a property of the
+tenant rather than a defect, so it is not failed. The test neither calls a model nor writes an
+artifact.
 
 ### Use several sources at once
 
