@@ -356,9 +356,10 @@ function runHaystack(run: RunArtifact): string {
  * needs them most.
  *
  * Hints go by how recoverable they are, and then by how widely they apply. `?` and `q` cannot be
- * reached from anywhere else and never leave. `c` follows them: it works from every pane, it is
- * where spend is reported, and it was the one key on that footing missing from the bar — while
- * `n`, `r`, `f` and `x` were all listed despite each working in only one pane. Those four go first.
+ * reached from anywhere else and never leave. `c` and `y` follow them: both work from every pane,
+ * and `y` is how findings leave the console at all — it was reachable only from the `?` screen,
+ * which made the one export path invisible to anyone who had not read the help. `n`, `r`, `f` and
+ * `x` were all listed despite each working in only one pane. Those four go first.
  */
 const KEY_HINTS: { text: string; rank: number }[] = [
   { text: "1-4 pane", rank: 3 },
@@ -367,6 +368,7 @@ const KEY_HINTS: { text: string; rank: number }[] = [
   { text: "r re-run", rank: 6 },
   { text: "x cancel", rank: 7 },
   { text: "/ filter", rank: 4 },
+  { text: "y copy", rank: 2 },
   { text: "c config", rank: 2 },
   { text: "? help", rank: 1 },
   { text: "q quit", rank: 1 },
