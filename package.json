@@ -18,6 +18,7 @@
     "investigate": "bun apps/investigator/src/index.ts",
     "evaluate": "bun scripts/evaluate-runs.ts",
     "console": "bun apps/console/src/index.ts",
+    "console:live": "bun scripts/console-live.ts",
     "data:bootstrap": "bun scripts/bootstrap-sentinel-data.ts",
     "data:reset": "bun scripts/bootstrap-sentinel-data.ts --reset",
     "data:verify": "bun scripts/bootstrap-sentinel-data.ts --verify-only",
