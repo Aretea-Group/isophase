@@ -19,7 +19,7 @@ const ABSENT = "—";
  * Defender-standalone deployment and describe it truthfully — PRD-8 §4.1 D13 puts the console
  * explicitly among the things that may not assume a Sentinel profile exists.
  */
-function selectedSourceId(env: ConsoleEnv): string {
+export function selectedSourceId(env: ConsoleEnv): string {
   const active = env.SECURITY_SOURCES.split(",")
     .map((id) => id.trim())
     .filter(Boolean);

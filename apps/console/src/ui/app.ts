@@ -25,6 +25,7 @@ import {
   remediationLines,
   type AlertFacts,
 } from "../view/alert.ts";
+import { selectedSourceId } from "../view/config.ts";
 import { duplicateSpend, queueRows } from "../view/coverage.ts";
 import {
   bandLabel,
@@ -2599,7 +2600,9 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         getAlert: () => Promise.reject(new Error("unused")),
       },
       env.BENCHMARK_MAP_PATH,
-      env.SENTINEL_CONNECTOR,
+      // The active primary, not the Sentinel connector: under a Defender-only run the connector is
+      // still whatever `.env` says, which is how a Graph failure came out as "Mock Sentinel".
+      { id: selectedSourceId(env), connector: env.SENTINEL_CONNECTOR },
     );
     state.alerts = snapshot.alerts;
     if (snapshot.error === undefined) delete state.alertsError;

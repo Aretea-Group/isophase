@@ -48,23 +48,56 @@ export interface AlertsSnapshot {
 }
 
 /**
+ * Which product the console just failed to reach.
+ *
+ * Two fields rather than one because they answer different questions, and collapsing them is what
+ * made this wrong: `id` is the active primary source, while `connector` distinguishes Sentinel's
+ * two backends and means nothing for any other source.
+ */
+export interface AlertSource {
+  /** The active primary source id — `sentinel`, `defender`. Never a Sentinel connector name. */
+  id: string;
+  /** Meaningful only when `id` is `sentinel`: the local corpus, or a real workspace. */
+  connector: "mock" | "azure";
+}
+
+/**
  * Why a fetch failed, said in terms of the action that fixes it.
  *
  * Today 100% of console sessions run with no Sentinel at all, so this is the common path rather
  * than the exceptional one and deserves better than a stack trace (PRD-5 §7).
+ *
+ * **Branch on the source, not on the connector.** This took `"mock" | "azure"` and was handed
+ * `SENTINEL_CONNECTOR`, which cannot express "the active source is Defender" — so a Graph timeout
+ * under a Defender-only run rendered as "Mock Sentinel is not reachable — start it with
+ * `bun run dev:mock-sentinel`", naming the wrong product and prescribing a process that has nothing
+ * to do with the failure. `DefenderClient` throws the same `SentinelApiError` with the same
+ * `unreachable` code, so the error itself carries nothing to tell them apart. There is deliberately
+ * no default: a caller that does not know which source it queried cannot describe its failure.
  */
-export function describeAlertError(error: unknown, connector: "mock" | "azure" = "mock"): string {
+export function describeAlertError(error: unknown, source: AlertSource): string {
   if (error instanceof SentinelApiError) {
-    if (connector === "azure") {
-      return `Azure Sentinel returned ${error.code}: ${error.message}`;
+    if (source.id === "sentinel") {
+      if (source.connector === "azure") {
+        return `Azure Sentinel returned ${error.code}: ${error.message}`;
+      }
+      if (error.code === "unreachable") {
+        return "Mock Sentinel is not reachable — start it with `bun run dev:mock-sentinel`.";
+      }
+      if (error.code === "upstream_unavailable") {
+        return "Mock Sentinel is up but Kusto is not — check `bun run infra:up`.";
+      }
+      return `Mock Sentinel returned ${error.code}: ${error.message}`;
     }
-    if (error.code === "unreachable") {
-      return "Mock Sentinel is not reachable — start it with `bun run dev:mock-sentinel`.";
+    if (source.id === "defender") {
+      if (error.code === "unreachable") {
+        return "Microsoft Graph is not reachable — check the DEFENDER_* credential group and network.";
+      }
+      return `Defender returned ${error.code}: ${error.message}`;
     }
-    if (error.code === "upstream_unavailable") {
-      return "Mock Sentinel is up but Kusto is not — check `bun run infra:up`.";
-    }
-    return `Mock Sentinel returned ${error.code}: ${error.message}`;
+    // An id this build does not know how to advise about still names itself rather than borrowing
+    // another source's remedy.
+    return `${source.id} returned ${error.code}: ${error.message}`;
   }
   if (error instanceof z.ZodError) {
     return "The alert payload did not match the contract — the corpus and the console are out of step.";
@@ -117,13 +150,13 @@ function toQueueAlert(resource: SecurityAlert, scenarios: Map<string, string>): 
 export async function readAlerts(
   client: AlertReader,
   benchmarkMapPath: string,
-  connector: "mock" | "azure" = "mock",
+  source: AlertSource,
 ): Promise<AlertsSnapshot> {
   const scenarios = await readBenchmarkMap(benchmarkMapPath);
   try {
     const resources = await client.listAlerts();
     return { alerts: resources.map((resource) => toQueueAlert(resource, scenarios)) };
   } catch (error) {
-    return { alerts: [], error: describeAlertError(error, connector) };
+    return { alerts: [], error: describeAlertError(error, source) };
   }
 }
