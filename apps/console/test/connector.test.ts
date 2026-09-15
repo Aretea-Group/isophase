@@ -31,9 +31,45 @@ describe("Azure connector console behavior", () => {
 
   test("uses connector-aware alert errors", () => {
     const error = new SentinelApiError("authorization_error", 403, "workspace access denied");
-    expect(describeAlertError(error, "azure")).toBe(
+    expect(describeAlertError(error, { id: "sentinel", connector: "azure" })).toBe(
       "Azure Sentinel returned authorization_error: workspace access denied",
     );
-    expect(describeAlertError(error, "mock")).toContain("Mock Sentinel returned");
+    expect(describeAlertError(error, { id: "sentinel", connector: "mock" })).toContain(
+      "Mock Sentinel returned",
+    );
+  });
+});
+
+/**
+ * The message names the product that actually failed.
+ *
+ * `DefenderClient` throws the same `SentinelApiError` with the same `unreachable` code as the mock
+ * client, so nothing in the error distinguishes them — only the source the console queried does.
+ */
+describe("Defender connector console behavior", () => {
+  test("an unreachable Defender does not send the analyst to start Mock Sentinel", () => {
+    const error = new SentinelApiError("unreachable", 503, "socket hang up");
+    const message = describeAlertError(error, { id: "defender", connector: "mock" });
+
+    // `connector` is deliberately "mock" here: that is exactly what `SENTINEL_CONNECTOR` reads on a
+    // Defender-only run started from a corpus checkout, and it is what produced the wrong message.
+    expect(message).not.toContain("Mock Sentinel");
+    expect(message).not.toContain("dev:mock-sentinel");
+    expect(message).toContain("Microsoft Graph is not reachable");
+    expect(message).toContain("DEFENDER_*");
+  });
+
+  test("other Defender failures name Defender and carry the code through", () => {
+    const error = new SentinelApiError("authorization_error", 403, "insufficient privileges");
+    expect(describeAlertError(error, { id: "defender", connector: "mock" })).toBe(
+      "Defender returned authorization_error: insufficient privileges",
+    );
+  });
+
+  test("an unknown source names itself rather than borrowing a remedy", () => {
+    const error = new SentinelApiError("unreachable", 503, "socket hang up");
+    expect(describeAlertError(error, { id: "splunk", connector: "mock" })).toBe(
+      "splunk returned unreachable: socket hang up",
+    );
   });
 });

@@ -156,6 +156,27 @@ bun run console --runs <dir>            # another artifact directory
 bun run console --traces <dir>          # another transcript directory
 ```
 
+### Open the console against a live tenant
+
+```bash
+bun run console:live defender           # Defender XDR
+bun run console:live sentinel           # a real Log Analytics workspace
+bun run console:live defender,sentinel  # both; the first named produces the alerts
+```
+
+`bun run console` resolves whatever `.env` names, which on a checkout set up to build the benchmark
+corpus is Mock Sentinel — so the queue reports "Mock Sentinel is not reachable" and the connector
+looks broken when it is merely unselected. A live run needs the source *and* both artifact
+directories set together: runs that may carry tenant data are refused outside ignored `.data/`, and
+the console exits before drawing a frame rather than degrading. `console:live` derives all of it
+from the source you name — `.data/defender-runs`, `.data/azure-runs`, or `.data/live-runs` for a
+mixed run — and forwards any remaining flags to the console untouched.
+
+It deliberately does not set `DEFENDER_ALERT_WINDOW`. That bounds the alert queue and is a fact
+about a tenant's detection cadence, not about running live: a quiet week empties a window that
+worked yesterday. Set it in `.env` beside the credentials, and read an empty queue as "nothing in
+the window" before concluding the connector is down.
+
 ### Return alerts to the queue
 
 Queue reset archives matching run artifacts; it does not delete them. Feedback moves only when
