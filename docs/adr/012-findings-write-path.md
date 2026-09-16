@@ -1,6 +1,6 @@
 # ADR 012 — The findings write path and unattended operation
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-09-16
 
@@ -328,8 +328,8 @@ PRD-5 §14's write-isolation claim is *stronger*, not weaker: `apps/console/src`
 filesystem write primitive at all, because PRD-9 Phase 0 removed the `drive/` seam it used to
 except.
 
-The measured tenant answer that PRD-9 §10 Q2 asked for is recorded: `alerts_v2` returns alerts with
-`serviceSource: microsoftSentinel`, so this workspace is onboarded to the Defender portal and D8
-holds — one Graph publisher covers both products. §10 Q1 remains open; PRD-8 §4.1 D12 forbids the
-Graph publisher until the write probe answers it, and that probe is deliberately opt-in because a
-Graph alert comment cannot be deleted.
+The measured tenant answers that PRD-9 §10 asked for are recorded. Q2: `alerts_v2` returns alerts
+with `serviceSource: microsoftSentinel`, so this workspace is onboarded to the Defender portal and
+D8 holds — one Graph publisher covers both products. Q1: the write probe has since run, and the
+answer is no — `comments` is not `PATCH`-writable app-only on `alerts_v2`, which is §6 above. That
+probe stays opt-in because a Graph comment cannot be deleted.
