@@ -35,4 +35,7 @@ Nothing in it has been picked up since:
   interactive browser or device-code login", "incident ARM APIs, incident grouping, multi-workspace
   queries or write-back", "retries, background token refresh, sovereign-cloud endpoints or workspace
   shared-key query auth", "Azure Monitor or ARM client SDKs beyond the single Azure Identity
-  dependency" — all still out of scope.
+  dependency" — all still out of scope, with two narrowings recorded elsewhere:
+  **write-back** was taken up by PRD-9 for Defender only (ADR 012), and **"retries"** means what it
+  says — the connector re-issuing a request — which no connector does. ADR 012 §11 added backoff to
+  the unattended *loop*, which delays its next poll and therefore sends fewer requests, not more.

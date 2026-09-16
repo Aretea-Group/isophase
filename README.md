@@ -1,22 +1,25 @@
 # SOC Investigation Agent
 
-An autonomous LLM agent that investigates security alerts through a local deterministic security
-lab, a read-only Azure Monitor Logs connector, or Microsoft Defender XDR — one of them, or several
-at once with exactly one producing the alerts. The analyst operates it through a terminal UI,
-follows the investigation live, reviews the evidence and exact KQL, and records the final
-classification.
+**An autonomous agent that triages your security alerts while nobody is watching, and writes what it
+found onto the case.**
+
+Point it at a Microsoft Defender tenant and leave it running. It polls for new alerts, investigates
+each one — querying your telemetry, researching the public web, reaching its own conclusion — and
+adds its findings as a comment on the alert's incident, where the analyst working that case will see
+it without knowing this tool exists. It never closes an alert, sets a classification, or takes a
+response action; it does the reading and hands you the result.
 
 ```text
-Training Lab telemetry → Kusto Emulator → Mock Sentinel REST ─┐
-                                                              │
-Real Sentinel workspace ───────────────→ Azure Monitor Logs ──┼→ Security data sources
-                                                              │   (ordered set, one primary)
-Microsoft Defender XDR ──────────────→ Graph security API ────┘         ↓
-                                                           Pi investigation agent
-                                                                     ↓
-                                                  run artifact + transcript
-                                                                     ↓
-                                                        Analyst console (TUI)
+Microsoft Defender XDR ──→ Graph security API ──┐
+                                                │
+Real Sentinel workspace ──→ Azure Monitor Logs ─┼→ Security data sources
+                                                │   (ordered set, one primary)
+Training Lab telemetry ───→ Mock Sentinel REST ─┘         ↓
+  (local lab, no cloud account)                  Pi investigation agent
+                                                          ↓
+                                    run artifact  ←─────────────────→  findings comment
+                                          ↓                            on the incident
+                            Analyst console (TUI, optional)
 ```
 
 The agent chooses its own investigative path. It receives the alert and available table names, then
@@ -24,19 +27,94 @@ may query security data, research the public web, or conclude from the starting 
 `submit_investigation` tool call is the only successful outcome; there are no alert-specific
 playbooks or hidden answer-key access.
 
-The local Sentinel environment, autonomous investigator, evaluation scenarios, console operator
-surface, run comparison, the real Sentinel connector and the Defender connector are implemented. This README is the canonical
-setup and usage guide. The files under `docs/` contain design history and decisions rather than a
-second getting started path.
+**The console is optional in both directions.** Absent, the loop runs unattended. Attached, it shows
+live runs, cancels one, and detaches again without stopping the loop.
 
-## Quick start
+**There is also a local lab**, and it needs no cloud account: Training Lab telemetry in a Kusto
+emulator, 154 alerts, a hidden ground-truth answer key and a scoring harness. That is how you develop
+on this and measure whether a change made the agent better. It is not needed to *run* the agent.
+
+This README is the canonical setup and usage guide. The files under `docs/` contain design history
+and decisions rather than a second getting started path.
+
+## Two ways to run this
+
+**Run it against your own tenant.** You need [Bun](https://bun.sh) 1.3+, a model API key, and a
+Defender app registration. **No Docker, no Kusto, no fixtures** — the emulator exists to fake a data
+source you already have. Jump to [Run it in your tenant](#run-it-in-your-tenant).
+
+**Develop on it.** The local lab gives you 154 alerts, a ground-truth answer key and the scoring
+harness, with no cloud account and nothing to spend. That needs Docker, and it is the rest of this
+Quick start.
+
+The two share every line of investigation code; they differ in which source is configured and which
+front door you come through.
+
+---
+
+## Run it in your tenant
+
+```bash
+bun install
+cp .env.example .env          # add your model key and the DEFENDER_* triple
+bun run probe:defender        # confirms consent and records what the tenant supports
+RUNS_DIR=.data/runs SECURITY_SOURCES=defender PUBLISH_FINDINGS=true bun run investigate --watch
+```
+
+That is the whole product path: the loop polls Defender for alerts created inside
+`WATCH_ALERT_WINDOW`, investigates each one exactly once, and records the finding. Set
+`WATCH_SPEND_CEILING_USD` before leaving it running — unattended means nobody notices the bill.
+
+**Writing findings back needs two things, and the permission is only one of them.** Set
+`PUBLISH_FINDINGS=true` *and* grant `SecurityIncident.ReadWrite.All` — see
+[`docs/defender-setup.md`](./docs/defender-setup.md), which explains what that permission buys and
+what it costs. The flag defaults to off deliberately, so that choosing a connector never starts
+commenting on a live tenant as a side effect.
+
+With either one missing, everything else still works and the finding stays in `runs/` — the log
+says `published … via local`, which means the run artifact, not the portal.
+
+`RUNS_DIR` must sit under `.data/` for any live tenant — run artifacts can contain tenant data, and
+the investigator refuses to start otherwise.
+
+Attach the console to a running loop, and detach again, without stopping it:
+
+```bash
+bun run console --attach runs/control.sock --runs .data/runs
+```
+
+`--runs` must match the loop's `RUNS_DIR`, and `--attach` must match its `WATCH_CONTROL_SOCKET`;
+neither derives from the other. Quit the console with `q` — it detaches and the loop keeps going.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `WATCH_POLL_INTERVAL_MS` | `300000` | how often to poll |
+| `WATCH_ALERT_WINDOW` | `PT6H` | how far back each poll looks |
+| `WATCH_SPEND_CEILING_USD` | unset | stop when this much has been spent |
+| `WATCH_SKIP_STATUSES` | empty | vendor status values to skip, e.g. `resolved` |
+| `WATCH_MAX_FAILURES_PER_ALERT` | `2` | park an alert after this many failures |
+| `WATCH_CONTROL_SOCKET` | `runs/control.sock` | where a console attaches |
+| `PUBLISH_FINDINGS` | `false` | **write findings to the source's case.** Off unless set |
+
+`WATCH_SKIP_STATUSES` is empty on purpose: a wrong default silently skips alerts. The loop prints
+the status values it saw in its first cycle, so set it from your tenant's own vocabulary.
+
+**A first start sees one window's worth of alerts and no more.** Six months of backlog is invisible;
+widen the window once if you want it.
+
+If your alerts live in Microsoft Sentinel, they are reachable here only if the workspace is
+onboarded to the Defender portal — `bun run probe:defender --only I` tells you whether it is.
+
+---
+
+## Quick start (local lab)
 
 ### Prerequisites
 
 | Tool | Requirement |
 |---|---|
 | [Bun](https://bun.sh) | 1.3 or newer; runtime and package manager |
-| Docker CLI with Compose v2 | Runs Kusto and Mock Sentinel |
+| Docker CLI with Compose v2 | Runs Kusto and Mock Sentinel — **local lab only** |
 | Model access | OpenAI, Anthropic, or Google API key, or one llama-server endpoint |
 
 The Kusto image is amd64-only. On Apple Silicon, use Colima with Apple Virtualization and Rosetta;
@@ -129,7 +207,7 @@ expected verdict, or other answer-key content.
 ```text
 1–4       focus a pane                 j/k or arrows   move the selection
 n         investigate an alert         x               cancel an active run
-r         re-run with context/model    f               record your feedback
+r         re-run with context/model    F               follow the agent stream
 [ and ]   switch result tabs           /               filter the focused list
 s         ground-truth alerts only     a               include covered alerts
 y         copy focused content         R               re-read from disk
@@ -143,8 +221,8 @@ they happen. Console-started runs always write a transcript. Cancellation persis
 artifact rather than discarding completed work.
 
 Activity shows every tool call, including the exact KQL and result size. Verdict percentages use
-the same 30–70 inconclusive band as the evaluator. Analyst classifications are stored separately in
-`feedback/`; the investigator remains the only writer of `runs/`.
+the same 30–70 inconclusive band as the evaluator. The console writes nothing to disk at all — the
+investigator remains the only writer of `runs/`.
 
 ### Console modes
 
@@ -185,8 +263,7 @@ explicitly requested.
 ```bash
 bun run queue:reset --run <run-id>
 bun run queue:reset --alert <alert-id>
-bun run queue:reset --alert <alert-id> --include-feedback
-bun run queue:reset --restore --run <run-id> --include-feedback
+bun run queue:reset --restore --run <run-id>
 bun run queue:reset --dry-run --all
 bun run queue:reset --purge --run <run-id> --yes   # destroys the artifact
 ```
@@ -420,8 +497,9 @@ The system is a one-directional chain, and each hop is the *only* path to the ne
    ┌───────────────────┐
    │   Investigator    │        harness.ts is the only Pi boundary; five tools
    └───────────────────┘
-            │
-            │  writes runs/<run-id>.json, flushed after every alert
+            │                              └──→ findings comment on the incident
+            │  writes runs/<run-id>.json         (opt-in; never a status change)
+            │  flushed after every alert
             ▼
    ┌───────────────────┐
    │   run artifact    │        the join point — both readers, neither writes
@@ -430,8 +508,13 @@ The system is a one-directional chain, and each hop is the *only* path to the ne
       ┌─────┴──────┐
       ▼            ▼
    Console      scripts/evaluate-runs.ts ◄─── fixtures/scenarios/
-   read-only    scores against ground truth    hidden from the agent
+   attaches or  scores against ground truth    hidden from the agent
+   reads runs/
 ```
+
+The investigator is the only writer of `runs/`, and the only thing that writes to a tenant. The
+console reads artifacts and — when attached to a running loop over its control socket — drives that
+loop without owning the runs.
 
 The repository is a Bun/TypeScript monorepo:
 
@@ -503,7 +586,7 @@ groups are:
 - provider, model, thinking level, timeouts, and turn limits;
 - OpenAI, Anthropic, or Google credentials, or one llama-server endpoint;
 - optional Brave Search credentials;
-- run, transcript, and analyst-feedback directories;
+- run and transcript directories;
 - query and tool-result size limits.
 
 The investigator validates configuration before starting an alert. The console model picker shows
