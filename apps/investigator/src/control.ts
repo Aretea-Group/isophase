@@ -9,6 +9,8 @@ import { executeRun, type InvestigatorConfig, type InvestigatorDeps } from "./ex
 import { listAvailableModels, type ModelChoice } from "./model.ts";
 import { INVESTIGATION_TOOL_NAMES } from "./tools/index.ts";
 
+export { RemoteInvestigationControl } from "./socket/client.ts";
+export { reclaimSocketPath, serveControl, type ControlServer } from "./socket/server.ts";
 export {
   alertWindowOf,
   createDefenderSourceBundle,
@@ -45,6 +47,15 @@ export interface InvestigationControl {
   live(): LiveRun[];
   /** Cancel everything still running. Called on quit. */
   shutdown(): void;
+  /**
+   * Leave without stopping what is running (PRD-9 AC14).
+   *
+   * Implemented only where the runs are somebody else's: an attached console detaches, and the
+   * watch process it was driving carries on. `InProcessControl` deliberately does not implement it
+   * — there, the runs *are* the console's and quitting must cancel them (PRD-5 §5.1). A caller with
+   * no idea which it holds asks for `detach` and falls back to `shutdown`.
+   */
+  detach?(): void;
   /** Attribute a process-level rejection when exactly one in-process run can own it. */
   containUnhandledRejection?(error: unknown): boolean;
 }
@@ -295,6 +306,26 @@ export class InProcessControl implements InvestigationControl {
           this.#emit({ type: "run_failed", runId, alertId, error: entry.supervisorFault });
         } else if (controller.signal.aborted) {
           this.#emit({ type: "run_cancelled", runId, alertId });
+        } else if (run.status === "failed") {
+          /**
+           * The sweep ran and produced nothing usable (ADR 012 §10).
+           *
+           * `executeRun` now reports `failed` when no result completed — a model timeout, a
+           * provider outage. Before this branch existed that arrived as `run_completed`, so the
+           * watch loop credited the alert as seen and cleared its failure counter, and
+           * `maxFailuresPerAlert` could never fire for the commonest failure there is.
+           *
+           * Ordered after `aborted`: a cancelled run is not a failed one, and the operator who
+           * pressed `x` already knows why it stopped.
+           */
+          const cause =
+            run.error ?? run.results.find((result) => result.error !== undefined)?.error;
+          this.#emit({
+            type: "run_failed",
+            runId,
+            alertId,
+            error: cause ?? { name: "InvestigationFailed", message: "The run produced no result." },
+          });
         } else {
           this.#emit({ type: "run_completed", runId, alertId, run });
         }
