@@ -39,9 +39,13 @@ and decisions rather than a second getting started path.
 
 ## Two ways to run this
 
-**Run it against your own tenant.** You need [Bun](https://bun.sh) 1.3+, a model API key, and a
-Defender app registration. **No Docker, no Kusto, no fixtures** — the emulator exists to fake a data
-source you already have. Jump to [Run it in your tenant](#run-it-in-your-tenant).
+**Run it against your own tenant.** You need [Bun](https://bun.sh) 1.3+, a model API key from
+[Anthropic](https://console.anthropic.com/settings/keys),
+[OpenAI](https://platform.openai.com/api-keys) or
+[Google](https://aistudio.google.com/apikey), and a Defender app registration
+([`docs/defender-setup.md`](./docs/defender-setup.md) walks through that one). **No Docker, no
+Kusto, no fixtures** — the emulator exists to fake a data source you already have. Jump to
+[Run it in your tenant](#run-it-in-your-tenant).
 
 **Develop on it.** The local lab gives you 154 alerts, a ground-truth answer key and the scoring
 harness, with no cloud account and nothing to spend. That needs Docker, and it is the rest of this
@@ -62,8 +66,21 @@ RUNS_DIR=.data/runs SECURITY_SOURCES=defender PUBLISH_FINDINGS=true bun run inve
 ```
 
 That is the whole product path: the loop polls Defender for alerts created inside
-`WATCH_ALERT_WINDOW`, investigates each one exactly once, and records the finding. Set
-`WATCH_SPEND_CEILING_USD` before leaving it running — unattended means nobody notices the bill.
+`WATCH_ALERT_WINDOW`, investigates each one exactly once, and records the finding.
+
+**If nothing appears in `.data/runs/` after a few minutes, check the window first.**
+`WATCH_ALERT_WINDOW` defaults to `PT6H`, and on a quiet tenant a six-hour window is routinely
+empty — a first start sees one window's worth of alerts and no more, so six months of backlog is
+invisible. Set `WATCH_ALERT_WINDOW=P30D` and try again. In watch mode it **overrides**
+`DEFENDER_ALERT_WINDOW`; widening that one instead changes nothing.
+
+**The loop prints nothing between starting an alert and finishing it.** A first run against a real
+tenant looks hung for a minute or two and is not — watch `.data/runs/` rather than the terminal, or
+set `INVESTIGATOR_TRACE=true` to see each turn as it happens.
+
+Set `WATCH_SPEND_CEILING_USD` before leaving it running — unattended means nobody notices the bill.
+Only `investigate --watch` reads it: the one-shot `bun run investigate` has no dollar cap, just
+`INVESTIGATOR_MAX_TURNS`.
 
 **Writing findings back needs two things, and the permission is only one of them.** Set
 `PUBLISH_FINDINGS=true` *and* grant `SecurityIncident.ReadWrite.All` — see
@@ -89,8 +106,8 @@ neither derives from the other. Quit the console with `q` — it detaches and th
 | Variable | Default | What it does |
 |---|---|---|
 | `WATCH_POLL_INTERVAL_MS` | `300000` | how often to poll |
-| `WATCH_ALERT_WINDOW` | `PT6H` | how far back each poll looks |
-| `WATCH_SPEND_CEILING_USD` | unset | stop when this much has been spent |
+| `WATCH_ALERT_WINDOW` | `PT6H` | how far back each poll looks; overrides `DEFENDER_ALERT_WINDOW` |
+| `WATCH_SPEND_CEILING_USD` | unset | stop when this much has been spent; `--watch` only |
 | `WATCH_SKIP_STATUSES` | empty | vendor status values to skip, e.g. `resolved` |
 | `WATCH_MAX_FAILURES_PER_ALERT` | `2` | park an alert after this many failures |
 | `WATCH_CONTROL_SOCKET` | `runs/control.sock` | where a console attaches |
@@ -98,9 +115,6 @@ neither derives from the other. Quit the console with `q` — it detaches and th
 
 `WATCH_SKIP_STATUSES` is empty on purpose: a wrong default silently skips alerts. The loop prints
 the status values it saw in its first cycle, so set it from your tenant's own vocabulary.
-
-**A first start sees one window's worth of alerts and no more.** Six months of backlog is invisible;
-widen the window once if you want it.
 
 If your alerts live in Microsoft Sentinel, they are reachable here only if the workspace is
 onboarded to the Defender portal — `bun run probe:defender --only I` tells you whether it is.

@@ -391,7 +391,7 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
       in-flight runs still complete. _(test: integration)_
 - [x] **AC15** — Given a socket file left by a dead watch process, When a new watch process starts,
       Then it reclaims the socket rather than failing to start. _(test: unit)_
-- [ ] **AC16** — Given a clean clone, Bun, and one tenant credential, When a reader follows the
+- [x] **AC16** — Given a clean clone, Bun, and one tenant credential, When a reader follows the
       README alone, Then a finding is published to their portal. _(test: e2e)_
 - [x] **AC17** — Given run mode configured with tenant credentials only, When the loop starts, Then
       it polls without reading any fixture, Kusto or Mock Sentinel configuration. _(test: integration)_
