@@ -60,7 +60,7 @@ export class RemoteInvestigationControl implements InvestigationControl {
       unix: path,
       socket: {
         data: (_socket, chunk) => {
-          for (const line of buffer.push(chunk.toString())) client?.receive(line);
+          for (const line of buffer.push(chunk)) client?.receive(line);
         },
         drain: () => client?.drain(),
         close: () => client?.failAll(new Error("The control socket closed.")),
@@ -76,6 +76,16 @@ export class RemoteInvestigationControl implements InvestigationControl {
     try {
       frame = ServerFrame.parse(JSON.parse(line));
     } catch {
+      /**
+       * An unreadable frame must not be dropped in silence.
+       *
+       * It used to `return`, which left the request it was answering pending for the lifetime of
+       * the process — no error, no timeout, nothing to see. That is how a corrupted `listAlerts`
+       * reply presented: the console's alert queue simply stayed empty forever while every other
+       * call worked. Failing the waiting callers is worse than answering them and far better than
+       * hanging them, and the id cannot be recovered from a frame that would not parse.
+       */
+      this.failAll(new Error("The control socket delivered a frame this client could not read."));
       return;
     }
     if ("type" in frame && frame.type === "hello") return;

@@ -96,41 +96,67 @@ export function encodeFrame(value: unknown): string {
  * carrying a whole artifact arrives in several chunks, and two short frames arrive in one. Both
  * failure modes are silent corruption if the reader assumes otherwise.
  */
+const EMPTY = new Uint8Array(0);
+const encoder = new TextEncoder();
+
 export class QueuedWriter {
-  #pending = "";
-  readonly #socket: { write(data: string): number };
+  #pending: Uint8Array = EMPTY;
+  readonly #socket: { write(data: Uint8Array): number };
 
   /**
    * Write everything, eventually — the counterpart to `LineBuffer` on the sending side.
    *
-   * `socket.write` returns how many bytes it accepted and may accept fewer than it was given; the
-   * rest belongs on the next `drain`. Ignoring the return value truncates precisely the frames that
-   * matter — a `run_completed` carries a whole run artifact, far past any socket buffer — and the
-   * receiver then drops a half-line as unparseable. Silent at both ends, which is what makes it
-   * worth a class rather than a comment.
+   * `socket.write` returns how many **bytes** it accepted and may accept fewer than it was given;
+   * the rest belongs on the next `drain`. Ignoring the return value truncates precisely the frames
+   * that matter — a `run_completed` carries a whole run artifact, far past any socket buffer — and
+   * the receiver then drops a half-line as unparseable.
+   *
+   * The buffer is bytes rather than a string because that return value is a byte count, and an
+   * earlier cut carried it as `string.slice(written)`. A JavaScript string is indexed in UTF-16
+   * code units, so every non-ASCII character in the written prefix made the slice skip *past* what
+   * had actually gone out, deleting characters from the middle of the frame. Pure-ASCII payloads
+   * small enough to be accepted in one call never exercise the slice at all, which is why this
+   * survived the socket tests and only appeared against a live tenant: a 205 KB `listAlerts` reply
+   * went out over 27 partial writes and arrived as unparseable JSON.
    */
-  constructor(socket: { write(data: string): number }) {
+  constructor(socket: { write(data: Uint8Array): number }) {
     this.#socket = socket;
   }
 
   write(data: string): void {
-    this.#pending += data;
+    const bytes = encoder.encode(data);
+    if (this.#pending.length === 0) {
+      this.#pending = bytes;
+    } else {
+      const merged = new Uint8Array(this.#pending.length + bytes.length);
+      merged.set(this.#pending);
+      merged.set(bytes, this.#pending.length);
+      this.#pending = merged;
+    }
     this.flush();
   }
 
   flush(): void {
-    if (this.#pending === "") return;
+    if (this.#pending.length === 0) return;
     const written = this.#socket.write(this.#pending);
     // Zero or negative means nothing moved; keep the whole buffer for the next drain.
-    this.#pending = written > 0 ? this.#pending.slice(written) : this.#pending;
+    if (written > 0) this.#pending = this.#pending.subarray(written);
   }
 }
 
 export class LineBuffer {
   #buffer = "";
+  /**
+   * Stateful across chunks for the same reason the writer counts bytes: a 205 KB frame arrives in
+   * dozens of chunks, and a chunk boundary falling inside a multi-byte character makes a one-shot
+   * decode emit U+FFFD and corrupt the frame. `{ stream: true }` holds the trailing partial
+   * sequence until its continuation bytes arrive.
+   */
+  readonly #decoder = new TextDecoder();
 
-  push(chunk: string): string[] {
-    this.#buffer += chunk;
+  push(chunk: Uint8Array | string): string[] {
+    this.#buffer +=
+      typeof chunk === "string" ? chunk : this.#decoder.decode(chunk, { stream: true });
     const lines = this.#buffer.split("\n");
     this.#buffer = lines.pop() ?? "";
     return lines.filter((line) => line.trim() !== "");

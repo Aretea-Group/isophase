@@ -119,7 +119,7 @@ export async function serveControl(options: ControlServerOptions): Promise<Contr
         socket.data.writer.flush();
       },
       data(socket, chunk) {
-        for (const line of socket.data.buffer.push(chunk.toString())) {
+        for (const line of socket.data.buffer.push(chunk)) {
           void handle(socket.data.writer, line);
         }
       },

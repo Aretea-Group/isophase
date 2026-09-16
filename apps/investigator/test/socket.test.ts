@@ -195,4 +195,30 @@ describe("the control socket (PRD-9 §4.1 D4)", () => {
 
     await expect(client.listAlerts()).rejects.toThrow("the source is unreachable");
   });
+
+  test("a reply too large for one write survives non-ASCII content intact", async () => {
+    const path = await socketPath();
+    const stub = stubControl();
+    /**
+     * The payload has to be big enough that the socket accepts it in pieces *and* carry non-ASCII,
+     * because only that combination breaks: `socket.write` returns bytes, and the writer used to
+     * advance a UTF-16 string by that count, deleting characters from the middle of the frame. The
+     * receiver dropped the unreadable line in silence and the caller waited forever.
+     *
+     * Measured live before the fix: a 205 KB `listAlerts` reply went out over 27 partial writes and
+     * arrived 36 characters short, as unparseable JSON.
+     */
+    const big: SecurityAlert[] = Array.from({ length: 400 }, (_, index) => ({
+      ...alert(`a${index}`),
+      description: `${"café — naïve ✓ ".repeat(40)}${index}`,
+    }));
+    const serving: InvestigationControl = {
+      ...stub.control,
+      listAlerts: () => Promise.resolve(big),
+    };
+    servers.push(await serveControl({ control: serving, path }));
+    const client = await RemoteInvestigationControl.connect(path);
+
+    expect(await client.listAlerts()).toEqual(big);
+  });
 });
