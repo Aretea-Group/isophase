@@ -29,9 +29,6 @@ import { selectedSourceId } from "../view/config.ts";
 import { duplicateSpend, queueRows } from "../view/coverage.ts";
 import {
   bandLabel,
-  bandTone,
-  classificationForBand,
-  classificationLabel,
   definitionRow,
   linesText,
   prose,
@@ -92,14 +89,6 @@ const TAB_LABEL: Record<Tab, string> = {
  * down the run list resized the pane below it, and the list appeared to jump under the analyst's
  * own keypress.
  */
-/** The four classifications, in the order the overlay cycles them (PRD-5 §10). */
-const CLASSIFICATIONS = [
-  "TruePositive",
-  "BenignPositive",
-  "FalsePositive",
-  "Undetermined",
-] as const;
-
 /**
  * How many fields each overlay has, so traversal cycles without falling off the end.
  *
@@ -115,15 +104,17 @@ function fieldCount(kind: ComposeKind): number {
       return 2;
     case "rerun":
       return 2;
-    case "feedback":
-      return 2;
   }
 }
 
-/** Which field index holds the model list, or `-2` for overlays that have none. */
-function modelField(kind: ComposeKind): number {
-  return kind === "feedback" ? -2 : 1;
-}
+/**
+ * Which field index holds the model list.
+ *
+ * A function taking the kind until PRD-9 Phase 0, when the feedback overlay — the only one without
+ * a model row — was removed. Both remaining overlays put the model second, so it is a constant, and
+ * saying so is better than a parameter the body ignores.
+ */
+const MODEL_FIELD = 1;
 
 /**
  * The cursor column, and the one place that decides what "focused" looks like.
@@ -151,8 +142,6 @@ function composeTitle(compose: ComposeState): string {
       return `Start an investigation — ${alert}`;
     case "rerun":
       return `Re-run — ${alert}`;
-    case "feedback":
-      return `Your feedback — ${alert}`;
   }
 }
 
@@ -168,18 +157,8 @@ function confirmVerb(kind: ComposeKind): string {
       return "Start";
     case "rerun":
       return "Run";
-    case "feedback":
-      return "Save";
   }
 }
-
-/**
- * Where the compose form's values start: the cursor column plus the widest label.
- *
- * `fieldMark` is four characters and `comment  ` is nine, so anything hanging under a value — the
- * comment field's description — lines up here rather than at the pane's own margin.
- */
-const COMMENT_GUTTER = 13;
 
 /**
  * Rows of the model list shown at once.
@@ -278,7 +257,6 @@ const HELP_SECTIONS: { heading: string; keys: [string, string][]; notes?: string
     heading: "ACTING ON A RUN",
     keys: [
       ["r", "re-run this alert with context and a chosen model"],
-      ["f", "record your feedback on this investigation"],
       ["x", "cancel a running investigation"],
       ["F", "Agent stream: follow the tail, or stop following"],
     ],
@@ -291,7 +269,7 @@ const HELP_SECTIONS: { heading: string; keys: [string, string][]; notes?: string
       ["?", "this help"],
       ["q  Ctrl-C", "quit"],
     ],
-    notes: ["The investigator is the sole writer of runs/. Your feedback goes to feedback/."],
+    notes: ["The investigator is the sole writer of runs/."],
   },
   {
     heading: "WHILE FILTERING",
@@ -387,7 +365,6 @@ const KEY_HINTS: { text: string; rank: number }[] = [
   { text: "j/k move", rank: 3 },
   { text: "n start", rank: 5 },
   { text: "r re-run", rank: 6 },
-  { text: "f feedback", rank: 7 },
   { text: "x cancel", rank: 7 },
   { text: "/ filter", rank: 4 },
   { text: "c config", rank: 2 },
@@ -526,7 +503,25 @@ interface State {
   status?: { text: string; failed: boolean; until: number };
 }
 
-type ComposeKind = "start" | "rerun" | "feedback";
+type ComposeKind = "start" | "rerun";
+
+/**
+ * The one alert a sweep planned, when there is exactly one (ADR 012 §10).
+ *
+ * Returns nothing for a multi-alert sweep: re-running "it" would mean picking one of several, and
+ * a silent pick is worse than the refusal it replaces.
+ */
+function onlyPlannedAlert(
+  run: RunArtifact | undefined,
+): { alertId: string; alertTitle?: string } | undefined {
+  const planned = run?.plannedAlerts ?? [];
+  const first = planned[0];
+  if (planned.length !== 1 || first === undefined) return undefined;
+  return {
+    alertId: first.alertId,
+    ...(first.alertTitle === undefined ? {} : { alertTitle: first.alertTitle }),
+  };
+}
 
 interface ComposeState {
   kind: ComposeKind;
@@ -556,8 +551,6 @@ interface ComposeState {
   modelFilter: string;
   /** Window offset for the model list, carried so it does not re-centre under the cursor. */
   modelOffset: number;
-  classificationIndex: number;
-  comment: string;
   /** Confirm defaults to Cancel: a modal dismissed by a held key is theatre (PRD-5 §12.4). */
   confirm: boolean;
   runId?: string;
@@ -1495,19 +1488,15 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   /**
    * Each action belongs to one subject, and refuses rather than retargeting.
    *
-   * `n` acts on the queue's alert; `r` and `f` act on the selected run. None of them used to check,
-   * so pressing the feedback key while reading an un-run alert in [1] recorded a verdict against
-   * whatever run happened to be selected in [2] — filed silently against a different
-   * investigation. Refusing with a message that names the right pane is the whole fix.
+   * `n` acts on the queue's alert; `r` acts on the selected run. Neither used to check, so
+   * pressing a run key while reading an un-run alert in [1] acted against whatever run happened to
+   * be selected in [2]. Refusing with a message that names the right pane is the whole fix.
    */
   function openCompose(kind: ComposeKind): void {
     const wantsRun = kind !== "start";
 
     if (wantsRun && state.mainSource !== "run") {
-      state.notice =
-        kind === "rerun"
-          ? " r re-runs an investigation — select one in [2] first"
-          : " f records your feedback on an investigation — select one in [2] first";
+      state.notice = " r re-runs an investigation — select one in [2] first";
       render();
       return;
     }
@@ -1519,17 +1508,22 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     const alert = kind === "start" ? currentQueueAlert() : undefined;
     const result = kind === "start" ? undefined : currentResult();
+    /**
+     * A sweep that died before investigating has no result row to re-run from (ADR 012 §10).
+     *
+     * `currentResult()` reads `run.results` plus synthetic pending rows, and a startup failure — an
+     * unknown model, an unreachable source — produces neither. That is precisely the failure class
+     * a retry with a different model fixes, and it was the one `r` could not act on: the analyst
+     * got "no investigation selected in [2]" and had to find the alert in [1] and press `n`.
+     *
+     * A single planned alert is unambiguous, so fall back to it. More than one and the sweep was
+     * covering a set; re-running "it" would mean guessing which.
+     */
+    const plannedOnly = kind === "start" ? undefined : onlyPlannedAlert(currentRun());
 
-    // Feedback is a judgement on a finished investigation. On one still running there is nothing
-    // yet to agree or disagree with, and `agentAssessment` would freeze an empty verdict.
-    if (kind === "feedback" && result !== undefined && isPending(result)) {
-      state.notice = " this investigation is still running — no verdict to record yet";
-      render();
-      return;
-    }
-
-    const alertId = alert?.alertId ?? result?.alertId;
-    const alertTitle = alert?.title ?? result?.alertTitle ?? "(unnamed alert)";
+    const alertId = alert?.alertId ?? result?.alertId ?? plannedOnly?.alertId;
+    const alertTitle =
+      alert?.title ?? result?.alertTitle ?? plannedOnly?.alertTitle ?? "(unnamed alert)";
     if (alertId === undefined) {
       state.notice =
         kind === "start" ? " no alert selected in [1]" : " no investigation selected in [2]";
@@ -1576,27 +1570,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       ...(seed === undefined ? {} : { model: seed }),
       modelFilter: "",
       modelOffset: 0,
-      /**
-       * Feedback opens on what the run concluded, not on the first of four.
-       *
-       * It was hard-coded to index 0 — `TruePositive` — whatever the run had said, so opening `f`
-       * on an investigation the agent called a false positive and pressing Save without touching
-       * the row recorded that the analyst thought it was a true positive. On the one form whose
-       * job is capturing disagreement, the default was an opinion nobody had expressed.
-       *
-       * Opening on the agent's own verdict makes agreeing one keypress and disagreeing a
-       * deliberate one, which is the right way round. An inconclusive or unscored run opens on
-       * `Undetermined`: a run that reached no conclusion cannot pre-fill one.
-       */
-      classificationIndex: Math.max(
-        0,
-        CLASSIFICATIONS.indexOf(
-          classificationForBand(
-            verdictBand(currentResult()?.summary?.tpPercent),
-          ) as (typeof CLASSIFICATIONS)[number],
-        ),
-      ),
-      comment: "",
       confirm: false,
     };
     render();
@@ -1640,7 +1613,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     compose.field = next === count ? -1 : next;
     // Entering the model row: put the window where the cursor already is, so the list opens
     // showing the selected model rather than scrolled to the top with the selection off-screen.
-    if (compose.field === modelField(compose.kind)) {
+    if (compose.field === MODEL_FIELD) {
       compose.modelOffset = scrollOffset(
         compose.modelOffset,
         modelCursor(compose),
@@ -1660,17 +1633,12 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
    * before the filter was typed.
    */
   function editComposeText(compose: ComposeState, edit: (text: string) => string): void {
-    if (compose.kind === "feedback") {
-      if (compose.field === 1) compose.comment = edit(compose.comment);
-      render();
-      return;
-    }
     if (compose.field === 0) {
       compose.context = edit(compose.context);
       render();
       return;
     }
-    if (compose.field === modelField(compose.kind)) {
+    if (compose.field === MODEL_FIELD) {
       compose.modelFilter = edit(compose.modelFilter);
       const list = filteredModels(compose);
       const stillOffered = list.some(
@@ -1705,11 +1673,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     if (compose === undefined || control === undefined) return closeCompose();
     if (!compose.confirm) return closeCompose();
 
-    if (compose.kind === "feedback") {
-      void recordFeedback(compose);
-      return;
-    }
-
     const runId = Bun.randomUUIDv7();
     const chosen = compose.model;
     const context = compose.context.trim();
@@ -1736,36 +1699,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     state.pendingRunId = runId;
     state.mainSource = "run";
     setStatus(` started ${runId.slice(0, 8)} on ${truncate(compose.alertTitle, 48)}`);
-    closeCompose();
-  }
-
-  async function recordFeedback(compose: ComposeState): Promise<void> {
-    const { writeFeedback } = await import("../drive/feedback.ts");
-    const run = currentRun();
-    const result = currentResult();
-    if (run === undefined || result === undefined) return closeCompose();
-    try {
-      const path = await writeFeedback(env.FEEDBACK_DIR, {
-        schemaVersion: 1,
-        runId: run.runId,
-        alertId: result.alertId,
-        at: new Date().toISOString(),
-        classification: CLASSIFICATIONS[compose.classificationIndex] ?? "Undetermined",
-        ...(compose.comment.trim() === "" ? {} : { comment: compose.comment.trim() }),
-        agentAssessment: {
-          ...(result.summary?.tpPercent === undefined
-            ? {}
-            : { tpPercent: result.summary.tpPercent }),
-          ...(run.model?.id === undefined ? {} : { model: run.model.id }),
-        },
-      });
-      setStatus(` recorded — ${path}`);
-    } catch (error) {
-      setStatus(
-        ` could not record: ${error instanceof Error ? error.message : String(error)}`,
-        true,
-      );
-    }
     closeCompose();
   }
 
@@ -1929,7 +1862,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
        */
       if (name === "up" || name === "down") {
         const delta = name === "down" ? 1 : -1;
-        if (compose.field === modelField(compose.kind)) {
+        if (compose.field === MODEL_FIELD) {
           const list = filteredModels(compose);
           const next = modelCursor(compose) + delta;
           if (next < 0 || next >= list.length) moveComposeField(compose, delta);
@@ -1952,11 +1885,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       // choosing a model, not two that can disagree about which is selected.
       if (name === "left" || name === "right") {
         if (compose.field === -1) compose.confirm = name === "right";
-        else if (compose.kind === "feedback" && compose.field === 0) {
-          compose.classificationIndex =
-            (compose.classificationIndex + (name === "right" ? 1 : CLASSIFICATIONS.length - 1)) %
-            CLASSIFICATIONS.length;
-        }
         render();
         return;
       }
@@ -2160,20 +2088,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
         key.stopPropagation();
         openCompose("rerun");
         return;
-      /**
-       * `f`, which §10 ruled out for sitting one shift-key from `F` (follow).
-       *
-       * That objection does not survive `r`/`R` above: the same adjacency now exists on the key
-       * that spends money, and holding the rule here while breaking it there would be incoherent.
-       * The property that actually makes the keymap safe is that every consequential action sits
-       * behind a strip defaulting to Cancel — `f` for `F` opens a modal that writes nothing, `F`
-       * for `f` toggles a view. Neither loses anything. `f` also matches what it writes:
-       * `feedback/`, holding an `AnalystFeedback`.
-       */
-      case "f":
-        key.stopPropagation();
-        openCompose("feedback");
-        return;
       case "x":
         // Cancel. Deliberately not `c`, which is already the configuration screen — rebinding a key
         // an analyst already uses is not a thing this PRD gets to do quietly (PRD-5 §12.1).
@@ -2274,9 +2188,17 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     tail?.stop();
     runsPoll.stop();
     unsubscribeControl?.();
-    // In-process runs cannot outlive the console, so quitting cancels them rather than pretending
-    // otherwise. Spawn would survive; this deliberately does not (PRD-5 §5.1).
-    control?.shutdown();
+    /**
+     * Cancel our own runs; never someone else's (PRD-5 §5.1, PRD-9 AC14).
+     *
+     * In-process runs cannot outlive the console, so quitting cancels them rather than pretending
+     * otherwise. An *attached* console is the opposite case: the runs belong to a watch process
+     * that is meant to keep going, and calling `shutdown()` on a remote control sent a shutdown
+     * down the socket and stopped the loop — which is precisely what AC14 says must not happen.
+     * `detach` exists only on controls whose runs are not ours.
+     */
+    if (control?.detach === undefined) control?.shutdown();
+    else control.detach();
   }
 
   function shutdown(code: number): void {
@@ -2294,10 +2216,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
    */
   function composeHint(compose: ComposeState): string {
     if (compose.field === -1) return "← → choose   ⏎ act   ↑ ⇥ fields   ⎋ close";
-    if (compose.field === modelField(compose.kind))
-      return "↑ ↓ move   type to filter   ⏎ accept   ⎋ close";
-    if (compose.kind === "feedback" && compose.field === 0)
-      return "← → choose   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
+    if (compose.field === MODEL_FIELD) return "↑ ↓ move   type to filter   ⏎ accept   ⎋ close";
     return "type to fill   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
   }
 
@@ -2442,7 +2361,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     if (compose.kind === "start" || compose.kind === "rerun") {
       const chosen = compose.model;
-      const focusedOnModel = compose.field === modelField(compose.kind);
+      const focusedOnModel = compose.field === MODEL_FIELD;
       lines.push(
         "",
         [
@@ -2497,69 +2416,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
           },
         ]);
       }
-    }
-
-    if (compose.kind === "feedback") {
-      /**
-       * What the agent concluded, on the row where you agree or disagree with it.
-       *
-       * The form asks whether the agent got it right and did not say what the agent had said, so
-       * the fact the whole judgement turns on was one keypress behind the analyst. It is also what
-       * makes the pre-filled verdict legible: a default that mirrors the run only reads as a
-       * default if the run's own answer is on screen beside it.
-       */
-      const agent = verdictBand(currentResult()?.summary?.tpPercent);
-
-      // A run with no verdict did not *say* anything, so it is reported as silence rather than as
-      // a fifth opinion called "unscored".
-      const said =
-        agent === "unknown"
-          ? "this run recorded no verdict"
-          : `agent said ${bandLabel(agent).toLowerCase()}`;
-      const chosen = classificationLabel(
-        CLASSIFICATIONS[compose.classificationIndex] ?? "Undetermined",
-      );
-      // Beside the choice if there is room, under it if there is not. As one unbreakable row it
-      // soft-wrapped to column 0 and ran beneath the overlay's own border on a narrow terminal.
-      const inline = `    verdict  ${chosen}   ← →      ${said}`.length <= width;
-
-      lines.push(
-        "",
-        [
-          fieldMark(compose, 0),
-          { text: "verdict  ", tone: "label" },
-          { text: chosen },
-          { text: "   ← →", tone: "dim" },
-          ...(inline ? [{ text: `      ${said}`, tone: bandTone(agent) }] : []),
-        ],
-        ...(inline
-          ? []
-          : [[{ text: `${" ".repeat(COMMENT_GUTTER)}${said}`, tone: bandTone(agent) }] as Line]),
-        [
-          fieldMark(compose, 1),
-          { text: "comment  ", tone: "label" },
-          {
-            text:
-              compose.comment === "" ? "(what the agent should know next time)" : compose.comment,
-            tone: compose.comment === "" ? "dim" : undefined,
-          },
-        ],
-        /**
-         * What the record is for, as the comment field's own description.
-         *
-         * It was two free-standing lines under the form — one saying what feedback is for, one
-         * saying where the file lands and what it does not spend — which read as a footnote about
-         * the console rather than as help with the field being filled in. Hung under `comment` at
-         * the value column it is what it always was: the answer to "why am I typing this".
-         *
-         * The register is the analyst's: what they write shapes what the agent does with the next
-         * alert of this kind, which is the reason to spend thirty seconds on it.
-         */
-        ...wrap(
-          "Feeds future investigations of alerts like this one.",
-          Math.max(20, width - COMMENT_GUTTER - 2),
-        ).map((line): Line => [{ text: `${" ".repeat(COMMENT_GUTTER)}${line}`, tone: "dim" }]),
-      );
     }
 
     // The strip marks its choice only while it holds focus. Painting a highlighted `Cancel` at all

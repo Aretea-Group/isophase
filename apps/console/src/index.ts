@@ -4,6 +4,7 @@ import {
   createSecuritySources,
   InProcessControl,
   queryMaxRowsOf,
+  RemoteInvestigationControl,
   type InProcessControlOptions,
   type InvestigationControl,
 } from "@soc/investigator/control";
@@ -108,19 +109,22 @@ export interface CliArgs {
   help?: boolean;
   readOnly?: boolean;
   fresh?: boolean;
+  /** Attach to a running `investigate --watch` over its control socket (PRD-9 Phase 4). */
+  attach?: string;
 }
 
-export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] [--read-only]
+export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] [--read-only] [--attach <socket>]
 
   --runs <dir>     where run artifacts live (RUNS_DIR, currently "${env.RUNS_DIR}")
   --traces <dir>   where transcripts live (INVESTIGATOR_TRACE_DIR, currently "${env.INVESTIGATOR_TRACE_DIR}")
   --fresh          hide runs that existed when the console opened; new runs appear normally
   --read-only      open without a control: no queue, no starting runs (PRD-3 behaviour)
+  --attach <sock>  drive a running "investigate --watch" instead of running investigations here
   --help           this message
 
 The console reads the selected Sentinel connector for the alert queue and can start investigations in this process.
 It never writes to runs/ — the investigator remains the sole writer of run artifacts and
-transcripts. Analyst classifications are written under "${env.FEEDBACK_DIR}/".`;
+transcripts.`;
 
 /**
  * Hand-rolled, matching `apps/investigator/src/index.ts` rather than adding a CLI dependency
@@ -156,6 +160,9 @@ export function parseArgs(argv: string[]): CliArgs {
     } else if (flag === "--traces") {
       args.tracesDir = valueOf(flag, inline, argv[index + 1]);
       if (inline === undefined) index += 1;
+    } else if (flag === "--attach") {
+      args.attach = valueOf(flag, inline, argv[index + 1]);
+      if (inline === undefined) index += 1;
     } else if (flag === "--read-only") {
       args.readOnly = true;
     } else if (flag === "--fresh") {
@@ -179,6 +186,9 @@ async function main(): Promise<void> {
   if (args.fresh === true && args.readOnly === true) {
     throw new Error("--fresh requires the alert queue and cannot be combined with --read-only.");
   }
+  if (args.attach !== undefined && args.readOnly === true) {
+    throw new Error("--attach drives a running loop; --read-only opens without a control.");
+  }
   const llamaServer = llamaServerConfigFromEnv(env);
   const llamaServerAuth = llamaServerAuthFromEnv(env, llamaServer);
   const runsDir = args.runsDir ?? env.RUNS_DIR;
@@ -191,7 +201,16 @@ async function main(): Promise<void> {
     ...(args.readOnly === true
       ? {}
       : {
-          control: buildControl(runsDir, tracesDir, llamaServer, llamaServerAuth),
+          /**
+           * Attached, the console drives someone else's runs; unattached, it runs them itself.
+           *
+           * Both are `InvestigationControl`, which is the whole point of ADR 007 — the panes below
+           * this line are identical either way, and nothing in `ui/` knows which one it got.
+           */
+          control:
+            args.attach === undefined
+              ? buildControl(runsDir, tracesDir, llamaServer, llamaServerAuth)
+              : await RemoteInvestigationControl.connect(args.attach),
         }),
   });
   await app.ready;

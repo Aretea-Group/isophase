@@ -39,5 +39,3 @@ baml_client/
 # fixtures (PRD-3 §12).
 /runs/traces/
 
-# Analyst classifications recorded by the console. Local operational data, not source.
-/feedback/
