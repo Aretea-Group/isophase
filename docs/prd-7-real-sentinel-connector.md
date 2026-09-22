@@ -3,7 +3,7 @@
 **Status:** Complete — see `docs/adr/009-azure-monitor-logs-connector.md`
 **Produces:** ADR 009 — Azure Monitor Logs Connector
 **Depends on:** PRD-2 — Core Investigation Agent; PRD-5 — Console Operator Surface
-**Full text:** `git show 8ad3c2a:"docs/prd-7-real-sentinel-connector.md"` — docs: describe Azure identity options, 2026-08-22
+**Full text:** `git show ae85a84:"docs/prd-7-real-sentinel-connector.md"` — docs: describe Azure identity options, 2026-08-22
 
 Everything through PRD-6 was measured against Mock Sentinel, which is deterministic by design and
 therefore proves nothing about a real workspace. PRD-7 ran the existing investigation flow against

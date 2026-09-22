@@ -12,6 +12,8 @@ ADR 007 §2 (the investigator remains the sole writer of run artifacts)
 **Extended by:** [ADR 010](./010-tabular-security-data-source-boundary.md) §3 (§3's derived
 condition includes the configured source block); [ADR 011](./011-multi-source-security-data.md) §3
 (it folds the whole active source set in, so moving `PRIMARY_ALERT_SOURCE` is a different condition)
+**Superseded in part by:** [ADR 012](./012-run-corpus-leaves-version-control.md) — §8's "the corpus
+enters version control" is reversed; the append-only rule stands
 
 ## Context
 
@@ -272,6 +274,12 @@ separation so it is not re-coupled by the next reader that wants "the current ru
 This is the defect with the largest blast radius in PRD-6's register, because it is the one that
 makes every other number unquotable: three passes of PRD-6 read three different answers from the same
 two models (context above), and the differences were entirely file movements.
+
+> **Superseded by [ADR 012](./012-run-corpus-leaves-version-control.md), 2026-09-22.** The rest of
+> this section — from "the corpus enters version control" to the rejected `fixtures/baseline-runs/`
+> — is reversed: `/runs/` is ignored again and the 48 committed artifacts were removed from history.
+> The append-only rule above stands. The original text is kept as written, so the reasoning ADR 012
+> weighed against can still be read.
 
 **And the corpus enters version control.** `/runs/` leaves `.gitignore`; `/runs/traces/` replaces it.
 The run artifacts and their archive are committed; the transcripts are not. That split is what makes

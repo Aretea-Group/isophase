@@ -3,7 +3,7 @@
 **Status:** Complete
 **Produces:** ADR 007 — Console control surface
 **Reverses:** PRD-3 §4.1 ("the console reads files; it never drives the agent"); ADR 006 §3 (the console may not import the investigator)
-**Full text:** `git show d57be75:"docs/prd-5-console-operator-surface.md"` — docs(prd-5): record the overlay rework and three earlier deviations, 2026-08-20
+**Full text:** `git show 01fc71e:"docs/prd-5-console-operator-surface.md"` — docs(prd-5): record the overlay rework and three earlier deviations, 2026-08-20
 
 The console could see everything the agent had done and nothing the agent could do next. Starting an
 investigation meant leaving the console, typing `bun run investigate --alert <id>` in a second

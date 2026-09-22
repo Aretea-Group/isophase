@@ -138,19 +138,20 @@ fixtures/     telemetry/  scenarios/  benchmark-map.generated.json
 infra/        docker-compose.yml  kusto/
 scripts/      bootstrap, evaluate, benchmark map, queue reset
 docs/         architecture.md  roadmap.md  prd-*.md  adr/
-runs/         committed run artifacts; runs/.archive/ too; runs/traces/ is not
+runs/         run artifacts, archive and transcripts; ignored, never committed (ADR 012)
 feedback/     analyst classifications, recorded and never fed back to the agent
 ```
 
 Do not create empty future-capability packages. `agent-runtime`, `persistence` and `testkit` are
 deliberately absent.
 
-`runs/` is the only committed root that grows by running the software rather than by someone writing
-a file. ADR 008 §8 records why: a run artifact is a measurement bought with real money against a
-model that exposes no seed, so it cannot be re-derived, and `scripts/evaluate-runs.ts` must score the
-same corpus from a fresh clone. Nothing may remove one from the scored set as a side effect —
-`runs/.archive/` takes an alert out of the *queue* and is still scored. Transcripts under
-`runs/traces/` are the opposite: optional, off by default, megabytes apiece, ignored.
+`runs/` is ignored and never committed. ADR 012 records why, reversing ADR 008 §8: a run artifact
+is this checkout's measurement of its own agent, and since PRD-7 and PRD-8 it may carry live tenant
+data, so the repository ships the benchmark inputs under `fixtures/` and nobody's results. Inside
+the working tree the corpus is still append-only — a run is a measurement bought with real money
+against a model that exposes no seed, and nothing may remove one from the scored set as a side
+effect. `runs/.archive/` takes an alert out of the *queue* and is still scored. Transcripts under
+`runs/traces/` are optional, off by default and megabytes apiece.
 
 ## 6. Quality Rules
 
@@ -224,7 +225,7 @@ Phases 1–13 are delivered. Status lives in [`docs/README.md`](./docs/README.md
 decided lives in its ADR. New work gets a PRD before it gets code (§1).
 
 One measurement discontinuity is worth knowing before reading `runs/`: PRD-8 moved the prompt hash,
-so Sentinel runs written from 2026-08-25 are a different condition from the committed corpus and
+so Sentinel runs written from 2026-08-25 are a different condition from runs written before it, and
 `evaluate` will not compare across the boundary. ADR 011 §14 records why that was accepted.
 
 ## 15. When to Stop and Ask

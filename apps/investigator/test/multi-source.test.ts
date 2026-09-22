@@ -225,7 +225,7 @@ describe("AC11 — only the primary produces alerts", () => {
         webSearch: WEB_SEARCH_STUB,
         webFetch: WEB_FETCH_STUB,
         // Captured rather than written: the artifact is the evidence, and no test may write into
-        // the committed corpus.
+        // the repository's runs directory.
         write: async (_dir, run) => {
           written = run;
           return "";
