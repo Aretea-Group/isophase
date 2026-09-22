@@ -478,11 +478,16 @@ describe("evaluate — hostile and empty inputs", () => {
     }
   });
 
-  test("an empty directory exits 1 rather than printing an empty report", async () => {
+  test("an empty directory says so and exits 0 rather than printing an empty report", async () => {
+    // Reversed by PRD-9 AC6 (ADR 012): `runs/` is ignored, so a fresh clone has nothing to score
+    // and that is not a failure. The D7 gate — runs read, none joined — still exits 1 above.
     const corpus = await withCorpus([]);
     try {
       await Bun.write(join(corpus.runsDir, ".keep"), "");
-      expect((await evaluate(corpus.runsDir)).code).toBe(1);
+      const { out, code } = await evaluate(corpus.runsDir);
+      expect(out).toContain("[evaluate] no run artifacts in");
+      expect(out).not.toContain("CONDITIONS");
+      expect(code).toBe(0);
     } finally {
       await rm(corpus.dir, { recursive: true, force: true });
     }
@@ -649,6 +654,20 @@ describe("evaluate — the legend", () => {
       expect(report.out).toMatch(/ctx=\w{6}/);
     } finally {
       await rm(corpus.dir, { recursive: true, force: true });
+    }
+  });
+
+  test("AC6 — an empty runs directory reports no artifacts and exits 0", async () => {
+    // Given a fresh clone with no run artifacts — `runs/` is ignored and absent (ADR 012)
+    const dir = await mkdtemp(join(tmpdir(), "evaluate-empty-"));
+    try {
+      // When evaluate is pointed at a runs directory that does not exist
+      const { out, code } = await evaluate(join(dir, "runs"));
+      // Then it says no artifacts were found and does not fail
+      expect(out).toContain("[evaluate] no run artifacts in");
+      expect(code).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

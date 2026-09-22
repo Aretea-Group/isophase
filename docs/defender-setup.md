@@ -160,7 +160,7 @@ Graph documents "at least 45 calls per minute". This is why the probe is strictl
 and why `--pace-ms` exists rather than a parallel sweep. If you are running against a tenant someone
 else depends on, run it out of hours.
 
-**Every run against a real tenant writes outside the committed corpus.** Run and trace directories
+**Every run against a real tenant writes under `.data/`, never into `runs/`.** Run and trace directories
 must sit under `.data/` whenever any active source reads a live tenant, even when Sentinel is
 `mock` (PRD-8 §4.1 D10, ADR 009 §5). The probe enforces this on itself. The consequence is that
 Defender runs are unscored by construction — `scripts/evaluate-runs.ts` joins to

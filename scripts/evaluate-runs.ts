@@ -523,8 +523,10 @@ const includeArchive = !argv.includes("--exclude-archive");
 const [scenarios, loaded] = await Promise.all([loadScenarios(), loadRuns(runsDir, includeArchive)]);
 
 if (loaded.runs.length === 0) {
+  // Not a failure: `runs/` is ignored and a fresh clone has none (PRD-9 AC6, ADR 012). The D7 gate
+  // below is the one that exits 1 — runs were read and none joined to a scenario.
   console.error(`[evaluate] no run artifacts in ${loaded.directories.join(" or ")}`);
-  process.exit(1);
+  process.exit(0);
 }
 
 const verdicts = scenarios.map((scenario) => scenario.verdict).filter(isVerdict);

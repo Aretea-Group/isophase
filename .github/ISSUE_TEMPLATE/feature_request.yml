@@ -1,0 +1,16 @@
+name: Feature request
+description: Something the agent, the console or the benchmark should do and does not.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is hard or impossible today
+      description: The investigation, comparison or setup step that does not work, in your terms.
+    validations:
+      required: true
+  - type: textarea
+    id: roadmap
+    attributes:
+      label: Roadmap fit
+      description: "`docs/roadmap.md` lists what is planned. Does this belong to an existing section, or is it new? New capabilities get a PRD before code (AGENTS.md §1)."

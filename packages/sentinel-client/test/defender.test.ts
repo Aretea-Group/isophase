@@ -545,7 +545,7 @@ describe("live-tenant artifact directories", () => {
     baseUrl: "http://localhost:8787",
   } as const;
 
-  test("mock Sentinel alone may write to the committed corpus", () => {
+  test("mock Sentinel alone may write to the default runs directory", () => {
     expect(() => assertLiveTenantArtifactDirectories([mock], ["runs"])).not.toThrow();
   });
 

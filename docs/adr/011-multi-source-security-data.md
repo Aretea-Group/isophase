@@ -220,7 +220,9 @@ explicitly included — it described the current environment as `microsoft-senti
 and now reads the selected source.
 
 Two consequences an operator should know, both inherited rather than new: §13 puts every run under
-`.data/`, so a standalone Defender deployment writes no artifact into the committed corpus; and
+`.data/`, so a standalone Defender deployment writes no artifact into the committed corpus (the corpus
+was committed when this was written; [ADR 012](./012-run-corpus-leaves-version-control.md) removed
+it from version control on 2026-09-22, and the `.data/` rule stands unchanged); and
 `scripts/evaluate-runs.ts` joins to `fixtures/scenarios/`, so those runs are unscored by
 construction. Standalone Defender investigates; it does not benchmark.
 
