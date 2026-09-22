@@ -471,7 +471,7 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
 - [ ] **AC13** — Given a clean machine with Bun, Docker and a model key, When a reader follows the
       README's Track B from the top, Then they reach a scored run against the scenario corpus in 30
       minutes or less. _(test: e2e)_
-- [ ] **AC14** — Given a pull request against `main`, When CI runs, Then `bun run check` executes
+- [x] **AC14** — Given a pull request against `main`, When CI runs, Then `bun run check` executes
       all four stages and passes with no credential configured in the repository. _(test: ci)_
 - [x] **AC15** — Given `SECURITY.md`, When a reader finds a vulnerability, Then the file names a
       private reporting route and a response expectation, and does not direct them to a public
