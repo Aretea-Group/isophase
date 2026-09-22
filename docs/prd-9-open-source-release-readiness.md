@@ -52,8 +52,10 @@ they are what lets a stranger score their own agent. The README does not current
 
 ## 2. Goals
 
-1. The repository can be made public without publishing any investigation output of ours, or any
-   private infrastructure detail.
+1. The repository can be made public without publishing any investigation output of ours, ~~or any
+   private infrastructure detail~~. → narrowed 2026-09-22, §11 A1: output written from now on is
+   never published; the 48 mock-data artifacts and one internal hostname already in history stay
+   there.
 2. A stranger can clone it and benchmark **their own** agent against the Training Lab telemetry and
    the 14 scenarios, needing no credential of ours and no corpus of ours — and the README tells them
    that is what the repository is for.
@@ -117,12 +119,14 @@ they are what lets a stranger score their own agent. The README does not current
    on*, the artifacts are what *our* agent said. Third-party benchmarking needs the first and never
    the second, so removing the second costs a public reader nothing.
 
-3. **`runs/` is purged from git history, not merely untracked.** Untracking at `HEAD` leaves every
+3. ~~**`runs/` is purged from git history, not merely untracked.** Untracking at `HEAD` leaves every
    artifact readable in a public history, which would make the stated reason for removing them
    false. The rewrite is narrow and its cost is measured: two of 113 commits ever touched `runs/`
    (§4.4), and of the eight `git show <sha>:"<path>"` full-text pointers in the PRD stubs, four
    predate the rewrite point and survive untouched while four must be re-pointed from the
-   `git-filter-repo` commit map. The `prd-8-full-text` tag is rewritten in place and keeps resolving.
+   `git-filter-repo` commit map. The `prd-8-full-text` tag is rewritten in place and keeps resolving.~~
+   → reversed by the user 2026-09-22, §11 A1: `runs/` is untracked at `HEAD` and history is left
+   alone. ADR 012 records the rehearsal that informed it.
 
 4. **Reversing ADR 008 §8 produces ADR 012.** A locked decision is not reversed in a `.gitignore`
    comment. ADR 012 records what changed, the measurement that justifies it, and what is knowingly
@@ -227,12 +231,12 @@ silently exclude the committed test fixtures under `apps/*/test/fixtures/runs/`,
 the console and investigator test suites and must stay tracked. That trap has been hit once before
 (PRD-3 §12), so AC7 adds the test that catches it next time.
 
-**What the history rewrite touches.** `git-filter-repo --path runs/ --invert-paths` over a fresh
+~~**What the history rewrite touches.** `git-filter-repo --path runs/ --invert-paths` over a fresh
 mirror clone. Rewrite point is `eb0d480` at depth 40; commits at depth 1–39 keep their SHAs. The
 emitted `.git/filter-repo/commit-map` is the source for re-pointing the four stale PRD full-text
 lines — PRD-5, PRD-6, PRD-7 and PRD-8 — which is a mechanical substitution, not a judgement call.
 The single remote branch `feat/unattended-investigation` is rewritten with everything else or
-deleted first.
+deleted first.~~ → dropped 2026-09-22, §11 A1. The pointers keep their original commits.
 
 **The ruleset.** A repository ruleset on `main` rather than classic branch protection: require a
 pull request, **require the CI status check to pass**, block force-pushes and deletions, and no
@@ -343,14 +347,14 @@ contributor from §4.1.6. Reuses the two commits already sitting unmerged on
 
 **Phase 2 — The corpus leaves, and the documents stop claiming otherwise.** ADR 012 written first,
 because it is what authorises the rest. Then `/runs/` into `.gitignore`, the 48 artifacts untracked,
-the history rewritten per §4.3, the four stale full-text pointers re-pointed from the commit map,
-and every document in §7 corrected — `docs/roadmap.md` included, per §4.1.14. The README gains the
+~~the history rewritten per §4.3, the four stale full-text pointers re-pointed from the commit map,~~
+(dropped 2026-09-22, §11 A1) and every document in §7 corrected — `docs/roadmap.md` included, per §4.1.14. The README gains the
 section Goal 2 asks for: what the benchmark is, what it measures, and how to run your own agent
 against it.
 
-*Exit:* `git log --all -- runs/` returns nothing, `bun run check` is green, no file in the
-repository states that run artifacts are committed, and no roadmap section presents delivered work
-as future work.
+*Exit:* ~~`git log --all -- runs/` returns nothing~~ `git ls-files runs/` returns nothing (§11 A1),
+`bun run check` is green, no file in the repository states that run artifacts are committed, and no
+roadmap section presents delivered work as future work.
 
 **Phase 3 — The furniture.** `.github/` with the CI workflow from §4.3, `SECURITY.md` naming a
 private disclosure route and a response expectation, `CONTRIBUTING.md` covering the `bun run check`
@@ -379,7 +383,7 @@ domain is wanted — which the rename does not depend on.
 
 | | Today | Target | Measured by |
 |---|---|---|---|
-| Run artifacts reachable from any public ref | 48 | 0 | `git log --all -- runs/` |
+| Run artifacts ~~reachable from any public ref~~ tracked at `HEAD` (§11 A1) | 48 | 0 | ~~`git log --all -- runs/`~~ `git ls-files runs/` |
 | Documents claiming the corpus is committed | 4 (`README.md`, `AGENTS.md` ×2, ADR 008 §8) | 0 | §7 checklist |
 | Pull requests gated by an automated check | 0 | all | ruleset required-check setting |
 | Private disclosure route for a vulnerability | none | `SECURITY.md` | file exists and names a route |
@@ -408,7 +412,8 @@ repository:
       rewritten.
 - [x] `.gitignore` — the comment block arguing the corpus is deliberately not ignored.
 - [x] `.env.example` — `RUNS_DIR=runs` and its comment, checked for consistency with the new rule.
-- [x] `docs/prd-5`, `prd-6`, `prd-7`, `prd-8` — full-text pointers re-pointed from the commit map.
+- [x] ~~`docs/prd-5`, `prd-6`, `prd-7`, `prd-8` — full-text pointers re-pointed from the commit map.~~
+      Not needed, §11 A1: the original commits stay, and all eight pointers were verified to resolve.
 - [x] `docs/README.md` — the specification table gains PRD-9 and the decision table gains ADR 012.
 
 **Landed early, 2026-09-22, at the user's request** — the two-track restructure (§4.1.11) and the
@@ -436,7 +441,7 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
 - [x] **AC1** — Given a clone of `main`, When a reader looks for licence terms, Then `LICENSE`
       exists at the root, names MIT, and the copyright line reads "Aretea Group and contributors".
       _(test: manual)_
-- [ ] **AC2** — Given the repository on GitHub, When `gh repo view --json licenseInfo` is called,
+- [x] **AC2** — Given the repository on GitHub, When `gh repo view --json licenseInfo` is called,
       Then it reports MIT rather than `null`. _(test: manual)_
 - [x] **AC3** — Given the README, When a reader looks for third-party content, Then it names the
       Microsoft Training Lab telemetry, points at `fixtures/telemetry/LICENSE`, and names
@@ -444,16 +449,16 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
 - [x] **AC4** — Given `.gitignore`, When `git status` is run after an investigation writes
       `runs/<run-id>.json`, Then the artifact is ignored and does not appear as untracked.
       _(test: integration)_
-- [ ] **AC5** — Given the rewritten history, When `git log --all -- runs/` is run, Then it returns
-      no commits. _(test: manual)_
+- [ ] **AC5** — ~~Given the rewritten history, When `git log --all -- runs/` is run, Then it returns
+      no commits.~~ **Dropped 2026-09-22 — §11 A1.** _(test: manual)_
 - [x] **AC6** — Given a fresh clone with no `runs/` directory, When `bun run evaluate` is run, Then
       it reports that no artifacts were found and exits 0 rather than failing. _(test: integration)_
 - [x] **AC7** — Given the `/runs/` ignore rule, When the test suite runs, Then a test asserts that
       `apps/console/test/fixtures/runs/` and `apps/investigator/test/fixtures/runs/` are still
       tracked, so an unanchored pattern cannot silently drop the fixtures. _(test: unit)_
-- [ ] **AC8** — Given the rewritten history, When every blob reachable from every ref is searched
-      for `tail56d848`, Then there are no matches. _(test: manual)_
-- [ ] **AC9** — Given the rewritten history, When each of the eight PRD full-text pointers is run as
+- [ ] **AC8** — ~~Given the rewritten history, When every blob reachable from every ref is searched
+      for `tail56d848`, Then there are no matches.~~ **Dropped 2026-09-22 — §11 A1.** _(test: manual)_
+- [x] **AC9** — Given the ~~rewritten~~ history (§11 A1), When each of the eight PRD full-text pointers is run as
       written, Then each `git show <sha>:"<path>"` resolves to the document it names.
       _(test: manual)_
 - [x] **AC10** — Given ADR 012, When a reader follows ADR 008 §8, Then §8 is marked superseded by
@@ -492,7 +497,7 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
       pattern is pushed, Then push protection blocks it. _(test: manual)_
 - [ ] **AC21** — Given the public repository, When a visitor loads the repository page, Then a
       description and topics are set. _(test: manual)_
-- [ ] **AC22** — Given `.github/dependabot.yml`, When a dependency in `package.json` has a newer
+- [x] **AC22** — Given `.github/dependabot.yml`, When a dependency in `package.json` has a newer
       version, Then Dependabot opens a pull request against `main`. _(test: manual)_
 - [x] **AC23** — Given the investigator configured with a live source, When artifact directories
       outside `.data/` are configured, Then it refuses to start, and the README documents that
@@ -568,3 +573,17 @@ Every question this PRD opened is now closed.
   public benchmark section points at
 - [`fixtures/telemetry/SOURCE.md`](../fixtures/telemetry/SOURCE.md) and
   [`LICENSE`](../fixtures/telemetry/LICENSE) — the vendored telemetry's provenance and terms
+
+## 11. Amendments
+
+- **A1 — 2026-09-22 — the history rewrite is dropped; `runs/` is untracked at `HEAD` only.** Asked
+  for in chat, after the rewrite had been rehearsed on a mirror clone and its cost reported: "yeah
+  fuck that, we wont do a complete rewrite". The rehearsal showed that removing files from a commit
+  invalidates its signature, so every one of the 74 commits from the first corpus commit onward
+  would be re-created unsigned, every clone would need resetting, an open pull request would be
+  rebased, and the pre-rewrite objects would stay fetchable from GitHub's pull-request refs until
+  Support purged them — all to remove one internal hostname, since the 48 artifacts hold Training
+  Lab mock data (§4.2). Falsifies §4.1.3, the §4.3 rewrite paragraph, Phase 2's rewrite clause and
+  its exit line, the §6 first row, the §7 pointer item, AC5 and AC8 — all struck in place. AC9 is
+  kept and reworded, since the original pointers resolve unchanged. Goal 1 is narrowed. ADR 012
+  records the decision and the rehearsal evidence.
