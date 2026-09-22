@@ -1,0 +1,31 @@
+# The one CI gate (PRD-9 §4.3). Runs `bun run check` — fmt:check, lint, typecheck, test — exactly
+# as a developer runs it. Nothing here has a credential: the Kusto, Mock Sentinel, Azure and
+# Defender suites skip themselves when their dependency is absent, and tests that call a paid
+# model are opt-in. The job name `check` is the required status check named in
+# .github/rulesets/main.json; renaming one means renaming both.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      - run: bun install --frozen-lockfile
+      - run: bun run check
