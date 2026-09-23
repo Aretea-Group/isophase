@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-09-22
-**Implements:** PRD-9 — Open-source release readiness, §4.1.2, §4.1.3, §4.1.4, §4.1.7
+**Implements:** PRD-9 — Open-source release readiness, §4.1.2, §4.1.4, §4.1.7, §11 A1 (which reversed §4.1.3)
 **Reverses:** [ADR 008](./008-comparability-record.md) §8 ("**And the corpus enters version
 control.** `/runs/` leaves `.gitignore`; `/runs/traces/` replaces it. The run artifacts and their
 archive are committed") — the paragraphs from that sentence to the rejected `fixtures/baseline-runs/`
@@ -59,37 +59,16 @@ never the second.
    once. `scripts/run-artifacts-ignored.test.ts` asserts against git itself that the fixtures stay
    tracked and that a freshly written `runs/<run-id>.json` never shows as untracked.
 
-2. **The corpus is purged from history, not merely untracked.** Untracking at `HEAD` leaves every
-   artifact — and the Tailscale host — readable in a public history, which would make the stated
-   reason for removing them false. The rewrite is `git filter-repo --path runs/ --invert-paths`
-   over a fresh mirror clone, **range-limited** to the commits from the first one that touched
-   `runs/`:
+2. **The corpus is untracked at `HEAD`; history is left alone.** PRD-9 §4.1.3 decided the opposite
+   — purge `runs/` from history so that neither the artifacts nor the Tailscale host stay readable
+   once public — and the user reversed it on 2026-09-22 (PRD-9 §11 A1) after the rewrite had been
+   rehearsed and costed. What the rehearsal found, and why it was not worth paying, is under
+   *Rejected* below. The consequence accepted instead: the 48 artifacts, all Training Lab mock data,
+   and one internal hostname in `config.modelBaseUrl` of a single artifact, remain in the history a
+   public reader can see. The hostname is reachable only from inside that tailnet.
 
-   ```bash
-   git clone --mirror <origin> soc-mirror && cd soc-mirror
-   git filter-repo --path runs/ --invert-paths --force \
-     --refs eb0d480^..main eb0d480^..feat/unattended-investigation refs/tags/prd-8-full-text
-   ```
-
-   The range limit is not in PRD-9 §4.3 and is load-bearing. `git fast-export`, which
-   `filter-repo` drives, strips commit signatures — 105 of the 113 commits on `main` are
-   SSH-signed — so an unrestricted run re-creates *every* commit with a new id, including the 39
-   older than the rewrite point, and none of the PRD full-text pointers would survive. Rehearsed
-   2026-09-22 on a mirror clone: unrestricted, all 141 commits changed id; range-limited, the 39
-   commits before `eb0d480` are untouched and keep their ids and signatures, and the 74 from
-   `eb0d480` onward are rewritten. Exactly two commits ever touched `runs/`: `eb0d480` ("chore(runs):
-   commit the run corpus and stop ignoring it"), which keeps its `.gitignore` change, and `8247a2c`
-   ("Record llama-server compatibility evaluation"), which touched nothing else and is pruned as
-   empty.
-
-3. **The four full-text pointers after the rewrite point are re-pointed from the commit map.** PRD
-   stubs carry `git show <sha>:"<path>"` lines so that `PRD-N §M` citations resolve through git. Of
-   the eight, `211735a`, `80f9859` and `fe28b0c` precede the rewrite point and survive untouched;
-   `d57be75` → `01fc71e` (PRD-5), `c43f898` → `cca0770` (PRD-6), `8ad3c2a` → `ae85a84` (PRD-7) and
-   `a92e13f` → `3e7048e` (PRD-8) are substituted from `filter-repo/commit-map`. The `prd-8-full-text`
-   tag is rewritten in place. The ids are deterministic for the same history and the same command,
-   and are confirmed against the real rewrite's map at the Phase 2 exit; a mismatch is a mechanical
-   re-substitution, not a decision.
+3. **The eight PRD full-text pointers are unchanged.** `git show <sha>:"<path>"` lines in the stubs
+   keep resolving because no commit id moved. Verified on 2026-09-22 for all eight.
 
 4. **`evaluate` treats an empty `runs/` as nothing to do, not as failure.** A fresh clone has no
    `runs/` at all now. `scripts/evaluate-runs.ts` prints `[evaluate] no run artifacts in …` and
@@ -116,31 +95,28 @@ never the second.
   now enforced by `queue:reset`'s behaviour and by nothing else. A measurement set that exists on
   one laptop is one disk failure from being bought twice — which is true, and was true of the
   transcripts already.
-- **74 commits lose their signatures.** Every commit from `eb0d480` onward is re-created by the
-  rewrite without its `gpgsig` header, because a signature covers the tree and the tree changed.
-  They cannot be re-signed by their original authors after the fact. The 39 older commits keep
-  theirs. Existing clones must be re-cloned or hard-reset onto the rewritten `main`.
-- **GitHub keeps the old objects reachable for a while.** A mirror clone of `origin` carries
-  `refs/pull/*/head` for every pull request ever opened, and those refs are server-side: a force
-  push rewrites branches and tags, not them. Until GitHub garbage-collects, or is asked to, the
-  pre-rewrite commits — and the artifacts in them — remain fetchable by id from
-  `github.com/Aretea-Group/soc-agent-poc` even though no branch or tag reaches them. PRD-9 AC5 and
-  AC8 are measured on a clone, which does not fetch those refs, so they pass on a clone and are
-  incomplete on the server. Closing that gap is a request to GitHub Support to purge cached views
-  and unreachable objects, made after the force push and before the visibility flip in Phase 4.
+- **The history still holds the corpus.** Anyone can read the 48 mock-data artifacts and the one
+  internal hostname by checking out an old commit. That is the price of keeping 74 signed commits
+  signed, and it was taken knowingly (below).
 
 ## Rejected
 
-- **Untrack at `HEAD` and leave history alone.** Cheapest, and it would have kept every signature.
-  Rejected because it leaves the Tailscale host and 48 artifacts readable in a public history — the
-  reason for removing them would be false the moment the repository went public.
+- **Purging `runs/` from history with `git filter-repo`** — PRD-9 §4.1.3 as written. Rehearsed
+  twice on mirror clones on 2026-09-22. Unrestricted, `git fast-export` strips every commit
+  signature, so all 141 commits were re-created with new ids and none of the eight PRD full-text
+  pointers survived. Range-limited to `eb0d480^..main` and the one feature branch, the 39 older
+  commits kept their ids and signatures, but the 74 from `eb0d480` onward were still re-created
+  unsigned — a signature covers the tree, and the tree changed — and four pointers had to be
+  re-mapped from the commit map. On top of that: every clone would need a hard reset, the open
+  pull request on `feat/unattended-investigation` would be rebased, Dependabot's branches would be
+  recreated, and the pre-rewrite objects would stay fetchable from GitHub's server-side
+  `refs/pull/*` until GitHub Support purged them. All of it to remove one tailnet hostname from
+  artifacts that hold mock data. Rejected by the user on that evidence (PRD-9 §11 A1).
 - **A curated `fixtures/baseline-runs/`** promoted into by a command, which ADR 008 §8 also
   rejected. Nothing measured since argues for it, and it would reintroduce exactly the class of file
   this decision removes (PRD-9 §3).
 - **A `fixtures/demo-runs/` set** so a visitor could open a finished investigation with no credential.
   Considered in PRD-9 §4.1.13 and dropped for the same reason.
-- **Rewriting the whole history to keep the recipe simple.** Rejected once the rehearsal showed it
-  re-ids all 141 commits and breaks the three full-text pointers that the range limit preserves.
 
 ## Testing
 
@@ -150,9 +126,9 @@ never the second.
   `git status`.
 - `scripts/evaluate-runs.test.ts` — AC6 (integration): an empty runs directory reports no artifacts
   and exits 0.
-- AC5, AC8 and AC9 are repository state after the rewrite, checked once at the Phase 2 exit:
-  `git log --all -- runs/` empty, no blob reachable from any ref containing `tail56d848`, and each of
-  the eight `git show` pointers resolving to the document it names.
+- AC9 is repository state, checked once: each of the eight `git show` pointers resolves to the
+  document it names. AC5 and AC8, the post-rewrite checks, were dropped with the rewrite (PRD-9
+  §11 A1).
 
 ## References
 

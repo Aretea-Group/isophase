@@ -3,7 +3,7 @@
 **Status:** Complete — see `docs/adr/008-comparability-record.md` for the decisions as accepted
 **Produces:** ADR 008 — The Comparability Record
 **Amends:** ADR 005 §2 (the artifact gains fixed-size counters); PRD-2 §23 (regression infrastructure, deferred there, is built here); `AGENTS.md` §5, §9, §12, §14; `docs/roadmap.md` §7 (the band partition moved here)
-**Full text:** `git show cca0770:"docs/prd-6-run-comparability.md"` — fix(evaluate): hash settings not outcomes, and stop scoring derivedFrom, 2026-08-21
+**Full text:** `git show c43f898:"docs/prd-6-run-comparability.md"` — fix(evaluate): hash settings not outcomes, and stop scoring derivedFrom, 2026-08-21
 
 `bun run evaluate` printed numbers that were not noisy but **structurally wrong**: the two tables
 were not two models, the denominators were not the same denominator, and a stub answering `65` to

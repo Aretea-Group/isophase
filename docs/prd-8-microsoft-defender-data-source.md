@@ -3,7 +3,7 @@
 **Status:** Complete — see `docs/adr/011-multi-source-security-data.md` §14 and §16 for accepted deviations
 **Produces:** ADR 011 — Multi-source security data and the Microsoft Defender connector
 **Depends on:** PRD-7 — Real Microsoft Sentinel Connector
-**Full text:** `git show 3e7048e:"docs/prd-8-microsoft-defender-data-source.md"` — docs: give PRD-8 D11 an ADR home and say where §7's answers went, 2026-08-27
+**Full text:** `git show a92e13f:"docs/prd-8-microsoft-defender-data-source.md"` — docs: give PRD-8 D11 an ADR home and say where §7's answers went, 2026-08-27
 
 The system only spoke Sentinel. Every path from configuration to alert to query assumed a Log
 Analytics workspace: `SENTINEL_CONNECTOR` chose between two transports and both read `SecurityAlert`
