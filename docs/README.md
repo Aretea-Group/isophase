@@ -18,6 +18,7 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [`prd-6-run-comparability.md`](./prd-6-run-comparability.md) | **Complete** — making runs comparable across models, parameters, tools, prompts, steering and memory, and accumulating a durable baseline to compare them on. Partitions the scoring bands and makes the run corpus append-only |
 | [`prd-7-real-sentinel-connector.md`](./prd-7-real-sentinel-connector.md) | **Complete** — a read-only Azure Monitor Logs implementation of the Sentinel capability |
 | [`prd-8-microsoft-defender-data-source.md`](./prd-8-microsoft-defender-data-source.md) | **Complete** — Microsoft Defender XDR through the Graph security API, so the system runs on Defender alone with no Sentinel at all; and several sources active at once with exactly one holding the primary alert role. AC2 is a recorded deviation: the Sentinel prompt hash moved, splitting the run corpus (ADR 011 §14) |
+| [`prd-9-open-source-release-readiness.md`](./prd-9-open-source-release-readiness.md) | **Approved** — what has to be true before the repository can be made public: the MIT licence, a protected `main`, the standard `.github/` furniture, and the run corpus leaving version control so investigation output is never published. The Training Lab telemetry and the 14 scenarios stay, because they are what lets anyone benchmark their own agent |
 | [`research-defender-api.md`](./research-defender-api.md) | **Research** — PRD-8 Phase 0. §1–§8 are the desk half: what Microsoft's documentation settles about the Graph security API and what it contradicts itself on. §9 is the live half, measured against a real tenant, including the two findings that reversed the design. Every claim tagged documented / inferred / contradictory / measured |
 | [`defender-setup.md`](./defender-setup.md) | **Setup** — PRD-8 Phase 0. The Entra app registration, the two read-only Graph application permissions and the admin consent `bun run probe:defender` needs. Tenant-free by construction |
 | [`research-console-write-path.md`](./research-console-write-path.md) | **Research** — roadmap §6, the console write path. Verdict: buildable in ~1k lines, no new dependency. Not a PRD; nothing in it is built |
@@ -40,6 +41,7 @@ and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 superse
 | [009 — Azure Monitor Logs connector](./adr/009-azure-monitor-logs-connector.md) | Accepted |
 | [010 — Tabular security data-source boundary](./adr/010-tabular-security-data-source-boundary.md) | Accepted; amends the Sentinel-only investigation boundary |
 | [011 — Multi-source security data and the Defender connector](./adr/011-multi-source-security-data.md) | Accepted; reverses 010 §4's single-bundle startup and `AGENTS.md` §2's second-SIEM non-goal |
+| [012 — The run corpus leaves version control](./adr/012-run-corpus-leaves-version-control.md) | Accepted; reverses 008 §8's committed corpus and amends `AGENTS.md` §5 — the benchmark inputs ship, our measurements do not |
 
 ADR 006 covers the console: why a TUI rather than a web frontend, why the run artifact gained a
 lifecycle, and why the console is not ground-truth-aware.

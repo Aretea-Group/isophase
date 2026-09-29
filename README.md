@@ -34,33 +34,96 @@ live runs, cancels one, and detaches again without stopping the loop.
 emulator, 154 alerts, a hidden ground-truth answer key and a scoring harness. That is how you develop
 on this and measure whether a change made the agent better. It is not needed to *run* the agent.
 
-This README is the canonical setup and usage guide. The files under `docs/` contain design history
+This README is the canonical setup and usage guide; the files under `docs/` contain design history
 and decisions rather than a second getting started path.
 
-## Two ways to run this
+**You do not need the local lab to use this against a real tenant.** The next section splits the
+setup into two independent tracks — pick one.
 
-**Run it against your own tenant.** You need [Bun](https://bun.sh) 1.3+, a model API key from
-[Anthropic](https://console.anthropic.com/settings/keys),
-[OpenAI](https://platform.openai.com/api-keys) or
-[Google](https://aistudio.google.com/apikey), and a Defender app registration
-([`docs/defender-setup.md`](./docs/defender-setup.md) walks through that one). **No Docker, no
-Kusto, no fixtures** — the emulator exists to fake a data source you already have. Jump to
-[Run it in your tenant](#run-it-in-your-tenant).
+## Choose your path
 
-**Develop on it.** The local lab gives you 154 alerts, a ground-truth answer key and the scoring
-harness, with no cloud account and nothing to spend. That needs Docker, and it is the rest of this
-Quick start.
+Two ways in. Neither is a subset of the other, and most people only ever want one.
 
-The two share every line of investigation code; they differ in which source is configured and which
-front door you come through.
+| | **Track A — your own tenant** | **Track B — the local lab** |
+|---|---|---|
+| Use it to | investigate real alerts in Microsoft Defender XDR or Microsoft Sentinel | customise the agent, or score it against 14 scenarios whose answers are known |
+| Needs | Bun, a model API key, a read-only tenant credential | the same, plus Docker |
+| Docker, Kusto, bootstrap | **no** | yes |
+| Slow step | your tenant admin granting consent | ~10 minutes of local setup |
+| Writes to | `.data/`, never the repository | `runs/`, ignored by version control |
 
----
+If you want both, do Track A first.
 
-## Run it in your tenant
+## Common setup
 
 ```bash
 bun install
-cp .env.example .env          # add your model key and the DEFENDER_* triple
+cp .env.example .env
+```
+
+Set the provider, model, and matching API key in `.env`. The default is:
+
+```dotenv
+INVESTIGATOR_PROVIDER=openai
+INVESTIGATOR_MODEL=gpt-5.6-luna
+OPENAI_API_KEY=...
+```
+
+A self-hosted model works too, through any OpenAI-compatible `/v1` endpoint that returns standard
+`message.tool_calls`:
+
+```dotenv
+INVESTIGATOR_PROVIDER=llamacpp
+INVESTIGATOR_MODEL=qwen3.8-27b
+LLAMA_SERVER_BASE_URL=https://host.example/v1
+LLAMA_SERVER_MODEL=qwen3.8-27b
+```
+
+Supply all four, plus the context and token limits; [`.env.example`](./.env.example) documents each
+one and the optional bearer token, which is never written to a run artifact. Run artifacts record
+the endpoint, the limits and the reasoning profile, so two server configurations stay distinct
+measurements. That file is the reference for every other variable too. The investigator validates
+its configuration before the first alert, so a missing key stops the process rather than surfacing
+forty investigations into a sweep; the console's model picker shows only providers whose
+credentials are present.
+
+## Track A — point it at your own tenant
+
+No Docker. No emulator. No fixtures. You need [Bun](https://bun.sh) 1.3 or newer, a model API key,
+and a read-only credential for one tenant.
+
+**Microsoft Defender XDR** is the shortest route, because it needs no workspace id. Create the app
+registration and grant consent following
+[`docs/defender-setup.md`](./docs/defender-setup.md) — that is the slow step, and it needs a tenant
+administrator. Then add four lines to `.env`:
+
+```dotenv
+SECURITY_SOURCES=defender
+DEFENDER_TENANT_ID=<tenant-guid>
+DEFENDER_CLIENT_ID=<application-client-guid>
+DEFENDER_CLIENT_SECRET=<local-secret>
+```
+
+**Microsoft Sentinel** instead, through Azure Monitor Logs — the identity needs the workspace-scoped
+`Log Analytics Data Reader` role, and for local development you may sign in with `az login` rather
+than configuring a service principal:
+
+```dotenv
+SENTINEL_CONNECTOR=azure
+AZURE_LOG_ANALYTICS_WORKSPACE_ID=<workspace-guid>
+```
+
+Check the credential without spending a token on a model:
+
+```bash
+DEFENDER_LIVE_TEST=true bun test packages/sentinel-client/test/integration/defender.test.ts
+# or, for Sentinel
+AZURE_SENTINEL_LIVE_TEST=true bun test packages/sentinel-client/test/integration/azure.test.ts
+```
+
+Then start the loop:
+
+```bash
 bun run probe:defender        # confirms consent and records what the tenant supports
 RUNS_DIR=.data/runs SECURITY_SOURCES=defender PUBLISH_FINDINGS=true bun run investigate --watch
 ```
@@ -119,60 +182,45 @@ the status values it saw in its first cycle, so set it from your tenant's own vo
 If your alerts live in Microsoft Sentinel, they are reachable here only if the workspace is
 onboarded to the Defender portal — `bun run probe:defender --only I` tells you whether it is.
 
----
+Or open the console against the tenant instead of running the loop:
 
-## Quick start (local lab)
+```bash
+bun run console:live defender           # Defender XDR
+bun run console:live sentinel           # a real Log Analytics workspace
+bun run console:live defender,sentinel  # both; the first named produces the alerts
+```
+
+Use `console:live` rather than `bun run console` — it sets the source and both artifact directories
+together, which is what keeps tenant data under ignored `.data/` and out of the repository. The
+details are in [Open the console against a live tenant](#open-the-console-against-a-live-tenant),
+and the full configuration for each source is under
+[Security data sources](#security-data-sources).
+
+**If the queue is empty, check the window before concluding anything is broken.**
+`DEFENDER_ALERT_WINDOW` defaults to `P7D`, and a tenant whose detections are older than seven days
+reports `0 alert(s)` and exits successfully. Widen the window, or reach a known alert directly with
+`bun run investigate --alert <id>`.
+
+That is Track A. Everything below about Kusto, telemetry and scenarios belongs to Track B and you
+can skip it.
+
+## Track B — the local lab
+
+Adds a deterministic security environment with known answers, so you can change the agent and
+measure whether it got better.
 
 ### Prerequisites
 
 | Tool | Requirement |
 |---|---|
 | [Bun](https://bun.sh) | 1.3 or newer; runtime and package manager |
-| Docker CLI with Compose v2 | Runs Kusto and Mock Sentinel — **local lab only** |
+| Docker CLI with Compose v2 | Runs Kusto and Mock Sentinel |
 | Model access | OpenAI, Anthropic, or Google API key, or one llama-server endpoint |
 
 The Kusto image is amd64-only. On Apple Silicon, use Colima with Apple Virtualization and Rosetta;
 Podman's QEMU path does not run the emulator reliably. See the
-[Kusto host notes](./infra/kusto/README.md) for the verified setup.
-
-### Install and configure
-
-```bash
-bun install
-cp .env.example .env
-```
-
-Set the provider, model, and matching API key in `.env`. The default is:
-
-```dotenv
-INVESTIGATOR_PROVIDER=openai
-INVESTIGATOR_MODEL=gpt-5.6-luna
-OPENAI_API_KEY=...
-```
-
-Alternatively, configure one llama-server model through its OpenAI-compatible endpoint:
-
-```dotenv
-INVESTIGATOR_PROVIDER=llamacpp
-INVESTIGATOR_MODEL=qwen3.8-27b
-INVESTIGATOR_THINKING_LEVEL=low
-LLAMA_SERVER_BASE_URL=https://host.example/v1
-LLAMA_SERVER_MODEL=qwen3.8-27b
-LLAMA_SERVER_CONTEXT_WINDOW=65536
-LLAMA_SERVER_MAX_TOKENS=4096
-LLAMA_SERVER_REASONING_PROFILE=effort
-# Optional; omit for a keyless endpoint.
-LLAMA_SERVER_BEARER_TOKEN=...
-```
-
-The endpoint must implement `/v1/chat/completions` and return standard `message.tool_calls`.
-When configured, `LLAMA_SERVER_BEARER_TOKEN` is sent in the `Authorization: Bearer` header and is
-never written to run artifacts. Model loading, server presets, and lifecycle remain operator
-responsibilities. Support is text-only. `LLAMA_SERVER_REASONING_PROFILE` declares whether reasoning
-is disabled, binary off/on, or controlled by the `none`/`low`/`medium`/`xhigh`
-`reasoning_effort` values. Binary models use `off` and `medium` as their two honest settings. Run
-artifacts record endpoint URL, model limits, and reasoning profile, so results from different server
-configurations remain distinct measurements.
+[Kusto host notes](./infra/kusto/README.md) for the verified setup. This is the step most likely to
+cost you time, and it is the reason Track A exists.
 
 ### Start the lab
 
@@ -201,7 +249,6 @@ bun run console --fresh
 `--fresh` is a clean session view: it hides runs that existed when the console opened without
 deleting or modifying them. All alerts begin in the queue, and investigations started during the
 session move into the Runs pane normally.
-
 ## Using the analyst console
 
 The console is the primary way to operate the system:
@@ -228,7 +275,7 @@ y         copy focused content         R               re-read from disk
 q         quit                         ?               complete key reference
 ```
 
-Starting or re-running an investigation opens an overlay because it calls the selected model
+Starting or re-running an investigation opens an overlay, because it calls the selected model
 provider. It opens on the confirm strip, which defaults to Cancel; the optional context and model
 fields sit above it, reached with ⇥ or ↑. The run appears immediately in `[2]`; Agent stream shows turns and tool calls as
 they happen. Console-started runs always write a transcript. Cancellation persists an interrupted
@@ -256,18 +303,14 @@ bun run console:live sentinel           # a real Log Analytics workspace
 bun run console:live defender,sentinel  # both; the first named produces the alerts
 ```
 
-`bun run console` resolves whatever `.env` names, which on a checkout set up to build the benchmark
-corpus is Mock Sentinel — so the queue reports "Mock Sentinel is not reachable" and the connector
-looks broken when it is merely unselected. A live run needs the source *and* both artifact
-directories set together: runs that may carry tenant data are refused outside ignored `.data/`, and
-the console exits before drawing a frame rather than degrading. `console:live` derives all of it
-from the source you name — `.data/defender-runs`, `.data/azure-runs`, or `.data/live-runs` for a
-mixed run — and forwards any remaining flags to the console untouched.
+Use it rather than `bun run console`, which resolves whatever `.env` names — on a checkout set up
+for the local lab that is Mock Sentinel, so the queue reports it unreachable and the connector looks
+broken when it is merely unselected. `console:live` sets the source and both artifact directories
+together (`.data/defender-runs`, `.data/azure-runs`, or `.data/live-runs` for a mixed run), which is
+what keeps tenant data out of the repository, and forwards any remaining flags untouched.
 
-It deliberately does not set `DEFENDER_ALERT_WINDOW`. That bounds the alert queue and is a fact
-about a tenant's detection cadence, not about running live: a quiet week empties a window that
-worked yesterday. Set it in `.env` beside the credentials, and read an empty queue as "nothing in
-the window" before concluding the connector is down.
+It deliberately does not set `DEFENDER_ALERT_WINDOW`: that is a fact about a tenant's detection
+cadence, not about running live, so it belongs in `.env` beside the credentials.
 
 ### Return alerts to the queue
 
@@ -286,22 +329,47 @@ Archiving takes an alert out of the **queue** and leaves the run in the **benchm
 reads `runs/.archive/` too. Only `--purge` destroys a measurement, it requires `--yes`, and its dry
 run reports the loss in scoreable draws rather than in files.
 
-## Other workflows
+## Security data sources
 
-### Run the investigator directly
+The full configuration for each source, and what changes when more than one is active. Track A
+above is the short version of the first two.
 
-```bash
-bun run investigate                     # all alerts, sequentially
-bun run investigate --alert <alert-id>  # one alert
+### Use Microsoft Defender XDR
+
+Defender is reached through the Microsoft Graph security API: alerts from `alerts_v2`, telemetry
+from advanced hunting. It runs alone — no Sentinel credential, no workspace, no Mock Sentinel
+process — or alongside Sentinel with one of them producing alerts.
+
+The app registration needs the Graph **application** permissions `SecurityAlert.Read.All` and
+`ThreatHunting.Read.All`, with admin consent granted.
+[`docs/defender-setup.md`](./docs/defender-setup.md) is the walkthrough.
+
+```dotenv
+SECURITY_SOURCES=defender
+DEFENDER_TENANT_ID=<tenant-guid>
+DEFENDER_CLIENT_ID=<application-client-guid>
+DEFENDER_CLIENT_SECRET=<local-secret>
+
+RUNS_DIR=.data/defender-runs
+INVESTIGATOR_TRACE_DIR=.data/defender-runs/traces
 ```
 
-Each invocation writes `runs/<run-id>.json`. With tracing enabled, each alert also gets a JSONL
-transcript under `runs/traces/`.
+All three credentials are required together and there is **no developer fallback** — unlike Azure,
+`az login` is not a verified path to `ThreatHunting.Read.All`. A partial group is rejected by name.
 
-**Run artifacts are committed.** A run costs real money against a model with no seed, so it cannot
-be re-derived — only bought again — and a benchmark that cannot be reproduced from a fresh clone is
-not a benchmark. Expect `git status` to show new artifacts after an investigation. Transcripts stay
-local: `runs/traces/` is gitignored and runs to hundreds of megabytes.
+Any run with Defender active refuses artifact paths outside ignored `.data/`, even when Sentinel is
+`mock`, because a mixed run may carry tenant data. Those runs are unscored by construction, since
+evaluation joins to the local scenario corpus: standalone Defender investigates, it does not
+benchmark.
+
+`DEFENDER_ALERT_WINDOW` (default `P7D`) bounds the queue, because `alerts_v2` supports no `$orderby`
+and "the newest 500" is therefore not expressible. More than 500 in the window is refused with the
+count rather than truncated; an empty window is not an error and reports `0 alert(s)`.
+
+Before a real investigation, run the model-free live check shown in Track A. It loads the tenant's
+advanced-hunting schema, runs an aggregate query, checks that invalid KQL returns the engine's own
+diagnostic, and round-trips one alert when the window holds one — printing `round trip not
+exercised` otherwise, since an empty queue is a property of the tenant. It writes no artifact.
 
 ### Use a real Microsoft Sentinel workspace
 
@@ -327,25 +395,19 @@ AZURE_CLIENT_ID=<application-client-guid>
 AZURE_CLIENT_SECRET=<local-secret>
 ```
 
-For local development, omit all three values and sign in first with either `az login` or
-`Connect-AzAccount`. The connector tries Azure CLI before Azure PowerShell. When the complete
-service-principal group is present it uses only that identity; a partial group is rejected instead
-of falling back to a personal account.
+For local development, omit all three and sign in with `az login` or `Connect-AzAccount`; the
+connector tries Azure CLI before Azure PowerShell. A complete service-principal group is used
+exclusively, and a partial one is rejected rather than falling back to a personal account.
 
-`AZURE_LOG_ANALYTICS_WORKSPACE_ID` is the Workspace ID shown on the Log Analytics workspace, not
-the workspace name or ARM resource ID. Azure investigations refuse paths outside ignored `.data/`
-so alert and assessment content cannot enter the committed benchmark corpus. Log Analytics
-workspace shared keys authorize ingestion, not queries, and are not supported by this connector.
+`AZURE_LOG_ANALYTICS_WORKSPACE_ID` is the Workspace ID shown on the workspace, not its name or ARM
+resource ID. Workspace shared keys authorize ingestion, not queries, and are not supported. Azure
+runs refuse artifact paths outside ignored `.data/`.
 
-A live workspace returns its entire table catalogue from the schema call, not only the tables that
-hold data. One lab workspace reported 833 tables where about ten held anything, against Mock
-Sentinel's 23. Table names are all that reach the agent's opening context, so that cost roughly
-4,500 tokens for Sentinel alone and 4,750 with Defender also active — larger and noisier than a
-local run suggests, though still small beside the 40,000 characters a single query result may spend.
-
-The first connector slice lists at most 500 alerts. An unbounded queue fails visibly when a
-workspace contains more; targeted `bun run investigate --alert <system-alert-id>` remains available.
-Pagination waits for an observed operator need.
+A live workspace returns its whole table catalogue, not only the tables holding data — one lab
+workspace listed 833 where about ten held anything, against Mock Sentinel's 23. Only table names
+reach the agent's opening context, so the cost is ~4,500 tokens, noisier than a local run suggests
+but small beside the 40,000 characters one query result may spend. The connector lists at most 500
+alerts and fails visibly rather than truncating.
 
 Run the model-free live boundary check before a real investigation:
 
@@ -354,62 +416,10 @@ AZURE_SENTINEL_LIVE_TEST=true \
   bun test packages/sentinel-client/test/integration/azure.test.ts
 ```
 
-It is two tests. The first loads workspace schema, queries `SecurityAlert`, and verifies that
-invalid KQL returns an actionable diagnostic. The second round-trips one alert and fails when the
-workspace holds none, naming that as a fact about the tenant: Sentinel writes `SecurityAlert` rows
-only once an analytics rule fires, so a workspace carrying only built-in rules fails that half until
-one does. Neither test calls a model or writes an artifact.
-
-### Use Microsoft Defender XDR
-
-Defender is reached through the Microsoft Graph security API: alerts from `alerts_v2`, telemetry
-from advanced hunting. It runs alone — no Sentinel credential, no workspace, no Mock Sentinel
-process — or alongside Sentinel with one of them producing alerts.
-
-The app registration needs the Graph **application** permissions `SecurityAlert.Read.All` and
-`ThreatHunting.Read.All`, with admin consent granted.
-[`docs/defender-setup.md`](./docs/defender-setup.md) is the walkthrough.
-
-```dotenv
-SECURITY_SOURCES=defender
-DEFENDER_TENANT_ID=<tenant-guid>
-DEFENDER_CLIENT_ID=<application-client-guid>
-DEFENDER_CLIENT_SECRET=<local-secret>
-
-RUNS_DIR=.data/defender-runs
-INVESTIGATOR_TRACE_DIR=.data/defender-runs/traces
-```
-
-All three credentials are required together and there is **no developer fallback** — unlike Azure,
-`az login` is not a verified path to `ThreatHunting.Read.All`. A partial group is rejected by name.
-
-Defender runs refuse paths outside ignored `.data/`, and so does any run with Defender active even
-when Sentinel is `mock`: a mixed run may carry tenant data and must not enter the committed
-benchmark corpus. Those runs are also unscored by construction, because evaluation joins to the
-local scenario corpus. Standalone Defender investigates; it does not benchmark.
-
-`DEFENDER_ALERT_WINDOW` (default `P7D`) bounds the alert queue. `alerts_v2` supports no `$orderby`,
-so "the newest 500" is not expressible; a window is. More than 500 alerts in the window is refused
-with the count rather than silently truncated.
-
-**Too few is quieter than too many, so check the count.** A window containing no alerts is not an
-error: the run prints `0 alert(s)`, writes a valid empty artifact and exits successfully. On a tenant
-whose detections are older than the window that reads as "nothing to investigate" when it means
-"nothing in the last seven days". Widen the window, or reach a known alert directly with
-`bun run investigate --alert <id>`, which ignores the window entirely.
-
-Before a real investigation:
-
-```bash
-DEFENDER_LIVE_TEST=true \
-  bun test packages/sentinel-client/test/integration/defender.test.ts
-```
-
-It loads the tenant's advanced-hunting schema, runs an aggregate query, and verifies that an invalid
-query returns the engine's own diagnostic. It also round-trips one alert **when the window holds
-one**, and prints `round trip not exercised` when it does not — an empty queue is a property of the
-tenant rather than a defect, so it is not failed. The test neither calls a model nor writes an
-artifact.
+Two tests. The first loads workspace schema, queries `SecurityAlert` and checks that invalid KQL
+returns an actionable diagnostic. The second round-trips one alert and fails when the workspace
+holds none — a fact about the tenant, since Sentinel writes `SecurityAlert` rows only once an
+analytics rule fires. Neither calls a model or writes an artifact.
 
 ### Use several sources at once
 
@@ -418,13 +428,25 @@ SECURITY_SOURCES=defender,sentinel
 PRIMARY_ALERT_SOURCE=defender
 ```
 
-The primary is the only source that produces alerts; every active source is queryable through the
-`source` parameter on the schema and query tools, which defaults to the primary when omitted. With
-more than one active source `PRIMARY_ALERT_SOURCE` is required rather than guessed.
+The primary is the only source that produces alerts; every active source stays queryable through
+the `source` parameter on the schema and query tools, which defaults to the primary. With more than
+one source active, `PRIMARY_ALERT_SOURCE` is required rather than guessed — primacy is a configured
+role, not a property of a connector. Moving it changes which product's detections start an
+investigation, and the run artifact records both the primary and the ordered active set, so two
+runs over different source sets are different measurement conditions.
 
-Primacy is a configured role, not a property of a connector — moving it moves which product's
-detections start an investigation, and the run artifact records both the primary and the ordered
-active set so two runs over different source sets are different conditions.
+## Other workflows
+
+### Run the investigator directly
+
+```bash
+bun run investigate                     # all alerts, sequentially
+bun run investigate --alert <alert-id>  # one alert
+```
+
+Each invocation writes `runs/<run-id>.json`, and with tracing enabled a JSONL transcript under
+`runs/traces/`. Both are ignored by version control: an artifact is *your* measurement of *your*
+agent, and the repository ships the benchmark, not anyone's results (ADR 012).
 
 ### Evaluate runs
 
@@ -452,17 +474,13 @@ Three words carry the report:
 
 A condition is the grouping key, not a thing being scored. **What is scored is the outcome against
 ground truth** — the agent's `tpPercent` versus the scenario's true verdict, as a pass/fail band and
-as a Brier-style skill figure beside it. Turns, tool calls and cost print as columns for analysis and
-are never inputs to the score. The key hashes settings only: two runs configured identically share a
-cell whether or not the agent happened to search the web, because that is a result, not a setup.
+a Brier-style skill figure beside it. Turns, tool calls and cost print as columns for analysis and
+never feed the score. The key hashes settings only, so two identically configured runs share a cell
+whether or not the agent happened to search the web — that is a result, not a setup.
 
-Three draws per cell is the floor at which a repeat means anything. `--gaps` counts the shortfall and
-`--condition` narrows it to the conditions worth filling — unfiltered it totals every condition on
-disk, including pre-config generations whose harness no longer exists.
-
-Every run ever recorded is scored, `runs/.archive/` included. Archiving returns an alert to the
-console's queue; it must not delete a measurement, and the report header fingerprints the exact set
-of run ids it scored so a quoted number can be checked later.
+Three draws per cell is the floor at which a repeat means anything; `--gaps` counts the shortfall
+and `--condition` narrows it to the conditions worth filling. Every run on disk is scored,
+`runs/.archive/` included, and the report header fingerprints the exact set of run ids it scored.
 
 ### Operate the local data stack
 
@@ -477,54 +495,17 @@ bun run data:reset       # drop and rebuild the database
 bun run data:manifest    # regenerate telemetry and benchmark manifests
 ```
 
-Mock Sentinel exposes the boundary used by the client and investigator:
-
-```text
-GET  /health
-GET  /alerts
-GET  /alerts/:id
-GET  /schema
-POST /query        read-only KQL
-GET  /corpus       which data is loaded: time anchor, telemetry revision, alert-set hash
-```
-
-Tables whose name begins with `_` are internal bookkeeping: `/schema` omits them and `/query`
-rejects them, because `/schema` feeds the agent's opening context and a table listed there is a
-table the agent is invited to query.
+Mock Sentinel exposes `GET /health`, `/alerts`, `/alerts/:id`, `/schema`, `/corpus`, and
+`POST /query` for read-only KQL. Tables whose name begins with `_` are internal bookkeeping:
+`/schema` omits them and `/query` rejects them, because `/schema` feeds the agent's opening context
+and a table listed there is a table the agent is invited to query.
 
 Kusto is internal. Investigator and console code must never query it directly or import Mock
 Sentinel fixture repositories.
 
 ## Architecture
 
-The system is a one-directional chain, and each hop is the *only* path to the next:
-
-```text
- fixtures/telemetry/ → Kusto Emulator → Mock Sentinel REST ─┐
-                                                            │
- real Sentinel workspace ─────────────→ Azure Monitor Logs ─┤
-                                                            ▼
-                                              packages/sentinel-client
-                                              typed Zod boundary
-                                                            │
-                                                            ▼
-   ┌───────────────────┐
-   │   Investigator    │        harness.ts is the only Pi boundary; five tools
-   └───────────────────┘
-            │                              └──→ findings comment on the incident
-            │  writes runs/<run-id>.json         (opt-in; never a status change)
-            │  flushed after every alert
-            ▼
-   ┌───────────────────┐
-   │   run artifact    │        the join point — both readers, neither writes
-   └───────────────────┘
-            │
-      ┌─────┴──────┐
-      ▼            ▼
-   Console      scripts/evaluate-runs.ts ◄─── fixtures/scenarios/
-   attaches or  scores against ground truth    hidden from the agent
-   reads runs/
-```
+Each hop in the chain at the top of this file is the *only* path to the next one.
 
 The investigator is the only writer of `runs/`, and the only thing that writes to a tenant. The
 console reads artifacts and — when attached to a running loop over its control socket — drives that
@@ -554,10 +535,14 @@ Important boundaries:
 - Web content is untrusted data and is returned to the model in a provenance envelope.
 - Run artifacts contain structured outcomes, not hidden chain-of-thought.
 
-## Benchmarking and ground truth
+## Benchmark your own agent
 
-Scenarios are the answer key. Each one is a small metadata file in `fixtures/scenarios/`, layered
-over the shared telemetry rather than duplicating it, recording four things:
+The benchmark is two things, and both ship with this repository: **Microsoft's Sentinel Training
+Lab telemetry**, a realistic corpus of security logs, and **14 scenarios** written over it — each
+one an attack, or a benign lookalike, whose correct answer is known. Point any agent at the same
+alerts and score it the same way.
+
+Each scenario records four things:
 
 | | |
 |---|---|
@@ -566,45 +551,26 @@ over the shared telemetry rather than duplicating it, recording four things:
 | `discriminatingEvidence` | the queries that settle it — an investigation skipping these can only be right by luck |
 | `trap` | the wrong conclusion the scenario is built to catch |
 
-`verdict` and `impact` are separate on purpose: a detection can be entirely correct about real
-malicious activity that nonetheless achieved nothing, and conflating the two is the most common
-triage error these scenarios expose.
-
-**Ground truth flows one way.** The agent can never reach those files — not by import, and not by
-reading them at runtime. Two guards enforce it, because either alone is insufficient: an oxlint
-rule blocks static imports, and a test scans agent-side source *text* for the realistic leak, a
-runtime `Bun.file(...)` no import rule can see. `scripts/` is the single exempt tree, which is why
-both the evaluator and the benchmark-map generator live there. The console's `◆` marker comes from
-a generated map holding ids and nothing else: knowing an alert has an answer behind it is not
-knowing the answer.
+Verdict and impact are separate on purpose: a detection can be entirely correct about real malicious
+activity that nonetheless achieved nothing, and conflating the two is the most common triage error
+these scenarios expose.
 
 **Scoring grades direction, not a target.** The investigator reports true- and false-positive
 percentages; `bun run evaluate` joins those to the hidden verdict outside the agent boundary and
-bands them generously — true positive at 60% or above, false positive at 40% or below, with 30–70%
-read as inconclusive. Different valid investigations reach different numbers, so what is measured
-is whether the agent leaned the correct way. The inconclusive band is the interesting one: it is
-the only case where a confident answer in *either* direction is wrong.
+bands them generously — true positive at 60% or above, false positive at 40% or below, 30–70% read
+as inconclusive. Different valid investigations reach different numbers, so what is measured is
+whether the agent leaned the correct way. The inconclusive band is the interesting one: it is the
+only case where a confident answer in *either* direction is wrong.
 
-The answer key and the fixture hazards that look like evidence but are not are documented in the
+**Ground truth flows one way.** The agent can never reach the answers — not by import, not by
+reading them at runtime. Two guards enforce it, because either alone is insufficient: an oxlint rule
+blocks static imports, and a test scans agent-side source *text* for the leak an import rule cannot
+see, a runtime `Bun.file(...)`. `scripts/` is the single exempt tree, which is why the evaluator
+lives there. The console's `◆` marker comes from a map holding ids and nothing else: knowing an
+alert has an answer behind it is not knowing the answer.
+
+The scenarios, and the fixture hazards that look like evidence but are not, are documented in the
 [scenario reference](./fixtures/scenarios/README.md).
-
-## Configuration
-
-All supported variables and defaults are documented in [`.env.example`](./.env.example). The main
-groups are:
-
-- Mock Sentinel and Kusto endpoints;
-- security source selection (`SECURITY_SOURCES`, `PRIMARY_ALERT_SOURCE`);
-- Sentinel connector selection and Azure service-principal credentials;
-- Defender credentials, alert window and query row cap;
-- provider, model, thinking level, timeouts, and turn limits;
-- OpenAI, Anthropic, or Google credentials, or one llama-server endpoint;
-- optional Brave Search credentials;
-- run and transcript directories;
-- query and tool-result size limits.
-
-The investigator validates configuration before starting an alert. The console model picker shows
-only providers for which credentials are available.
 
 ## Development
 
@@ -614,27 +580,35 @@ bun run lint:fix
 bun run check       # formatting, lint, typecheck, and all default tests
 ```
 
-Tests requiring Kusto or Mock Sentinel skip explicitly when the services are unavailable. Start the
-stack with `bun run infra:up` and bootstrap it to exercise those integration paths. Tests that call
-a paid model are opt-in and are not part of default CI.
-
-Do not add dependencies without reviewing the version and updating `bun.lock`. Repository-specific
-implementation rules are in [`AGENTS.md`](./AGENTS.md).
+Tests needing Kusto or Mock Sentinel skip explicitly when those services are unavailable; start the
+stack with `bun run infra:up` to exercise them. Tests that call a paid model or a live tenant are
+opt-in, so `bun run check` needs no credential. Do not add dependencies without reviewing the
+version and updating `bun.lock`.
+Repository-specific implementation rules are in [`AGENTS.md`](./AGENTS.md).
 
 ## Design documents
 
-- [Architecture](./docs/architecture.md)
-- [PRD-1 — Mock Sentinel](./docs/prd-1-mock-sentinel.md)
-- [PRD-2 — Core investigation agent](./docs/prd-2-Core%20Investigation%20Agent.md)
-- [PRD-3 — Analyst console](./docs/prd-3-analyst-console.md)
-- [PRD-4 — Ground-truth expansion](./docs/prd-4-ground-truth-expansion.md)
-- [PRD-5 — Console operator surface](./docs/prd-5-console-operator-surface.md)
-- [PRD-6 — Run comparability](./docs/prd-6-run-comparability.md)
-- [PRD-7 — Real Microsoft Sentinel connector](./docs/prd-7-real-sentinel-connector.md)
-- [PRD-8 — Microsoft Defender data source](./docs/prd-8-microsoft-defender-data-source.md)
-- [Defender setup — app registration and consent](./docs/defender-setup.md)
-- [Architecture decision records](./docs/adr/)
-- [Roadmap](./docs/roadmap.md)
+[`docs/README.md`](./docs/README.md) indexes every PRD, decision record and research note, with a
+one-line status for each. The three worth opening first:
 
-The Kusto and scenario READMEs are deliberately scoped reference notes for those directories. This
-root README is the only project-level setup and operating guide.
+- [Architecture](./docs/architecture.md) — the system as built
+- [Decision records](./docs/adr/) — what changed course, and why
+- [Roadmap](./docs/roadmap.md) — what is not built yet
+
+The Kusto and scenario READMEs are scoped reference notes for their directories. This root README is
+the only project-level setup and operating guide. [`CONTRIBUTING.md`](./CONTRIBUTING.md) is how to
+send a change; [`SECURITY.md`](./SECURITY.md) is how to report a vulnerability privately.
+
+## Licence and acknowledgements
+
+The project is released under the [MIT licence](./LICENSE), copyright Aretea Group and
+contributors.
+
+The telemetry under `fixtures/telemetry/` is Microsoft's Sentinel Training Lab data, vendored
+unmodified from [`Azure/Azure-Sentinel`](https://github.com/Azure/Azure-Sentinel) and carrying
+Microsoft's own copyright under its separate [MIT licence](./fixtures/telemetry/LICENSE); see
+[`fixtures/telemetry/SOURCE.md`](./fixtures/telemetry/SOURCE.md) for the pinned revision and the
+trademark notice.
+
+Jan-Henrik Damaschke is a contributor, with commits across the investigator, the console and the
+Sentinel client.
