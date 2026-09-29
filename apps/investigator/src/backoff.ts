@@ -1,11 +1,11 @@
 /**
- * How the unattended loop reacts to a source that will not answer (ADR 012 §11).
+ * How the unattended loop reacts to a source that will not answer (ADR 013 §11).
  *
  * **This is not a retry, and the distinction is load-bearing.** ADR 011 §9 forbids the *connector*
  * re-issuing a request — "a `429` becomes `rate_limited` and is never retried… a retry deepens the
  * outage for every other consumer in the tenant" — and nothing here changes that. What this does is
  * delay the loop's *next scheduled poll*, which issues strictly **fewer** requests than the
- * configured cadence would have. PRD-9 §4.2 asked for exactly that and it was never built.
+ * configured cadence would have. PRD-10 §4.2 asked for exactly that and it was never built.
  *
  * Pure and clock-free: `nextDelayMs` returns a number and `classifyPollError` reads an error. The
  * waiting is the caller's, through the injected `sleep` seam, so the loop stays testable without a

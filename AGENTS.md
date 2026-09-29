@@ -61,10 +61,10 @@ Out of scope — these are the non-goals other documents cite:
   product, in scope and delivered. What stays out is merging or deduplicating alerts across sources
   (ADR 011 §4), ~~the Defender incidents API (§1), any write path,~~ and Defender ground truth or
   scoring — Defender runs are unscored by construction.
-  **Narrowed by ADR 012:** reading incidents *as an investigation unit* stays out — a run is keyed
+  **Narrowed by ADR 013:** reading incidents *as an investigation unit* stays out — a run is keyed
   on one alert id (ADR 011 §1). Writing one additive comment to an alert's incident is in scope and
   is the only write this system performs; `PATCH`-ing the alert itself was measured and discards the
-  field (ADR 012 §6).
+  field (ADR 013 §6).
 
 Delivery status is not kept here — see [`docs/README.md`](./docs/README.md).
 

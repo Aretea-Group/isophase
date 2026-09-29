@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * The wire contract for the control socket (PRD-9 §4.1 D4).
+ * The wire contract for the control socket (PRD-10 §4.1 D4).
  *
  * Newline-delimited JSON validated by Zod on both ends, which is already this repository's contract
  * tool for REST, configuration and run artifacts. The protocol surface is exactly
@@ -9,7 +9,7 @@ import { z } from "zod";
  * point of ADR 007's interface was that a second implementation could sit behind it without the
  * caller changing. Inventing a wider wire vocabulary would undo that.
  *
- * Deliberately unauthenticated and unix-domain only (PRD-9 §3): local machine, single user, file
+ * Deliberately unauthenticated and unix-domain only (PRD-10 §3): local machine, single user, file
  * permissions as the access control. A TCP listener here would be a service, which `AGENTS.md` §2
  * has no room for.
  */

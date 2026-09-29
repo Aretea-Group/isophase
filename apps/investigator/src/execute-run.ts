@@ -63,7 +63,7 @@ export interface InvestigatorDeps {
    */
   write?: (directory: string, run: InvestigationRun) => Promise<string>;
   /**
-   * Where findings go when an investigation completes (PRD-9 §4.1 D1, D12).
+   * Where findings go when an investigation completes (PRD-10 §4.1 D1, D12).
    *
    * Defaults to the local publisher, so a clone with no credentials still exercises the whole path.
    * An interface rather than a function - unlike `write` above - because it has two implementations
@@ -253,7 +253,7 @@ export async function executeRun(
   };
 
   /**
-   * Publish a finished result, then flush (PRD-9 §4.1 D12).
+   * Publish a finished result, then flush (PRD-10 §4.1 D12).
    *
    * Every caller publishes — the loop and a console-launched run alike — because one action that
    * means two different things depending on the entry point is worse than either meaning.
@@ -290,7 +290,7 @@ export async function executeRun(
         {
           id: result.alertId,
           title: result.alertTitle,
-          // The grouping the source put this alert in, carried source-neutrally (ADR 012 §6). The
+          // The grouping the source put this alert in, carried source-neutrally (ADR 013 §6). The
           // publisher decides what to do with it; nothing here knows it means "incident".
           ...(alert?.caseId === undefined ? {} : { caseId: alert.caseId }),
         },
@@ -356,7 +356,7 @@ export async function executeRun(
     // exist. Recording it is the whole reason `runId` is an input (PRD-5 §5.2).
     // Name the alert this run was for. `alerts` is still empty here — the throw happened before
     // `listAlerts`/`getAlert` returned — so without this the artifact cannot say what it was trying
-    // to investigate, and the console has no result row to offer a re-run against (ADR 012 §10).
+    // to investigate, and the console has no result row to offer a re-run against (ADR 013 §10).
     if (options.alertId !== undefined && alerts.length === 0) {
       alerts = [{ id: options.alertId, title: "(not retrieved)" } as SecurityAlert];
     }
@@ -434,7 +434,7 @@ export async function executeRun(
       ? options.signal.reason.fault
       : undefined;
   /**
-   * A sweep that produced nothing usable is `failed`, not `completed` (ADR 012 §10).
+   * A sweep that produced nothing usable is `failed`, not `completed` (ADR 013 §10).
    *
    * The two status axes stay distinct — a *result* failing is one alert going wrong inside a sweep
    * that ran — but a sweep in which **no** alert succeeded has nothing to show, and reporting it as

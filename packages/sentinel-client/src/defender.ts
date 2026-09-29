@@ -53,7 +53,7 @@ const ERROR_BODY_MAX_BYTES = 32 * 1024;
 /**
  * The most alerts one `alerts_v2` page will return.
  *
- * Exported since PRD-9: the watch loop needs it to recognise truncation — receiving exactly the cap
+ * Exported since PRD-10: the watch loop needs it to recognise truncation — receiving exactly the cap
  * means the window holds more than one cycle can see, and the alerts beyond it are invisible rather
  * than queued (§4.1 D10).
  */
@@ -215,7 +215,7 @@ const GraphAlert = z.object({
   categories: z.array(z.string()).nullish(),
   mitreTechniques: z.array(z.string()).nullish(),
   evidence: z.array(z.json()).nullish(),
-  /** The incident this alert belongs to. Surfaced as the source-neutral `caseId` (ADR 012 §6). */
+  /** The incident this alert belongs to. Surfaced as the source-neutral `caseId` (ADR 013 §6). */
   incidentId: z.string().nullish(),
 });
 
@@ -307,7 +307,7 @@ function projectAlert(raw: Record<string, unknown>): SecurityAlert {
     title: alert.title,
     description: alert.description ?? "",
     // The incident this alert sits in, surfaced as the source-neutral `caseId` so the publisher can
-    // address it without reading `native` (ADR 012 §6).
+    // address it without reading `native` (ADR 013 §6).
     ...(caseId === undefined ? {} : { caseId }),
     ...(severity === undefined ? {} : { severity }),
     ...(status === undefined ? {} : { status }),
@@ -325,17 +325,17 @@ function projectAlert(raw: Record<string, unknown>): SecurityAlert {
 
 export class DefenderClient implements SecurityDataSource, FindingsPublisher {
   /**
-   * Names this publisher in the run artifact (PRD-9 §4.2).
+   * Names this publisher in the run artifact (PRD-10 §4.2).
    *
    * The connector is both the read source and the write target because writing to Defender is the
    * Defender connector's job, and because `#request` already owns the cached token, the timeout and
    * the error mapping — a parallel publisher class would duplicate all three and acquire a second
    * token per run. The seam stays explicit at the caller: `executeRun` takes a publisher in
-   * `deps.publisher`, separately from the source (ADR 012 §7).
+   * `deps.publisher`, separately from the source (ADR 013 §7).
    */
   readonly id = "defender-graph";
 
-  /** Measured: `POST .../incidents/{id}/comments` rejects 2,913 characters (ADR 012 §8). */
+  /** Measured: `POST .../incidents/{id}/comments` rejects 2,913 characters (ADR 013 §8). */
   readonly maxBodyChars = INCIDENT_COMMENT_MAX_CHARS;
 
   readonly #credential: TokenCredential;
@@ -568,7 +568,7 @@ export class DefenderClient implements SecurityDataSource, FindingsPublisher {
   }
 
   /**
-   * Add findings as a comment on the alert's incident (ADR 012 §6).
+   * Add findings as a comment on the alert's incident (ADR 013 §6).
    *
    * **Measured against a live tenant on 2026-09-16**, because the documentation settles none of it
    * and the obvious reading is wrong:
@@ -581,7 +581,7 @@ export class DefenderClient implements SecurityDataSource, FindingsPublisher {
    *   nor `GET .../incidents/{id}/comments` reads it back; both answer 400. A plain
    *   `GET /security/incidents/{id}` carries it inline, which is what the idempotency check uses.
    *
-   * Idempotency is read-then-write against the marker (PRD-9 §4.2), not a transaction: two
+   * Idempotency is read-then-write against the marker (PRD-10 §4.2), not a transaction: two
    * processes publishing the same alert in the same instant can both miss the marker and both
    * write. The loop starts each alert once, so losing that race needs two watch processes against
    * one tenant, and it costs a duplicate comment rather than a duplicate investigation.

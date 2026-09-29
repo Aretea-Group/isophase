@@ -1,10 +1,10 @@
-# ADR 012 — The findings write path and unattended operation
+# ADR 013 — The findings write path and unattended operation
 
 **Status:** Accepted
 
 **Date:** 2026-09-16
 
-**Implements:** PRD-9 — Unattended Investigation and Findings Write-Back
+**Implements:** PRD-10 — Unattended Investigation and Findings Write-Back
 
 **Reverses:** `AGENTS.md` §2 ("What stays out is … the Defender incidents API (§1), **any write path**, and Defender ground truth or scoring") — the write path half only. The Defender incidents API stays out, and Defender runs stay unscored.
 
@@ -14,19 +14,19 @@
 
 ## Context
 
-PRD-9 fixed the shape in conversation before any code existed. Implementation nonetheless met four
+PRD-10 fixed the shape in conversation before any code existed. Implementation nonetheless met four
 things the document could not have known, and this record exists for those: an ADR that only
 restated the PRD would be a second copy of a decision rather than a record of one.
 
-Where this contradicts PRD-9 §4.2, **this document wins and the PRD stays as written** — that is the
-rule PRD-9's own header inherits from `create-prd`, and a PRD edited to match the code is no longer
+Where this contradicts PRD-10 §4.2, **this document wins and the PRD stays as written** — that is the
+rule PRD-10's own header inherits from `create-prd`, and a PRD edited to match the code is no longer
 evidence of what was agreed.
 
 ## Decisions
 
 ### 1. `FindingsPublisher` lives in `@soc/sentinel-client`, not `@soc/contracts`
 
-PRD-9 §4.2 says "One method, in `@soc/contracts`". It is not there.
+PRD-10 §4.2 says "One method, in `@soc/contracts`". It is not there.
 
 `@soc/contracts` holds Zod *data* schemas and nothing else — `SecurityAlert`, `QueryResponse`,
 `SchemaTable`. The read capability it pairs with, `SecurityDataSource`, lives in
@@ -34,12 +34,12 @@ PRD-9 §4.2 says "One method, in `@soc/contracts`". It is not there.
 first capability interface in a package that has none, and split one capability across two packages
 for the first time.
 
-`AnalystClassification` and `ALERT_COMMENT_MAX_CHARS` *did* go to `@soc/contracts` (PRD-9 D7), which
+`AnalystClassification` and `ALERT_COMMENT_MAX_CHARS` *did* go to `@soc/contracts` (PRD-10 D7), which
 is the same rule applied consistently: they are data, and the interface is not.
 
 ### 2. `publishFindings` takes rendered text, not an `InvestigationSummary`
 
-PRD-9 §4.2 writes the signature as `publishFindings(alertRef, summary)`. The implementation is
+PRD-10 §4.2 writes the signature as `publishFindings(alertRef, summary)`. The implementation is
 `publishFindings(alert, body: string)`.
 
 `InvestigationSummary` is a **TypeBox** type in `apps/investigator/src/contracts/summary.ts` —
@@ -54,7 +54,7 @@ with a test asserting the forbidden words are absent.
 
 ### 3. Truncation is detected by "received equals the requested cap", not by `$count`
 
-PRD-9 AC19 asks the loop to report truncation "with the `$count` and the number received".
+PRD-10 AC19 asks the loop to report truncation "with the `$count` and the number received".
 `$count` is not available to it.
 
 `SecurityDataSource.listAlerts(limit?)` returns `SecurityAlert[]`. The Defender connector requests
@@ -71,7 +71,7 @@ numbers are the cap and the count received; `$count` itself is not among them.
 
 `apps/investigator/test/ground-truth-isolation.test.ts` forbids any runtime file read by a computed
 path anywhere in `apps/investigator/src/`. `seen-alerts.ts` needs one: the deduplication half of
-PRD-9 D10 reads `runs/*.json` at watch startup, and that read is what lets the loop keep no cursor
+PRD-10 D10 reads `runs/*.json` at watch startup, and that read is what lets the loop keep no cursor
 of its own.
 
 The guard now names that one file, in the pattern `write-isolation.test.ts` already uses for its
@@ -85,7 +85,7 @@ second entry should be argued for as hard as this one.
 
 ### 5. The seen-set carries two things, and a failure releases one of them
 
-Not in PRD-9 at all, and subtle enough that it was a bug before it was a decision.
+Not in PRD-10 at all, and subtle enough that it was a bug before it was a decision.
 
 `seenAlertIds` holds alerts with an artifact on disk (seeded at startup) *and* alerts the loop has
 in flight (claimed just before `start`, because `start` returns immediately and the next pass would
@@ -96,7 +96,7 @@ Without the release, `maxFailuresPerAlert` is unreachable and one transient erro
 the process lifetime. Across processes the artifact still wins — a failed run wrote one — so
 retrying is bounded to a single process, which is what AC10 asks for.
 
-### 6. `alerts_v2` does not accept a comment, and PRD-9 §4.2's Graph publisher cannot be built
+### 6. `alerts_v2` does not accept a comment, and PRD-10 §4.2's Graph publisher cannot be built
 
 **Measured 2026-09-16** by `bun run probe:defender --only I --write-probe`, against the live tenant,
 on alert `snd726887c-…`:
@@ -111,7 +111,7 @@ on alert `snd726887c-…`:
 `$expand=comments` would not change it — the research note's §492 question about `$select`/`$expand`
 is not what is happening here. Graph accepted the request and discarded the field.
 
-PRD-9 §4.2 specifies the Graph publisher as *"`PATCH /security/alerts_v2/{id}` against the alert's
+PRD-10 §4.2 specifies the Graph publisher as *"`PATCH /security/alerts_v2/{id}` against the alert's
 `comments` collection"*. **That does not work, and no payload shape makes it work** — a 200 that
 persists nothing is not a shape problem.
 
@@ -173,7 +173,7 @@ Maximum comment length is 1000 characters, received 2913.
 ```
 
 Phase 0 lifted `ALERT_COMMENT_MAX_CHARS = 30_000` from Sentinel's documented *alert* comment bound
-and PRD-9 §4.2 used it for publication. That bound is real and applies to a different object. The
+and PRD-10 §4.2 used it for publication. That bound is real and applies to a different object. The
 incident limit is thirty times smaller, and assuming one covered both is what produced this error
 against a real tenant.
 
@@ -196,7 +196,7 @@ would have been caught by a unit test written from the same assumption as the co
 `review-prd` ran against the finished implementation and found seven defects; five were fixed and
 two are recorded below as open. None was caught by the 582 tests that were green at the time, and
 three were only visible against a live tenant or in a real artifact. They are recorded here rather
-than in PRD-9 because the PRD described the intended behaviour correctly — the code did not.
+than in PRD-10 because the PRD described the intended behaviour correctly — the code did not.
 
 **The watch alert window never reached the query.** `index.ts` set
 `InvestigatorConfig.alertWindow`, which `execute-run.ts` uses *only* to stamp the artifact. The
@@ -214,7 +214,7 @@ awaiting pending publications before the terminal flush.
 
 **`PUBLISH_FINDINGS` was documented nowhere a reader looks.** The README named the *permission* as
 the gate; the flag defaults to off. A reader who followed the README exactly got the local publisher
-and a log line reading `published … via local`. **The Purpose in PRD-9 §1 was unreachable through
+and a log line reading `published … via local`. **The Purpose in PRD-10 §1 was unreachable through
 the documented path.** Fixed in the README; `.env.example` still needs it — that path is denied to
 this tooling.
 
@@ -255,7 +255,7 @@ followed, none of them intended:
 - the console drew a **green tick** over a failed investigation, because `classifyRun` keys on run
   status;
 - `InProcessControl` emitted `run_completed`, so the watch loop added the alert to `seenAlertIds`
-  and **cleared its failure counter** — `maxFailuresPerAlert` and PRD-9 AC10's parking could never
+  and **cleared its failure counter** — `maxFailuresPerAlert` and PRD-10 AC10's parking could never
   fire for a model timeout, which is the commonest failure there is;
 - nothing reading the run alone could distinguish a successful sweep from a wholly failed one.
 
@@ -280,8 +280,8 @@ still refuses, because re-running "it" would mean guessing which.
 **Narrows** ADR 011 §9 and PRD-7 §8 without weakening either.
 
 `watch.ts` called `listAlerts()` bare. One Graph 429 at 03:00 propagated out of `runWatch`, and
-`index.ts` printed a line and exited 1 — against a PRD-9 §4.2 that promised backoff and a §7 that
-required it be observable. Neither was built, and **PRD-9 has no acceptance criterion for backoff at
+`index.ts` printed a line and exited 1 — against a PRD-10 §4.2 that promised backoff and a §7 that
+required it be observable. Neither was built, and **PRD-10 has no acceptance criterion for backoff at
 all**, which is why nothing caught its absence.
 
 The apparent conflict with ADR 011 §9 is not one. That section forbids the **connector re-issuing a
@@ -298,7 +298,7 @@ the opposite effect — it sends strictly fewer requests than the configured cad
   with full jitter, capped at `WATCH_BACKOFF_MAX_MS`.
 - **permanent** (401/403/404/400) **stops the loop** with a non-zero exit. An expired secret does not
   heal, and a loop that polls through one looks alive while doing nothing — which is worse than
-  stopping, because nobody investigates a healthy-looking process. PRD-9 §3 puts deployment
+  stopping, because nobody investigates a healthy-looking process. PRD-10 §3 puts deployment
   artifacts out of scope, so exiting is the only signal a supervisor can act on.
 
 Three implementation notes that are not obvious:
@@ -314,7 +314,7 @@ Three implementation notes that are not obvious:
   age out precisely when the tenant was least able to say so. The assertion is now against
   `max(pollInterval, backoffCeiling)`, and raising the ceiling past the window is refused at startup.
 
-**Empty-queue backoff is dropped deliberately.** PRD-9 §4.2 promised it; one poll against a 150/min
+**Empty-queue backoff is dropped deliberately.** PRD-10 §4.2 promised it; one poll against a 150/min
 budget is cheap, and slowing down makes a new alert wait longer for no saving. Recorded here rather
 than left looking unimplemented.
 
@@ -325,10 +325,10 @@ control flow reaches the publisher through `FindingsPublisher` and never branche
 implementation is behind it, exactly as it already does for reads.
 
 PRD-5 §14's write-isolation claim is *stronger*, not weaker: `apps/console/src` now contains no
-filesystem write primitive at all, because PRD-9 Phase 0 removed the `drive/` seam it used to
+filesystem write primitive at all, because PRD-10 Phase 0 removed the `drive/` seam it used to
 except.
 
-The measured tenant answers that PRD-9 §10 asked for are recorded. Q2: `alerts_v2` returns alerts
+The measured tenant answers that PRD-10 §10 asked for are recorded. Q2: `alerts_v2` returns alerts
 with `serviceSource: microsoftSentinel`, so this workspace is onboarded to the Defender portal and
 D8 holds — one Graph publisher covers both products. Q1: the write probe has since run, and the
 answer is no — `comments` is not `PATCH`-writable app-only on `alerts_v2`, which is §6 above. That

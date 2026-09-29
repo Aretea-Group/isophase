@@ -159,7 +159,7 @@ export interface ProbeArgs {
   sections: Set<SectionId>;
   outDir?: string;
   /**
-   * Arm section I's write half (PRD-9 Phase 2, AC5).
+   * Arm section I's write half (PRD-10 Phase 2, AC5).
    *
    * Off by default and deliberately awkward to turn on. Every other request this script makes is a
    * read; a `PATCH` to `alerts_v2` adds a comment to a real analyst's real alert, and Microsoft
@@ -382,7 +382,7 @@ interface RequestSpec {
   id: string;
   question: string;
   /**
-   * `PATCH` exists for section I alone (PRD-9 Phase 2).
+   * `PATCH` exists for section I alone (PRD-10 Phase 2).
    *
    * This union was `"GET" | "POST"` for the whole of PRD-8, and that was the probe's read-only
    * guarantee stated where a compiler could hold it. Widening it is the real change here — every
@@ -1924,12 +1924,12 @@ async function sectionH(context: Context, defenderTables: readonly string[]): Pr
 }
 
 /**
- * I — the write path, and whether Sentinel's alerts are reachable at all (PRD-9 Phase 2).
+ * I — the write path, and whether Sentinel's alerts are reachable at all (PRD-10 Phase 2).
  *
  * Two questions, and they are not the same kind of question.
  *
  * **I1 is a read** and runs whenever section I does: does `alerts_v2` return anything with
- * `serviceSource eq 'microsoftSentinel'`? That settles PRD-9 §10 Q2 — whether this tenant's
+ * `serviceSource eq 'microsoftSentinel'`? That settles PRD-10 §10 Q2 — whether this tenant's
  * Sentinel workspace is onboarded to the Defender portal — which decides whether one Graph
  * publisher covers both products here (§4.1 D8) or whether Sentinel alerts are simply out of reach.
  *
@@ -1940,7 +1940,7 @@ async function sectionH(context: Context, defenderTables: readonly string[]): Pr
  * alert on the operator's behalf.
  *
  * PRD-8 §4.1 D12's rule is what this exists to satisfy: no connector code until a probe has run.
- * PRD-9 §10 Q1 stays open until I2 answers it, and the Graph publisher is not written before then.
+ * PRD-10 §10 Q1 stays open until I2 answers it, and the Graph publisher is not written before then.
  */
 async function sectionI(context: Context): Promise<void> {
   const { recorder, args } = context;
@@ -1950,7 +1950,7 @@ async function sectionI(context: Context): Promise<void> {
     section: "I",
     id: "I1",
     question:
-      "PRD-9 Q2 — is the Sentinel workspace onboarded, i.e. does alerts_v2 carry its alerts?",
+      "PRD-10 Q2 — is the Sentinel workspace onboarded, i.e. does alerts_v2 carry its alerts?",
     method: "GET",
     url: alertsUrl(`$filter=${encodeURIComponent("serviceSource eq 'microsoftSentinel'")}&$top=1`),
     headers: authHeaders(context, PREFER_UNKNOWN_ENUMS),
@@ -1962,15 +1962,15 @@ async function sectionI(context: Context): Promise<void> {
     const found = Array.isArray(value) ? value.length : 0;
     recorder.answer(
       "I",
-      "PRD-9 §10 Q2 — is the Sentinel workspace onboarded to the Defender portal?",
+      "PRD-10 §10 Q2 — is the Sentinel workspace onboarded to the Defender portal?",
       found > 0
-        ? "**Yes.** `alerts_v2` returned at least one alert with `serviceSource: microsoftSentinel`, so Sentinel detections are reachable through the same endpoint, the same token and the same publisher as Defender-native ones (PRD-9 §4.1 D8). No second write path is needed."
+        ? "**Yes.** `alerts_v2` returned at least one alert with `serviceSource: microsoftSentinel`, so Sentinel detections are reachable through the same endpoint, the same token and the same publisher as Defender-native ones (PRD-10 §4.1 D8). No second write path is needed."
         : "**Not demonstrated.** `alerts_v2` answered but returned no `microsoftSentinel` alert. That is either a workspace which is not onboarded, or one that is onboarded and has produced no alerts — the two are indistinguishable from here, and a tenant with an empty `SecurityAlert` table cannot tell them apart. Re-run when Sentinel has fired at least once before concluding anything.",
     );
   } else {
     recorder.unanswered(
       "I",
-      "PRD-9 §10 Q2 — is the Sentinel workspace onboarded to the Defender portal?",
+      "PRD-10 §10 Q2 — is the Sentinel workspace onboarded to the Defender portal?",
       `\`alerts_v2\` returned ${sentinelAlerts.status} for the \`serviceSource\` filter, so onboarding could not be observed.`,
     );
   }
@@ -1979,7 +1979,7 @@ async function sectionI(context: Context): Promise<void> {
   if (!args.writeProbe || targetId === undefined) {
     recorder.unanswered(
       "I",
-      "PRD-9 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
+      "PRD-10 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
       "The write probe is off. It is opt-in because it cannot be undone: a `PATCH` adds a comment to a real alert, Microsoft documents no delete, and the comment carries this project's marker where an analyst will see it. Answer it with `bun run probe:defender --only I --write-probe --write-probe-alert <alertId>`, choosing an alert you are willing to mark. Until then PRD-8 §4.1 D12 forbids writing the Graph publisher.",
     );
     return;
@@ -1991,7 +1991,7 @@ async function sectionI(context: Context): Promise<void> {
   const write = await context.transport.send({
     section: "I",
     id: "I2",
-    question: "PRD-9 Q1 — does PATCH alerts_v2/{id} accept a comments append app-only?",
+    question: "PRD-10 Q1 — does PATCH alerts_v2/{id} accept a comments append app-only?",
     method: "PATCH",
     url: `${alertsUrl().split("?")[0] ?? ""}/${encodeURIComponent(targetId)}`,
     headers: { ...authHeaders(context), "content-type": "application/json" },
@@ -2002,8 +2002,8 @@ async function sectionI(context: Context): Promise<void> {
     const error = graphError(write.body);
     recorder.answer(
       "I",
-      "PRD-9 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
-      `**No, as attempted.** \`PATCH\` returned ${write.status}${error === undefined ? "" : ` — \`${error.code}\`: ${error.message}`}. PRD-9 §4.1 D1's Graph publisher needs a different target, and the PRD needs an amendment recorded in ADR 012 before Phase 2 proceeds. A 403 here most likely means \`SecurityAlert.ReadWrite.All\` is not consented; a 400 means the payload shape is wrong and the question is still open.`,
+      "PRD-10 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
+      `**No, as attempted.** \`PATCH\` returned ${write.status}${error === undefined ? "" : ` — \`${error.code}\`: ${error.message}`}. PRD-10 §4.1 D1's Graph publisher needs a different target, and the PRD needs an amendment recorded in ADR 013 before Phase 2 proceeds. A 403 here most likely means \`SecurityAlert.ReadWrite.All\` is not consented; a 400 means the payload shape is wrong and the question is still open.`,
     );
     return;
   }
@@ -2011,7 +2011,7 @@ async function sectionI(context: Context): Promise<void> {
   const readBack = await context.transport.send({
     section: "I",
     id: "I3",
-    question: "PRD-9 §4.2 — is the marker readable back, so publication can be idempotent?",
+    question: "PRD-10 §4.2 — is the marker readable back, so publication can be idempotent?",
     method: "GET",
     url: `${alertsUrl().split("?")[0] ?? ""}/${encodeURIComponent(targetId)}`,
     headers: authHeaders(context, PREFER_UNKNOWN_ENUMS),
@@ -2033,17 +2033,17 @@ async function sectionI(context: Context): Promise<void> {
   const commentCount = Array.isArray(comments) ? comments.length : undefined;
   recorder.answer(
     "I",
-    "PRD-9 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
+    "PRD-10 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
     markerFound
-      ? `**Yes.** \`PATCH\` returned ${write.status} and read-back found the marker \`${marker}\` among ${commentCount ?? "the"} comment(s), so PRD-9 §4.2's idempotency mechanism works as designed. The comment is permanent; it was written to the alert the operator named.`
-      : `**No — and the status code is misleading.** \`PATCH\` returned ${write.status}, but the alert's \`comments\` collection is ${commentCount === undefined ? "absent from the response" : `\`[]\` (${commentCount} entries)`} on both the write response and a fresh read. \`comments\` is returned as a property by both calls, so this is not a projection artifact and \`$expand\` would not change it: **Graph accepted the request and discarded the field.** This is the control for I5 below, which writes to the incident instead (ADR 012 §6).`,
+      ? `**Yes.** \`PATCH\` returned ${write.status} and read-back found the marker \`${marker}\` among ${commentCount ?? "the"} comment(s), so PRD-10 §4.2's idempotency mechanism works as designed. The comment is permanent; it was written to the alert the operator named.`
+      : `**No — and the status code is misleading.** \`PATCH\` returned ${write.status}, but the alert's \`comments\` collection is ${commentCount === undefined ? "absent from the response" : `\`[]\` (${commentCount} entries)`} on both the write response and a fresh read. \`comments\` is returned as a property by both calls, so this is not a projection artifact and \`$expand\` would not change it: **Graph accepted the request and discarded the field.** This is the control for I5 below, which writes to the incident instead (ADR 013 §6).`,
   );
 
   await incidentWriteProbe(context, readBackBody, marker);
 }
 
 /**
- * I4–I6 — the incident comment path (ADR 012 §6, PRD-9 Option A).
+ * I4–I6 — the incident comment path (ADR 013 §6, PRD-10 Option A).
  *
  * The alert `PATCH` above is the control: it establishes that Graph accepts and discards, which is
  * what moved publication to the incident. This is the path the Graph publisher will actually take,
@@ -2064,7 +2064,7 @@ async function incidentWriteProbe(
   if (incidentId === undefined) {
     recorder.unanswered(
       "I",
-      "ADR 012 §6 — does an incident accept an additive comment app-only?",
+      "ADR 013 §6 — does an incident accept an additive comment app-only?",
       "The alert carried no `incidentId`, so no incident could be targeted. Every alert `alerts_v2` returns should be in the incident model (standalone alerts are excluded from the API), which makes this worth investigating rather than working around.",
     );
     return;
@@ -2075,7 +2075,7 @@ async function incidentWriteProbe(
   const spread = await context.transport.send({
     section: "I",
     id: "I4",
-    question: "ADR 012 §6 — how many alerts share an incident in this tenant?",
+    question: "ADR 013 §6 — how many alerts share an incident in this tenant?",
     method: "GET",
     url: alertsUrl("$top=100"),
     headers: authHeaders(context, PREFER_UNKNOWN_ENUMS),
@@ -2090,7 +2090,7 @@ async function incidentWriteProbe(
     const ratio = incidents.size === 0 ? 0 : alerts.length / incidents.size;
     recorder.answer(
       "I",
-      "ADR 012 §6 — how many agent comments will one incident collect?",
+      "ADR 013 §6 — how many agent comments will one incident collect?",
       `${alerts.length} alert(s) across ${incidents.size} incident(s) — a mean of ${ratio.toFixed(1)} per incident. Each investigated alert leaves one marked comment, so that mean is what an analyst opening the busiest incident will see. Above roughly three, the per-alert verdict problem in roadmap §8 becomes visible on the incident page rather than only in the run corpus.`,
     );
   }
@@ -2111,7 +2111,7 @@ async function incidentWriteProbe(
   const before = await context.transport.send({
     section: "I",
     id: "I5a",
-    question: "ADR 012 §6 — is this alert's marker already on the incident?",
+    question: "ADR 013 §6 — is this alert's marker already on the incident?",
     method: "GET",
     url: incidentUrl,
     headers: authHeaders(context, PREFER_UNKNOWN_ENUMS),
@@ -2120,8 +2120,8 @@ async function incidentWriteProbe(
   if (ok(before) && JSON.stringify(before.body ?? null).includes(marker)) {
     recorder.answer(
       "I",
-      "ADR 012 §6 — is the incident comments API the write surface for findings?",
-      `**Yes, confirmed by idempotency.** The marker \`${marker}\` is already on incident ${incidentId} from an earlier run, so this probe wrote nothing — which is the same read-then-write \`DefenderClient.publishFindings\` performs (PRD-9 §4.2, AC22). Delete the comment in the portal and re-run to exercise the write itself.`,
+      "ADR 013 §6 — is the incident comments API the write surface for findings?",
+      `**Yes, confirmed by idempotency.** The marker \`${marker}\` is already on incident ${incidentId} from an earlier run, so this probe wrote nothing — which is the same read-then-write \`DefenderClient.publishFindings\` performs (PRD-10 §4.2, AC22). Delete the comment in the portal and re-run to exercise the write itself.`,
     );
     return;
   }
@@ -2129,7 +2129,7 @@ async function incidentWriteProbe(
   const write = await context.transport.send({
     section: "I",
     id: "I5",
-    question: "ADR 012 §6 — does POST /security/incidents/{id}/comments accept a comment app-only?",
+    question: "ADR 013 §6 — does POST /security/incidents/{id}/comments accept a comment app-only?",
     method: "POST",
     url: `${incidentUrl}/comments`,
     headers: { ...authHeaders(context), "content-type": "application/json" },
@@ -2139,7 +2139,7 @@ async function incidentWriteProbe(
   const readBack = await context.transport.send({
     section: "I",
     id: "I6",
-    question: "ADR 012 §6 — does the comment read back, so publication can be idempotent?",
+    question: "ADR 013 §6 — does the comment read back, so publication can be idempotent?",
     method: "GET",
     // A plain GET of the incident: `comments` is not a navigation property, so neither
     // `?$expand=comments` nor `/comments` addresses it — both answer 400. Measured 2026-09-16.
@@ -2162,10 +2162,10 @@ async function incidentWriteProbe(
 
   recorder.answer(
     "I",
-    "ADR 012 §6 — is the incident comments API the write surface for findings?",
+    "ADR 013 §6 — is the incident comments API the write surface for findings?",
     landed
-      ? `**Yes.** \`POST\` returned ${write.status} and the marker \`${marker}\` is present ${inWriteResponse && inReadBack ? "in the write response *and* on a fresh read of the collection" : inWriteResponse ? "in the write response, which echoes the comments collection back" : "on a fresh read of the collection"}. This is the path \`GraphFindingsPublisher\` takes, and the marker makes publication idempotent as PRD-9 §4.2 describes.${inReadBack ? "" : " The separate read did not confirm it — check I6 before relying on read-back for deduplication."} The comment is permanent and is attributed to the app registration by name.`
-      : `**No.** \`POST\` returned ${write.status}${error === undefined ? "" : ` — \`${error.code}\`: ${error.message}`}, and the marker ${ok(readBack) ? "did not read back from the incident" : `could not be read back (\`GET\` returned ${readBack.status})`}. A 403 means \`SecurityIncident.ReadWrite.All\` is not consented; anything else means Graph offers this project no additive write surface at all, which is a finding in its own right and sends PRD-9 to its Option C.`,
+      ? `**Yes.** \`POST\` returned ${write.status} and the marker \`${marker}\` is present ${inWriteResponse && inReadBack ? "in the write response *and* on a fresh read of the collection" : inWriteResponse ? "in the write response, which echoes the comments collection back" : "on a fresh read of the collection"}. This is the path \`GraphFindingsPublisher\` takes, and the marker makes publication idempotent as PRD-10 §4.2 describes.${inReadBack ? "" : " The separate read did not confirm it — check I6 before relying on read-back for deduplication."} The comment is permanent and is attributed to the app registration by name.`
+      : `**No.** \`POST\` returned ${write.status}${error === undefined ? "" : ` — \`${error.code}\`: ${error.message}`}, and the marker ${ok(readBack) ? "did not read back from the incident" : `could not be read back (\`GET\` returned ${readBack.status})`}. A 403 means \`SecurityIncident.ReadWrite.All\` is not consented; anything else means Graph offers this project no additive write surface at all, which is a finding in its own right and sends PRD-10 to its Option C.`,
   );
 }
 

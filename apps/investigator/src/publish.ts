@@ -15,18 +15,18 @@ import type { InvestigationSummaryRecord } from "./contracts/run.ts";
 type SummaryRecord = z.infer<typeof InvestigationSummaryRecord>;
 
 /**
- * The finding, as an analyst reads it on their own case (PRD-9 §4.1 D5).
+ * The finding, as an analyst reads it on their own case (PRD-10 §4.1 D5).
  *
  * Rendering lives here rather than in `@soc/sentinel-client` because it is a judgement about how
  * this project's assessment should read, not a property of any connector — and because the summary
- * type is the investigator's, which that package deliberately does not know about (ADR 012 §2).
+ * type is the investigator's, which that package deliberately does not know about (ADR 013 §2).
  *
  * Deliberately plain text. The two products render comments differently and neither documents a
  * markup contract, so anything cleverer than blank-line-separated paragraphs is a guess that fails
  * silently in someone else's portal.
  *
  * It states a likelihood and stops. **No classification, no determination, no recommended action** —
- * PRD-9 §3 fences those out permanently, and this function is where the temptation actually lands.
+ * PRD-10 §3 fences those out permanently, and this function is where the temptation actually lands.
  */
 export function renderFindings(summary: SummaryRecord): string {
   const lines = [
@@ -50,7 +50,7 @@ export function renderFindings(summary: SummaryRecord): string {
 }
 
 /**
- * Which publisher a run should use (PRD-9 §4.1 D1, ADR 012 §7).
+ * Which publisher a run should use (PRD-10 §4.1 D1, ADR 013 §7).
  *
  * A **capability** check, not a kind check: the question is "does this source know how to publish
  * findings", which every source answers for itself. `AGENTS.md` §3 forbids branching investigation

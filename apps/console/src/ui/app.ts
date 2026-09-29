@@ -110,7 +110,7 @@ function fieldCount(kind: ComposeKind): number {
 /**
  * Which field index holds the model list.
  *
- * A function taking the kind until PRD-9 Phase 0, when the feedback overlay — the only one without
+ * A function taking the kind until PRD-10 Phase 0, when the feedback overlay — the only one without
  * a model row — was removed. Both remaining overlays put the model second, so it is a constant, and
  * saying so is better than a parameter the body ignores.
  */
@@ -508,7 +508,7 @@ interface State {
 type ComposeKind = "start" | "rerun";
 
 /**
- * The one alert a sweep planned, when there is exactly one (ADR 012 §10).
+ * The one alert a sweep planned, when there is exactly one (ADR 013 §10).
  *
  * Returns nothing for a multi-alert sweep: re-running "it" would mean picking one of several, and
  * a silent pick is worse than the refusal it replaces.
@@ -1511,7 +1511,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     const alert = kind === "start" ? currentQueueAlert() : undefined;
     const result = kind === "start" ? undefined : currentResult();
     /**
-     * A sweep that died before investigating has no result row to re-run from (ADR 012 §10).
+     * A sweep that died before investigating has no result row to re-run from (ADR 013 §10).
      *
      * `currentResult()` reads `run.results` plus synthetic pending rows, and a startup failure — an
      * unknown model, an unreachable source — produces neither. That is precisely the failure class
@@ -2191,7 +2191,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     runsPoll.stop();
     unsubscribeControl?.();
     /**
-     * Cancel our own runs; never someone else's (PRD-5 §5.1, PRD-9 AC14).
+     * Cancel our own runs; never someone else's (PRD-5 §5.1, PRD-10 AC14).
      *
      * In-process runs cannot outlive the console, so quitting cancels them rather than pretending
      * otherwise. An *attached* console is the opposite case: the runs belong to a watch process

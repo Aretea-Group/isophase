@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 /**
- * Which alerts already have a run artifact (PRD-9 §4.2 step 3).
+ * Which alerts already have a run artifact (PRD-10 §4.2 step 3).
  *
  * Read once at startup, not per cycle: the loop owns the set for its lifetime and adds to it as
  * runs complete. Half of D10's "no cursor, no watermark file" claim rests on this — the other half

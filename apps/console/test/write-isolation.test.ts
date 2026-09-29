@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 /**
- * What the console may do, checked by scanning rather than by trust (PRD-5 §14, PRD-9 §4.1 D6).
+ * What the console may do, checked by scanning rather than by trust (PRD-5 §14, PRD-10 §4.1 D6).
  *
  * PRD-3's guarantee was "read-only". PRD-5 narrowed it to "no write primitive except in `drive/**`"
- * when the console gained analyst-feedback capture. PRD-9 removed that capture, and with it the
+ * when the console gained analyst-feedback capture. PRD-10 removed that capture, and with it the
  * only thing in `apps/console/src` that wrote to disk — so the claim returns to its stronger form,
  * with no seam to except:
  *
@@ -73,7 +73,7 @@ describe("console write isolation", () => {
   });
 
   test("the drive/ write seam is gone, not merely unused", () => {
-    // PRD-9 AC1. An empty `drive/` left on disk would let the next write land back in a directory
+    // PRD-10 AC1. An empty `drive/` left on disk would let the next write land back in a directory
     // this file used to exempt, without the exemption ever reappearing in a diff.
     expect(files.filter((file) => file.path.includes("/drive/")).map((file) => file.path)).toEqual(
       [],

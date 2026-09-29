@@ -90,11 +90,11 @@ export const env = createEnv({
 
     RUNS_DIR: z.string().min(1).default("runs"),
 
-    // --- The unattended loop (PRD-9 Phase 3). Read only by `--watch`. ---
+    // --- The unattended loop (PRD-10 Phase 3). Read only by `--watch`. ---
     /** How often the loop polls the primary source for alerts created since the last window. */
     WATCH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
     /**
-     * The window `--watch` draws its queue from, overriding the one-shot default (PRD-9 §4.1 D10).
+     * The window `--watch` draws its queue from, overriding the one-shot default (PRD-10 §4.1 D10).
      *
      * `P7D` suits a backfill; a polling loop wants a window sized to its interval, because the 500
      * cap against a week of a busy tenant returns an arbitrary 500 and coverage becomes random.
@@ -107,7 +107,7 @@ export const env = createEnv({
     /** Park an alert after this many failed investigations, for the process lifetime (AC10). */
     WATCH_MAX_FAILURES_PER_ALERT: z.coerce.number().int().positive().default(2),
     /**
-     * Vendor status strings to skip, comma-separated (PRD-9 §4.1 D11).
+     * Vendor status strings to skip, comma-separated (PRD-10 §4.1 D11).
      *
      * Empty by default and deliberately so: a wrong default silently skips alerts, which is worse
      * than a visible cost. The loop prints the status values it saw in its first cycle so this can
@@ -115,15 +115,15 @@ export const env = createEnv({
      */
     WATCH_SKIP_STATUSES: z.string().default(""),
     /**
-     * Where the watch process listens for a console (PRD-9 §4.1 D4).
+     * Where the watch process listens for a console (PRD-10 §4.1 D4).
      *
      * Under `runs/` because that directory is already the one both programs agree on, and because a
      * socket beside the artifacts it describes is easier to find than one in a temp directory whose
-     * name nobody wrote down. Unix domain only — see PRD-9 §3.
+     * name nobody wrote down. Unix domain only — see PRD-10 §3.
      */
     WATCH_CONTROL_SOCKET: z.string().min(1).default("runs/control.sock"),
     /**
-     * Ceiling on a single backoff wait after a failed poll (ADR 012 §11).
+     * Ceiling on a single backoff wait after a failed poll (ADR 013 §11).
      *
      * 15 minutes by default, matching the cycle Graph documents for the hunting CPU allowance —
      * waiting less than that on a throttled tenant spends a request that cannot succeed.
@@ -134,7 +134,7 @@ export const env = createEnv({
      */
     WATCH_BACKOFF_MAX_MS: z.coerce.number().int().positive().default(900_000),
     /**
-     * Write findings back to the source's case (PRD-9 §4.1 D5, ADR 012 §6, §7).
+     * Write findings back to the source's case (PRD-10 §4.1 D5, ADR 013 §6, §7).
      *
      * **Off by default, deliberately.** Selecting Defender as a source must not start commenting on
      * someone's live incidents as a side effect; `docs/defender-setup.md` presents the read-only

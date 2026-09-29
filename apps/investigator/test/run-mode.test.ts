@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { securitySourceConfigSetFromEnv } from "@soc/sentinel-client";
 
 /**
- * PRD-9 AC17 — run mode needs a tenant credential and nothing else.
+ * PRD-10 AC17 — run mode needs a tenant credential and nothing else.
  *
  * The claim in §2 is that the Kusto Emulator, the fixtures and the bootstrap are develop-mode only,
  * and that a reader with a Defender tenant and Bun has a path through the README. This asserts the
@@ -29,7 +29,7 @@ const DEFENDER_ONLY = {
   SENTINEL_TIMEOUT_MS: 30_000,
 };
 
-describe("run mode (PRD-9 §2, AC17)", () => {
+describe("run mode (PRD-10 §2, AC17)", () => {
   test("Given tenant credentials only, When sources resolve, Then Defender is the only one and it is primary", () => {
     const set = securitySourceConfigSetFromEnv(DEFENDER_ONLY);
 

@@ -10,7 +10,7 @@ import { RemoteInvestigationControl } from "../src/socket/client.ts";
 import { reclaimSocketPath, serveControl, type ControlServer } from "../src/socket/server.ts";
 
 /**
- * PRD-9 Phase 4 — the control socket, over a real unix socket rather than a stubbed transport.
+ * PRD-10 Phase 4 — the control socket, over a real unix socket rather than a stubbed transport.
  *
  * A fake transport would prove the call shapes and nothing about the thing that actually breaks:
  * frame boundaries. A `run_completed` carrying an artifact does not arrive in one chunk, and two
@@ -101,7 +101,7 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 40));
 }
 
-describe("the control socket (PRD-9 §4.1 D4)", () => {
+describe("the control socket (PRD-10 §4.1 D4)", () => {
   test("AC12 — Given a running watch process, When a console attaches, Then it lists live runs and receives events for a run it did not start", async () => {
     const { client, stub } = await connected();
 

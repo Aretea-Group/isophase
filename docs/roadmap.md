@@ -4,12 +4,12 @@
 
 Three capabilities that were deliberately cut, consolidated because they share one obstacle: all
 three need state that outlives a single investigation, and none of them is worth that state yet.
-PRD-9 §3 fences all three out and sends them here.
+PRD-10 §3 fences all three out and sends them here.
 
-**What was removed, and what remains.** PRD-9 Phase 0 deleted the console's analyst-feedback
+**What was removed, and what remains.** PRD-10 Phase 0 deleted the console's analyst-feedback
 capture — `apps/console/src/drive/` and the `feedback/` root — because it collected records nothing
 ever read. The vocabulary it carried survived: `AnalystClassification` and the 30,000-character
-Sentinel comment bound now live in `@soc/contracts` (PRD-9 §4.1 D7), so the four-value taxonomy does
+Sentinel comment bound now live in `@soc/contracts` (PRD-10 §4.1 D7), so the four-value taxonomy does
 not have to be re-derived from Microsoft's documentation when this is picked up. Removing `drive/`
 also returned the console to having no filesystem write primitive at all.
 
@@ -21,10 +21,10 @@ scoreable axis with no change there. The prompt-hash provenance in
 `apps/investigator/src/provenance.ts` exists partly for the same reason.
 
 **Human feedback.** The analyst's final verdict and corrections, fed into case memory and into
-evaluation. This is the input side of the above and has no value without it — which is why PRD-9
+evaluation. This is the input side of the above and has no value without it — which is why PRD-10
 removed the half that shipped alone.
 
-**Resumable execution.** PRD-9 §4.1 D3 rejected a durable-execution runtime (Temporal-style
+**Resumable execution.** PRD-10 §4.1 D3 rejected a durable-execution runtime (Temporal-style
 workflows, crash-resumable mid-run state) and the reason should be read before anyone adds one: a
 crash mid-investigation leaves no artifact in `runs/`, so the next poll re-picks that alert. **The
 idempotency key already provides crash recovery.** What a durable runtime would add is resumption
@@ -104,10 +104,10 @@ Potential capabilities:
   closes incidents on five classifications (`True Positive – suspicious activity`, `Benign Positive
   – suspicious but expected`, two `False Positive` variants, `Undetermined`). ~~Nothing in the
   current contract maps onto them, which also blocks any future write-back.~~ **Corrected
-  2026-09-16 (PRD-9 §4.1 D7):** four of the five now live in `@soc/contracts` as
+  2026-09-16 (PRD-10 §4.1 D7):** four of the five now live in `@soc/contracts` as
   `AnalystClassification`, lifted out of the console's feedback capture before it was deleted. What
   is still missing is the *agent's* ability to reach one — `InvestigationSummarySchema` remains
-  TP/FP — and that is what this item is about. Write-back itself is no longer blocked: PRD-9 §4.1
+  TP/FP — and that is what this item is about. Write-back itself is no longer blocked: PRD-10 §4.1
   D5 publishes findings as an additive comment and deliberately sets no classification.
 * **Alternative hypotheses, enumerated.** `fpReason` is a strong partial — it is already more than
   the shipping AI-SOC products expose — but the published evaluation checklists ask for hypotheses

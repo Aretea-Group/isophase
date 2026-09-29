@@ -116,7 +116,7 @@ describe("ground-truth isolation", () => {
     // is the tree where a handed-in path would reach the agent, so it is the tree that is scanned.
     const pattern = /(?:Bun\.file|readFileSync|readFile)\s*\(\s*(?!["'`)])/;
     /**
-     * The one computed-path read in the investigator, named rather than assumed (PRD-9 §4.2).
+     * The one computed-path read in the investigator, named rather than assumed (PRD-10 §4.2).
      *
      * `seen-alerts.ts` reads `runs/*.json` at watch startup to learn which alerts already have an
      * artifact — the deduplication half of D10, and what lets the loop keep no cursor of its own.

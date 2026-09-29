@@ -67,13 +67,13 @@ export const InvestigationResult = z.object({
   summary: InvestigationSummaryRecord.optional(),
   error: z.object({ name: z.string(), message: z.string() }).optional(),
   /**
-   * Where this investigation's findings went, and whether they arrived (PRD-9 §4.2).
+   * Where this investigation's findings went, and whether they arrived (PRD-10 §4.2).
    *
    * Fixed-size: a publisher id, an outcome, a reference, and a failure if there was one. Never the
    * comment body — that is derived from `summary`, which is already here, and storing both would
    * let an artifact disagree with itself about what was published.
    *
-   * Optional, so every artifact written before PRD-9 keeps parsing. A completed result with no
+   * Optional, so every artifact written before PRD-10 keeps parsing. A completed result with no
    * publication block is one that predates the write path, not one that failed to publish: a
    * failure is recorded as `status: "failed"` with its error, because losing the distinction would
    * make an unpublished finding indistinguishable from an unattempted one.
@@ -231,7 +231,7 @@ export const InvestigationRun = z.object({
    */
   completedAt: z.iso.datetime(),
   /**
-   * Lifecycle of the sweep (PRD-3 §7, amended by ADR 012 §10).
+   * Lifecycle of the sweep (PRD-3 §7, amended by ADR 013 §10).
    *
    * Still a different axis from `InvestigationResult.status`, which is per alert — `interrupted`
    * describes a sweep and never an alert — but the two are no longer independent at the extremes.
@@ -252,7 +252,7 @@ export const InvestigationRun = z.object({
    * id. Previously those produced stderr and exit 1 with *no file at all*, so the four most likely
    * mistakes were invisible to every reader of `runs/`.
    *
-   * **Absent on a sweep that ran and failed anyway** (ADR 012 §10): there the cause is per alert
+   * **Absent on a sweep that ran and failed anyway** (ADR 013 §10): there the cause is per alert
    * and lives on `InvestigationResult.error`, because five alerts can fail five different ways and
    * flattening them into one run-level string would pick a winner arbitrarily.
    */

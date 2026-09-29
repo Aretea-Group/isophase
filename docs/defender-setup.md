@@ -16,7 +16,7 @@ Microsoft Graph:
 |---|---|---|---|
 | `SecurityAlert.Read.All` | `GET /security/alerts_v2` | the alert queue | always |
 | `ThreatHunting.Read.All` | `POST /security/runHuntingQuery` | every telemetry query | always |
-| `SecurityIncident.ReadWrite.All` | `POST /security/incidents/{id}/comments` | writing findings onto the case | only to publish (PRD-9) |
+| `SecurityIncident.ReadWrite.All` | `POST /security/incidents/{id}/comments` | writing findings onto the case | only to publish (PRD-10) |
 
 **Grant the first two and stop, unless you want findings written back.** The read pair is the whole
 system minus its last hop: the agent investigates, the verdict lands in `runs/`, and the tenant is
@@ -25,8 +25,8 @@ never touched. That is a complete and useful configuration, and it is the one to
 ### If you want findings in the portal
 
 The agent adds a **comment** to the incident its alert belongs to, so an analyst working that case
-sees the finding without knowing this tool exists. It does nothing else — PRD-9 §4.1 D5 fixes
-publication as additive comment text, and PRD-9 §3 permanently excludes setting `status`,
+sees the finding without knowing this tool exists. It does nothing else — PRD-10 §4.1 D5 fixes
+publication as additive comment text, and PRD-10 §3 permanently excludes setting `status`,
 `classification`, `determination` or any response action.
 
 **Read this before granting it.** Three things are true and none of them is obvious:
@@ -44,7 +44,7 @@ publication as additive comment text, and PRD-9 §3 permanently excludes setting
 
 **Not `SecurityAlert.ReadWrite.All`.** It was the obvious choice and it does not work: `PATCH
 /security/alerts_v2/{id}` carrying a `comments` array returns **200 and discards the field** —
-measured, not assumed (ADR 012 §6). If you granted it for an earlier version of this document, you
+measured, not assumed (ADR 013 §6). If you granted it for an earlier version of this document, you
 can remove it; it buys nothing.
 
 If you do not want the trade, leave it ungranted. Everything else works without it, and
@@ -52,7 +52,7 @@ If you do not want the trade, leave it ungranted. Everything else works without 
 
 **Least privilege, stated rather than implied:** each row above is the narrowest documented scope for
 the endpoint beside it. `SecurityActions.ReadWrite.All` and the Defender for Endpoint scopes are
-deliberately absent — every response action is out of scope (PRD-9 §3). Reading incidents as an
+deliberately absent — every response action is out of scope (PRD-10 §3). Reading incidents as an
 investigation unit stays out too (ADR 011 §1); this grant is used to write a comment and for nothing
 else.
 

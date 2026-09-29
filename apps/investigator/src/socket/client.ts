@@ -17,7 +17,7 @@ import {
 } from "./protocol.ts";
 
 /**
- * `InvestigationControl` over a unix domain socket (PRD-9 §4.1 D4).
+ * `InvestigationControl` over a unix domain socket (PRD-10 §4.1 D4).
  *
  * ADR 007 said in-process execution was one implementation and "a spawned child or a queue worker
  * is another, swappable without the caller changing". This is that second implementation, and the
@@ -208,7 +208,7 @@ export class RemoteInvestigationControl implements InvestigationControl {
     void promise.catch(() => undefined);
   }
 
-  /** Detach without stopping the loop (PRD-9 AC14). Closing a client is not a shutdown. */
+  /** Detach without stopping the loop (PRD-10 AC14). Closing a client is not a shutdown. */
   detach(): void {
     this.#socket.end();
   }

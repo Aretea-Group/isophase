@@ -23,7 +23,7 @@ export const SecurityAlert = z.object({
   techniques: z.array(z.string()),
   compromisedEntity: z.string().optional(),
   /**
-   * The grouping this alert belongs to in its own product (PRD-9, ADR 012 §6).
+   * The grouping this alert belongs to in its own product (PRD-10, ADR 013 §6).
    *
    * Defender calls it an incident and Sentinel calls it an incident; the name here is deliberately
    * neither, because this contract is source-neutral and a field called `incidentId` would invite

@@ -3,10 +3,10 @@ import { describe, expect, test } from "bun:test";
 import { DefenderClient, findingsMarker, LocalFindingsPublisher } from "../src/index.ts";
 
 /**
- * PRD-9 AC5, AC6, AC22 — the Graph publisher, against the shapes the probe measured.
+ * PRD-10 AC5, AC6, AC22 — the Graph publisher, against the shapes the probe measured.
  *
  * `fetch` is stubbed rather than reached, and the stub answers exactly what the live tenant answered
- * on 2026-09-16 (ADR 012 §6): `POST /security/incidents/{id}/comments` returns 200 echoing the
+ * on 2026-09-16 (ADR 013 §6): `POST /security/incidents/{id}/comments` returns 200 echoing the
  * comments collection, and a plain `GET /security/incidents/{id}` carries `comments` inline. A stub
  * that invented friendlier shapes would pass while the real thing failed, which is the whole reason
  * PRD-8 §4.1 D12 makes the probe come first.
@@ -79,7 +79,7 @@ async function withStub<T>(fetchImpl: typeof globalThis.fetch, run: () => Promis
   }
 }
 
-describe("GraphFindingsPublisher (ADR 012 §6)", () => {
+describe("GraphFindingsPublisher (ADR 013 §6)", () => {
   test("AC5 — Given a credential, When findings are published, Then a comment is posted to the alert's incident", async () => {
     const { calls, fetch } = graphStub([]);
     const client = clientWith(fetch);
@@ -112,7 +112,7 @@ describe("GraphFindingsPublisher (ADR 012 §6)", () => {
 
   test("a marker for a different alert does not suppress this one", async () => {
     // The marker keys on the alert, not the incident — several alerts share an incident, and each
-    // must still get its own comment (ADR 012 §6).
+    // must still get its own comment (ADR 013 §6).
     const { calls, fetch } = graphStub([
       { comment: `${findingsMarker("alert-OTHER")}\n\nsomeone else's finding` },
     ]);

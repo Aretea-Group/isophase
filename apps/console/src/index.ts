@@ -109,7 +109,7 @@ export interface CliArgs {
   help?: boolean;
   readOnly?: boolean;
   fresh?: boolean;
-  /** Attach to a running `investigate --watch` over its control socket (PRD-9 Phase 4). */
+  /** Attach to a running `investigate --watch` over its control socket (PRD-10 Phase 4). */
   attach?: string;
 }
 

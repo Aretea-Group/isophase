@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { ALERT_COMMENT_MAX_CHARS, AnalystClassification } from "../src/index.ts";
 
 /**
- * PRD-9 AC2 — the vocabulary survived the feature that carried it.
+ * PRD-10 AC2 — the vocabulary survived the feature that carried it.
  *
  * Phase 0 deleted the console's feedback capture, where these lived. Asserting the four members
  * from the package barrel is the check that the lift in §4.1 D7 actually happened, rather than the

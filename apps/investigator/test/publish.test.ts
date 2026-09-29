@@ -20,7 +20,7 @@ import { findingsComment, renderFindings } from "../src/publish.ts";
 import { testSourceSet } from "./fixtures/source.ts";
 
 /**
- * PRD-9 AC3 and AC4 — findings reach a publisher, and a publisher that fails does not take the
+ * PRD-10 AC3 and AC4 — findings reach a publisher, and a publisher that fails does not take the
  * investigation with it.
  *
  * These drive a real `executeRun` to a completed result through `pi-ai`'s faux provider, because
@@ -120,7 +120,7 @@ function lastPublication(
   return writes.at(-1)?.results[0]?.publication;
 }
 
-describe("publication (PRD-9 §4.2)", () => {
+describe("publication (PRD-10 §4.2)", () => {
   test("AC3 — Given a completed investigation with the local publisher, When the artifact is written, Then it records the publisher and a caseRef", async () => {
     const { deps, writes } = submittingDeps();
 
@@ -156,7 +156,7 @@ describe("publication (PRD-9 §4.2)", () => {
 
   test("a sweep whose only investigation failed reports `failed`, not `completed`", async () => {
     /**
-     * ADR 012 §10. Before this, `finalStatus` never inspected results: a timed-out investigation
+     * ADR 013 §10. Before this, `finalStatus` never inspected results: a timed-out investigation
      * produced `status: "completed"`, the console drew a green tick over it, and the watch loop
      * credited the alert as seen — so `maxFailuresPerAlert` could never fire for the commonest
      * failure there is.
@@ -207,7 +207,7 @@ describe("publication (PRD-9 §4.2)", () => {
 
   test("a destination with a 1,000-character limit gets a shorter render, not a cut one", () => {
     // Graph rejected 2,913 characters on a live incident with
-    // `Maximum comment length is 1000 characters` (ADR 012 §8). Truncating the full body would have
+    // `Maximum comment length is 1000 characters` (ADR 013 §8). Truncating the full body would have
     // dropped its tail — the evidence and the disclaimer — leaving the confident opening alone.
     //
     // Sized like a real submission rather than like the fixture above: the live body that was

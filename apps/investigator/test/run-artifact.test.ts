@@ -169,7 +169,7 @@ describe("InvestigationRun", () => {
 
   test("keeps the sweep's lifecycle separate from a single alert's outcome", () => {
     // The two enums overlap on `failed` since PRD-5 §5.2 and still do not mean the same thing, but
-    // the boundary moved in ADR 012 §10: a *sweep* fails when it has nothing to show — it died
+    // the boundary moved in ADR 013 §10: a *sweep* fails when it has nothing to show — it died
     // before investigating, **or** it ran and no alert inside it succeeded — while a *result* that
     // failed is one alert going wrong. A sweep with one failure out of five is still `completed`.
     // `interrupted` remains sweep-only, which is the asymmetry that keeps them from being

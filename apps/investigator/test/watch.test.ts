@@ -12,7 +12,7 @@ import {
 } from "../src/watch.ts";
 
 /**
- * PRD-9 Phase 3 — the unattended loop.
+ * PRD-10 Phase 3 — the unattended loop.
  *
  * Every dependency is injected, so these run without a clock, a source or a model: `sleep` is a
  * no-op, `control` is a stub, and `maxCycles` bounds a loop that otherwise never returns.
@@ -149,7 +149,7 @@ function deps(control: Parameters<typeof runWatch>[1]["control"], seen: string[]
   };
 }
 
-describe("the unattended loop (PRD-9 §4.2)", () => {
+describe("the unattended loop (PRD-10 §4.2)", () => {
   test("AC7 — Given n alerts and no runs, When one sweep completes, Then exactly n runs exist, one per alert", async () => {
     const alerts = [alert("a1"), alert("a2"), alert("a3")];
     const { control, started } = stubControl(alerts, completes());
@@ -210,7 +210,7 @@ describe("the unattended loop (PRD-9 §4.2)", () => {
   });
 
   test("a transient poll failure backs off, reports why, and the next cycle succeeds", async () => {
-    // ADR 012 §11. Before this, `listAlerts()` was bare and one Graph hiccup ended the daemon.
+    // ADR 013 §11. Before this, `listAlerts()` was bare and one Graph hiccup ended the daemon.
     const flaky = failingControl(
       1,
       Object.assign(new Error("socket hang up"), {

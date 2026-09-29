@@ -5,7 +5,7 @@ import { classifyPollError, nextDelayMs } from "./backoff.ts";
 import type { ControlEvent, InvestigationControl } from "./control.ts";
 
 /**
- * The unattended loop (PRD-9 §4.1 D2, §4.2).
+ * The unattended loop (PRD-10 §4.1 D2, §4.2).
  *
  * A role of the investigator binary rather than a fourth app: it consumes `InvestigationControl`,
  * which ADR 007 already names a non-in-process implementation as the intended second consumer of,
@@ -17,7 +17,7 @@ export interface WatchOptions {
   /** ISO 8601 duration the primary source draws its queue from. */
   alertWindow: string;
   /**
-   * How many poll intervals the window must cover (PRD-9 §4.1 D10).
+   * How many poll intervals the window must cover (PRD-10 §4.1 D10).
    *
    * The invariant `window >= k * interval` is what makes a sweep complete rather than lossy: an
    * alert created just after one poll must still be inside the window at the next one, with slack
@@ -30,7 +30,7 @@ export interface WatchOptions {
   /** Park an alert after this many failed investigations, for the process lifetime. */
   maxFailuresPerAlert: number;
   /**
-   * Vendor status strings to skip, supplied by the operator (PRD-9 §4.1 D11).
+   * Vendor status strings to skip, supplied by the operator (PRD-10 §4.1 D11).
    *
    * Never a hardcoded comparison: `SecurityAlert.status` is verbatim from the source (ADR 010 §2),
    * so `status !== "resolved"` here would be a branch on source kind in disguise. Empty by default —
@@ -40,7 +40,7 @@ export interface WatchOptions {
   /** Alerts requested per cycle. Receiving exactly this many is the truncation signal. */
   listLimit: number;
   /**
-   * Ceiling on a single backoff wait (ADR 012 §11).
+   * Ceiling on a single backoff wait (ADR 013 §11).
    *
    * Load-bearing for the window invariant below, not just for patience: backing off widens the
    * *effective* interval between polls, so a cap larger than the window lets alerts age out while
@@ -54,7 +54,7 @@ export interface WatchOptions {
 export interface WatchDeps {
   control: Pick<InvestigationControl, "listAlerts" | "start" | "subscribe" | "shutdown">;
   /**
-   * Alert ids that already have a run artifact, read once at startup (PRD-9 §4.2 step 3).
+   * Alert ids that already have a run artifact, read once at startup (PRD-10 §4.2 step 3).
    *
    * A set rather than a directory scan per cycle: the loop owns it for its lifetime and adds to it
    * as runs complete. Passed in because reading `runs/` is the caller's business — the CLI has a
@@ -71,7 +71,7 @@ export class WatchConfigurationError extends Error {
 }
 
 /**
- * Refuse a configuration that would silently lose alerts (PRD-9 AC18).
+ * Refuse a configuration that would silently lose alerts (PRD-10 AC18).
  *
  * Separate from `runWatch` so the CLI can fail before authenticating to anything, and so the
  * failure is a value a test can assert on rather than a process exit.
@@ -160,7 +160,7 @@ export async function runWatch(options: WatchOptions, deps: WatchDeps): Promise<
         return;
       }
       /**
-       * Release the in-flight claim so a failure can be retried (PRD-9 AC10).
+       * Release the in-flight claim so a failure can be retried (PRD-10 AC10).
        *
        * `seenAlertIds` carries two things that look alike and are not: alerts with a run artifact
        * on disk, seeded at startup, and alerts this loop has *in flight*, claimed just before
@@ -191,7 +191,7 @@ export async function runWatch(options: WatchOptions, deps: WatchDeps): Promise<
       if (aborted()) break;
 
       /**
-       * A poll that fails must not end the daemon (ADR 012 §11, PRD-9 §4.2, §7).
+       * A poll that fails must not end the daemon (ADR 013 §11, PRD-10 §4.2, §7).
        *
        * Before this, `listAlerts()` was bare: one Graph 429 at 03:00 propagated out of `runWatch`,
        * `index.ts` printed a line and exited 1. A permanent failure still stops — an expired secret
@@ -315,7 +315,7 @@ export async function runWatch(options: WatchOptions, deps: WatchDeps): Promise<
     unsubscribe();
     if (aborted()) {
       /**
-       * Graceful shutdown (PRD-9 §4.2, AC11).
+       * Graceful shutdown (PRD-10 §4.2, AC11).
        *
        * Breaking out of the loop stops it *starting* anything further; it does nothing about what
        * is already running. `shutdown` is `InvestigationControl`'s "cancel everything still

@@ -13,7 +13,7 @@ import {
 } from "./protocol.ts";
 
 /**
- * Serve an `InvestigationControl` over a unix domain socket (PRD-9 §4.1 D4, Phase 4).
+ * Serve an `InvestigationControl` over a unix domain socket (PRD-10 §4.1 D4, Phase 4).
  *
  * The watch process owns the loop and the runs; a console attaches to see and steer them. This is
  * the half that makes "the TUI is optional" true in both directions rather than only one: without
@@ -35,7 +35,7 @@ export interface ControlServerOptions {
 }
 
 /**
- * Reclaim a socket left behind by a process that died (PRD-9 AC15).
+ * Reclaim a socket left behind by a process that died (PRD-10 AC15).
  *
  * A unix socket is a file, and an unclean exit leaves it there. Binding onto it fails, so a watch
  * process that crashed once could never be restarted without someone knowing to delete a path they

@@ -1,9 +1,9 @@
-# PRD-9 — Unattended Investigation and Findings Write-Back
+# PRD-10 — Unattended Investigation and Findings Write-Back
 
 **Status:** Approved
 
 **Depends on:** PRD-5 — Console as an Operator Surface; PRD-8 — Microsoft Defender Data Source
-**Produces:** ADR 012 — The findings write path and unattended operation
+**Produces:** ADR 013 — The findings write path and unattended operation
 **Amends:** ADR 009 §1 ("Azure Monitor Logs is the single data plane" — read-side only; a write plane is added beside it); ADR 011 §1 (Graph gains one write operation); `AGENTS.md` §2, §3, §5
 **Reverses:** `AGENTS.md` §2 ("What stays out is … the Defender incidents API (§1), **any write path**, and Defender ground truth or scoring")
 **Language/runtime:** TypeScript `strict` on Bun; no new runtime dependency
@@ -238,9 +238,9 @@ notices the bill), **poison-pill parking** (an alert that always fails must not 
 **backoff** against both throttling and an empty queue, and **graceful shutdown** through the
 `AbortSignal` PRD-5 §6 already threads.
 
-> **Amended by ADR 012 §11.** Backoff against *throttling* shipped; backoff against an *empty queue*
+> **Amended by ADR 013 §11.** Backoff against *throttling* shipped; backoff against an *empty queue*
 > was dropped deliberately — one poll against a 150/min budget is cheap, and slowing down makes a new
-> alert wait longer for no saving. Parking also needed §4.1's status change (ADR 012 §10) before it
+> alert wait longer for no saving. Parking also needed §4.1's status change (ADR 013 §10) before it
 > could fire at all: a model timeout arrived as `run_completed`, so the alert was recorded as seen. Bounded concurrency is not on that list because
 `InProcessControlOptions.maxConcurrent` already provides it.
 
@@ -425,7 +425,7 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
 
 - ~~**Q1 — Is `comments` `PATCH`-writable app-only on `alerts_v2`?**~~ **Resolved 2026-09-16: no.**
   `PATCH` returns 200 and discards the field. Publication targets the alert's incident instead —
-  see ADR 012 §6, which records the measurement and the decision.
+  see ADR 013 §6, which records the measurement and the decision.
 - ~~**Q2 — Is the operator's Sentinel workspace onboarded to the Defender portal?**~~ **Resolved
   2026-09-16: yes.** `alerts_v2` returns alerts with `serviceSource: microsoftSentinel`, confirming
   §4.1 D8 — one Graph publisher covers both products.

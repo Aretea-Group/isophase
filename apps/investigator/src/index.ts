@@ -23,7 +23,7 @@ import { assertWatchWindow, runWatch } from "./watch.ts";
 
 export interface CliArgs {
   alertId?: string;
-  /** Run as the unattended loop rather than one sweep (PRD-9 §4.1 D2). */
+  /** Run as the unattended loop rather than one sweep (PRD-10 §4.1 D2). */
   watch?: boolean;
 }
 
@@ -73,7 +73,7 @@ export function parseArgs(argv: string[]): CliArgs {
 }
 
 /**
- * Sleep, but wake early when the run is aborted (ADR 012 §11).
+ * Sleep, but wake early when the run is aborted (ADR 013 §11).
  *
  * A bare `setTimeout` was fine while the only wait was a five-minute poll interval. Backoff can
  * wait fifteen minutes, and a `SIGINT` during one would have sat out the whole delay before any
@@ -168,7 +168,7 @@ export function configFromEnv(
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
   /**
-   * Watch mode overrides the alert window at the source, not on the run config (PRD-9 §4.1 D10).
+   * Watch mode overrides the alert window at the source, not on the run config (PRD-10 §4.1 D10).
    *
    * An earlier cut set `InvestigatorConfig.alertWindow`, which `execute-run.ts` uses *only* to stamp
    * the artifact — so the loop polled `DEFENDER_ALERT_WINDOW` (a week, by default) while recording
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
   });
   const webFetch = new HttpWebFetchClient({ timeoutMs: env.WEB_FETCH_TIMEOUT_MS });
 
-  // Capability, not kind (ADR 012 §7). `undefined` means `executeRun` uses the local publisher.
+  // Capability, not kind (ADR 013 §7). `undefined` means `executeRun` uses the local publisher.
   const publisher = selectPublisher(securitySources.primary.client, {
     enabled: env.PUBLISH_FINDINGS,
   });
@@ -248,7 +248,7 @@ async function main(): Promise<void> {
 
   if (args.watch === true) {
     /**
-     * The unattended role (PRD-9 §4.1 D2).
+     * The unattended role (PRD-10 §4.1 D2).
      *
      * Built on `InProcessControl` rather than calling `executeRun` directly, so the loop consumes
      * exactly the interface ADR 007 says a second implementation would swap behind — which is what
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
     );
 
     /**
-     * The control socket comes up before the first poll and closes after the last (PRD-9 Phase 4).
+     * The control socket comes up before the first poll and closes after the last (PRD-10 Phase 4).
      *
      * Before, so a console attaching early is not racing the first investigation; in a `finally`,
      * so a crash does not leave a socket file that the next start would have to reclaim. Reclaiming

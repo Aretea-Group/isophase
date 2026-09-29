@@ -192,7 +192,7 @@ per-tenant CPU allowance that blocks until the next 15-minute cycle, so a retry 
 every other consumer in the tenant. PRD-7 §8 excluded retries; that exclusion holds and is now
 load-bearing for a second reason.
 
-**Narrowed by ADR 012 §11, without weakening it.** What is forbidden is the *connector* re-issuing a
+**Narrowed by ADR 013 §11, without weakening it.** What is forbidden is the *connector* re-issuing a
 request. The unattended loop delaying its *next scheduled poll* is a different act with the opposite
 effect: it sends strictly **fewer** requests than the configured cadence would have, and a throttled
 poll waits the documented fifteen-minute cycle rather than a short exponential step. Nothing in

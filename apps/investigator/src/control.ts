@@ -48,7 +48,7 @@ export interface InvestigationControl {
   /** Cancel everything still running. Called on quit. */
   shutdown(): void;
   /**
-   * Leave without stopping what is running (PRD-9 AC14).
+   * Leave without stopping what is running (PRD-10 AC14).
    *
    * Implemented only where the runs are somebody else's: an attached console detaches, and the
    * watch process it was driving carries on. `InProcessControl` deliberately does not implement it
@@ -308,7 +308,7 @@ export class InProcessControl implements InvestigationControl {
           this.#emit({ type: "run_cancelled", runId, alertId });
         } else if (run.status === "failed") {
           /**
-           * The sweep ran and produced nothing usable (ADR 012 §10).
+           * The sweep ran and produced nothing usable (ADR 013 §10).
            *
            * `executeRun` now reports `failed` when no result completed — a model timeout, a
            * provider outage. Before this branch existed that arrived as `run_completed`, so the
