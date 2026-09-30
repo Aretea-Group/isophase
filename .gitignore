@@ -19,6 +19,7 @@ baml_client/
 
 # Local implementation plans use GitHub Issues; never commit root scratch plans.
 /*-plan.md
+/fix.md
 
 # Editor / OS
 .DS_Store
