@@ -1,4 +1,4 @@
-name: soc-agent-poc
+name: isophase
 
 services:
   # Kusto Emulator — the query engine behind Mock Sentinel.
