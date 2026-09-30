@@ -327,13 +327,18 @@ than hollow. This workflow is the required status check named in the ruleset.
   and Isophase Computing Ltd., an active Canadian FPGA consultancy holding `isophase.com`.
   `isophase.io`, `.dev` and `.sh` return no A record, which suggests but does not prove they are
   unregistered.
-- **Unverified** — whether GitHub repository *rulesets* (as opposed to classic branch protection)
-  are available to this organisation once the repository is public. `GET /rulesets` currently
-  answers `404`. AC17 depends on the answer; if rulesets are unavailable, classic branch protection
-  covers the same four requirements and AC17 is satisfied by it instead.
-- **Unverified** — whether GitHub secret scanning and push protection are enabled for free on public
-  repositories in this organisation. AC18 depends on the answer and is checked at the moment of the
-  flip, not before.
+- ~~**Unverified**~~ **Verified 2026-09-30** — GitHub repository *rulesets* are available to this
+  organisation once the repository is public: `POST /rulesets` with `.github/rulesets/main.json`
+  created ruleset `24248125` (active, no bypass actors, required check `check`, zero approvals)
+  minutes after the flip. A direct push of an empty commit to `main` was declined with "Required
+  status check "check" is expected", and a pull request with a deliberately red check reported
+  `mergeStateStatus: BLOCKED` and `gh pr merge` was refused by "the base branch policy". Classic
+  branch protection was not needed. Grounds for AC17 and AC18.
+- ~~**Unverified**~~ **Verified 2026-09-30** — secret scanning and push protection are free on a
+  public repository in this organisation: both enabled by `PATCH /repos` in one call, and a push
+  carrying a random Stripe-shaped key was declined with `GH013 … GITHUB PUSH PROTECTION`. Dependabot
+  alerts and private vulnerability reporting enabled by their `PUT` endpoints in the same pass.
+  Grounds for AC20.
 
 ## 5. Phasing
 
@@ -484,18 +489,18 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
 - [x] **AC16** — Given `CONTRIBUTING.md`, When a first-time contributor reads it, Then it states the
       `bun run check` gate and the `AGENTS.md` §15 rule that an architecture change needs an ADR
       before code. _(test: manual)_
-- [ ] **AC17** — Given the repository after the visibility flip, When a direct push to `main` is
+- [x] **AC17** — Given the repository after the visibility flip, When a direct push to `main` is
       attempted, Then it is rejected and the change must arrive as a pull request.
       _(test: manual)_
-- [ ] **AC18** — Given a pull request whose CI run is red, When merge is attempted by the
+- [x] **AC18** — Given a pull request whose CI run is red, When merge is attempted by the
       maintainer, Then GitHub blocks it, and no standing bypass actor exists that would let it
       through. _(test: manual)_
 - [ ] **AC19** — Given a pull request opened from a fork by someone with no write access, When CI
       runs, Then the check reports on the pull request and the contributor cannot merge it
       themselves. _(test: manual)_
-- [ ] **AC20** — Given the public repository, When a commit containing a recognised credential
+- [x] **AC20** — Given the public repository, When a commit containing a recognised credential
       pattern is pushed, Then push protection blocks it. _(test: manual)_
-- [ ] **AC21** — Given the public repository, When a visitor loads the repository page, Then a
+- [x] **AC21** — Given the public repository, When a visitor loads the repository page, Then a
       description and topics are set. _(test: manual)_
 - [x] **AC22** — Given `.github/dependabot.yml`, When a dependency in `package.json` has a newer
       version, Then Dependabot opens a pull request against `main`. _(test: manual)_
