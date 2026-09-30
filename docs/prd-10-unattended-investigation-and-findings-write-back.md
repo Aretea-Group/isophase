@@ -346,9 +346,9 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
 - [x] `apps/console/test/write-isolation.test.ts` — the `drive/` exclusion is removed, tightening
       the claim rather than loosening it
 - [x] `apps/console/test/queue.test.ts` — feedback-dependent assertions
-- [ ] `packages/contracts/src/errors.ts` — feedback error variants
+- [x] `packages/contracts/src/errors.ts` — feedback error variants
 - [x] `scripts/reset-queue.ts` and `scripts/reset-queue.test.ts` — the `--include-feedback` flag
-- [ ] `feedback/` directory and its one record — removed from the working tree
+- [x] `feedback/` directory and its one record — removed from the working tree
 - [x] `AGENTS.md` §5 — the `feedback/` line in the repository shape
 - [x] `AnalystClassification` and the 30,000-character comment bound — **lifted** to
       `@soc/contracts`, not deleted (§4.1 D7)
@@ -367,9 +367,9 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
       _(test: integration)_
 - [x] **AC4** — Given a publisher that throws, When an investigation completes, Then the run
       artifact is still written and records the publication failure. _(test: unit)_
-- [x] **AC5** — Given a tenant credential holding `SecurityAlert.ReadWrite.All`, When the Graph
+- [ ] **AC5** — ~~Given a tenant credential holding `SecurityAlert.ReadWrite.All`, When the Graph
       publisher publishes findings for an alert, Then the comment is retrievable from `alerts_v2`
-      for that alert. _(test: integration)_
+      for that alert.~~ **Carried 2026-09-30 — §12 A1 → ADR 013 §6 and AC22.** _(test: integration)_
 - [x] **AC6** — Given findings already published for an alert, When the same run publishes again,
       Then no duplicate comment is created. _(test: integration)_
 - [x] **AC7** — Given a source with *n* alerts and no existing runs, When the loop completes one
@@ -429,9 +429,11 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
 - ~~**Q2 — Is the operator's Sentinel workspace onboarded to the Defender portal?**~~ **Resolved
   2026-09-16: yes.** `alerts_v2` returns alerts with `serviceSource: microsoftSentinel`, confirming
   §4.1 D8 — one Graph publisher covers both products.
-- **Q3 — What is the spend ceiling's unit and default?** Per sweep, per day, or per run; and in
+- ~~**Q3 — What is the spend ceiling's unit and default?** Per sweep, per day, or per run; and in
   tokens or currency. Phase 3 must choose one before AC9 is testable. Not architecturally
-  significant.
+  significant.~~ **Resolved 2026-09-30 (cleanup):** `WATCH_SPEND_CEILING_USD`, US dollars, per watch
+  process, no default — unset means no ceiling — and read only by `investigate --watch`
+  (`apps/investigator/src/env.ts`). AC9 was ticked against it.
 - ~~**Q4 — Does publication belong inside `executeRun` or beside it?**~~ **Resolved 2026-09-16:**
   inside. Every caller publishes, including a console-launched run — see §4.1 D12.
 
@@ -455,3 +457,14 @@ Every consumer of the feedback capture path that must migrate or be deleted in P
   is a new service" question this PRD answers
 - `docs/roadmap.md` §1, §2, §5, §8 — case memory, human feedback, the assessment contract, and
   alert grouping
+
+## 12. Amendments
+
+- **A1 — 2026-09-30 — AC5 is carried to ADR 013 §6 and AC22; it was ticked but false as written.**
+  Found at cleanup, applied on the maintainer's instruction ("go"). AC5 promised a comment written
+  through `SecurityAlert.ReadWrite.All` and retrievable from `alerts_v2`. ADR 013 §6 measured that
+  path on 2026-09-16: `PATCH /security/alerts_v2/{id}` returns 200 and discards the comment, so no
+  publisher can satisfy the criterion. Publication went to the incident instead, under
+  `SecurityIncident.ReadWrite.All`, and AC22 — the marker-based idempotency check on the incident
+  comment — is the criterion that proves what was built. The tick is withdrawn; the box stays
+  unticked with a Carried marker, so the PRD does not close on a claim its own ADR contradicts.
