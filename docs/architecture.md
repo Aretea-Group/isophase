@@ -1,4 +1,4 @@
-# SOC Investigation Agent — Architecture
+# Isophase — Architecture
 
 **Status:** v0.3 — Mock Sentinel, investigation runtime and Azure connector boundary
 

@@ -74,7 +74,7 @@ a later reader does not "fix" it.
 ## Portal walkthrough
 
 1. **Entra admin center → Applications → App registrations → New registration.**
-   Name it something an operator will recognise a year from now — `soc-agent-poc (read-only)` is
+   Name it something an operator will recognise a year from now — `isophase (read-only)` is
    fine. Leave *Supported account types* on **Accounts in this organizational directory only**.
    Leave the redirect URI blank: this is a daemon, and it never signs a person in.
 
@@ -101,7 +101,7 @@ The permission ids are looked up rather than pasted, so this stays correct if Mi
 ```sh
 GRAPH=00000003-0000-0000-c000-000000000000
 
-APP_ID=$(az ad app create --display-name "soc-agent-poc (read-only)" --query appId -o tsv)
+APP_ID=$(az ad app create --display-name "isophase (read-only)" --query appId -o tsv)
 az ad sp create --id "$APP_ID"
 
 for role in SecurityAlert.Read.All ThreatHunting.Read.All; do
