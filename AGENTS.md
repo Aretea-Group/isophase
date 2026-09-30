@@ -1,4 +1,4 @@
-# AGENTS.md — SOC Investigation Agent
+# AGENTS.md — Isophase
 
 The implementation contract for coding agents working in this repository.
 

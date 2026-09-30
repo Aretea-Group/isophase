@@ -7,7 +7,7 @@ expose a customer's security telemetry, so please report privately.
 ## Reporting
 
 Use GitHub's private vulnerability reporting:
-**[Report a vulnerability](https://github.com/Aretea-Group/soc-agent-poc/security/advisories/new)**.
+**[Report a vulnerability](https://github.com/Aretea-Group/isophase/security/advisories/new)**.
 It opens a draft advisory visible only to you and the maintainers.
 
 Do not open a public issue, and do not include tenant identifiers, alert contents or run artifacts

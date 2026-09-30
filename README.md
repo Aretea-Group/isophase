@@ -1,4 +1,4 @@
-# SOC Investigation Agent
+# Isophase
 
 **An autonomous agent that triages your security alerts while nobody is watching, and writes what it
 found onto the case.**

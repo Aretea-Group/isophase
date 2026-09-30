@@ -1,6 +1,6 @@
 # Technical Artifacts
 
-Architecture baseline, PRDs and decision records for the SOC Investigation Agent.
+Architecture baseline, PRDs and decision records for Isophase, the SOC investigation agent.
 
 Where a document disagrees with the code, the **ADRs are the authority** — they record what changed
 and why. `architecture.md` predates PRD-2 and is annotated where ADR 005 supersedes it.

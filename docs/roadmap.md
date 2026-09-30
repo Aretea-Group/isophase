@@ -286,3 +286,27 @@ host configuration no artifact can carry. Against Track A:
 Both need a build and publish pipeline, and a binary needs one per platform — which is why PRD-9
 shipped clone-and-run and left this here. Neither is a commitment; the spike above decides whether
 the first is even available.
+
+### 12. Release Verification Debt
+
+Carried from PRD-9 §11 A2 on 2026-09-30. Three acceptance criteria of the open-source release were
+never proven, because each needs something the build did not have. They are verification, not
+features: nothing here changes code, and each closes by someone doing the walk and recording the
+result.
+
+* **Track B on a clean machine** (PRD-9 AC13). Given a clean machine with Bun, Docker and a model
+  key, when a reader follows the README's Track B from the top, then they reach a scored run against
+  the scenario corpus in 30 minutes or less. PRD-9 §6 named this the row that decides whether Goal 2
+  was met — a stranger can benchmark their own agent — and it is measured by walking the README on
+  a machine that has never seen the repository, not by reading it
+* **Track A on a clean machine** (PRD-9 AC28). Given a clean machine with Bun, a model key and a
+  consented Defender app registration, when a reader follows Track A only, then they reach a
+  completed investigation against their tenant without installing Docker, starting the emulator or
+  running `data:bootstrap`. Needs a tenant whose administrator has granted the two read
+  permissions in `docs/defender-setup.md`
+* **A pull request from a fork** (PRD-9 AC19). Given a pull request opened from a fork by someone
+  with no write access, when CI runs, then the `check` reports on the pull request and the
+  contributor cannot merge it themselves. Needs a second GitHub account. The ruleset that makes
+  this true — required check, zero approvals, no bypass — was proven for the maintainer on
+  2026-09-30 (PRD-9 AC17, AC18); what is unproven is the fork path specifically, where Actions
+  runs with read-only permissions and no secrets

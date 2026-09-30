@@ -393,7 +393,7 @@ domain is wanted — which the rename does not depend on.
 | Pull requests gated by an automated check | 0 | all | ruleset required-check setting |
 | Private disclosure route for a vulnerability | none | `SECURITY.md` | file exists and names a route |
 | Roadmap sections presenting delivered work as future work | 3 (§6, §9, §10) | 0 | §7 checklist |
-| Time for a stranger to a first scored run | unmeasured | ≤ 30 min on a clean machine, model key aside | walkthrough on a fresh clone, Phase 2 exit |
+| Time for a stranger to a first scored run | unmeasured | ≤ 30 min on a clean machine, model key aside | ~~walkthrough on a fresh clone, Phase 2 exit~~ carried to roadmap §12, 2026-09-30 (§11 A2) |
 
 The last row is the one that decides whether Goal 2 was actually met, and it is measured by walking
 the README on a machine that has never seen the repository — not by reading it.
@@ -478,9 +478,9 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
       — states what a scenario records and how scoring works, and gives the command that scores a
       run. Directory paths appear as supporting detail, never as the explanation.
       _(test: manual)_
-- [ ] **AC13** — Given a clean machine with Bun, Docker and a model key, When a reader follows the
+- [ ] **AC13** — ~~Given a clean machine with Bun, Docker and a model key, When a reader follows the
       README's Track B from the top, Then they reach a scored run against the scenario corpus in 30
-      minutes or less. _(test: e2e)_
+      minutes or less.~~ **Carried 2026-09-30 — §11 A2 → `docs/roadmap.md` §12.** _(test: e2e)_
 - [x] **AC14** — Given a pull request against `main`, When CI runs, Then `bun run check` executes
       all four stages and passes with no credential configured in the repository. _(test: ci)_
 - [x] **AC15** — Given `SECURITY.md`, When a reader finds a vulnerability, Then the file names a
@@ -495,9 +495,9 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
 - [x] **AC18** — Given a pull request whose CI run is red, When merge is attempted by the
       maintainer, Then GitHub blocks it, and no standing bypass actor exists that would let it
       through. _(test: manual)_
-- [ ] **AC19** — Given a pull request opened from a fork by someone with no write access, When CI
+- [ ] **AC19** — ~~Given a pull request opened from a fork by someone with no write access, When CI
       runs, Then the check reports on the pull request and the contributor cannot merge it
-      themselves. _(test: manual)_
+      themselves.~~ **Carried 2026-09-30 — §11 A2 → `docs/roadmap.md` §12.** _(test: manual)_
 - [x] **AC20** — Given the public repository, When a commit containing a recognised credential
       pattern is pushed, Then push protection blocks it. _(test: manual)_
 - [x] **AC21** — Given the public repository, When a visitor loads the repository page, Then a
@@ -521,10 +521,10 @@ And in `docs/roadmap.md`, per §4.1.14 — corrected, not re-planned:
       the top, Then Track A and Track B are named before either is described, Docker appears only in
       Track B's prerequisites, and no tenant path sits under a heading that calls it an "other"
       workflow. _(test: manual)_
-- [ ] **AC28** — Given a clean machine with Bun, a model key and a consented Defender app
+- [ ] **AC28** — ~~Given a clean machine with Bun, a model key and a consented Defender app
       registration, When a reader follows Track A only, Then they reach a completed investigation
       against their tenant without installing Docker, starting the emulator, or running
-      `data:bootstrap`. _(test: e2e)_
+      `data:bootstrap`.~~ **Carried 2026-09-30 — §11 A2 → `docs/roadmap.md` §12.** _(test: e2e)_
 - [x] **AC29** — Given the README after Phase 2, When its length is measured, Then it is no longer
       than it was before this PRD (543 lines), every section added is paid for by one removed, and
       no passage duplicates `.env.example`, `docs/defender-setup.md` or `docs/README.md` rather than
@@ -592,3 +592,11 @@ Every question this PRD opened is now closed.
   its exit line, the §6 first row, the §7 pointer item, AC5 and AC8 — all struck in place. AC9 is
   kept and reworded, since the original pointers resolve unchanged. Goal 1 is narrowed. ADR 012
   records the decision and the rehearsal evidence.
+- **A2 — 2026-09-30 — the three unproven criteria are carried to the roadmap, and Phase 5 runs.**
+  Asked for in chat: "rename, the rest on roadnamp". AC13 and AC28 — the clean-machine walkthroughs
+  for Track B and Track A — and AC19 — a pull request from a fork by someone with no write access —
+  need a machine that has never seen the repository, a consented Defender registration and a second
+  GitHub account respectively, none of which the build had. They go to `docs/roadmap.md` §12 as
+  release-verification debt, with their Given/When/Then intact, and their boxes stay unticked. The
+  §6 "time to first scored run" row is carried with them. Phase 5, the rename to Isophase, is
+  executed rather than dropped.
