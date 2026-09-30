@@ -609,6 +609,3 @@ unmodified from [`Azure/Azure-Sentinel`](https://github.com/Azure/Azure-Sentinel
 Microsoft's own copyright under its separate [MIT licence](./fixtures/telemetry/LICENSE); see
 [`fixtures/telemetry/SOURCE.md`](./fixtures/telemetry/SOURCE.md) for the pinned revision and the
 trademark notice.
-
-Jan-Henrik Damaschke is a contributor, with commits across the investigator, the console and the
-Sentinel client.
