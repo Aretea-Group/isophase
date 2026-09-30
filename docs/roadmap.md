@@ -310,3 +310,7 @@ result.
   this true — required check, zero approvals, no bypass — was proven for the maintainer on
   2026-09-30 (PRD-9 AC17, AC18); what is unproven is the fork path specifically, where Actions
   runs with read-only permissions and no secrets
+
+Also parked here, from PRD-9 §3: **a CLA or a formal governance model**. Premature with one
+maintainer and one named contributor; it becomes a question the day a second outside contributor
+appears, and not before.

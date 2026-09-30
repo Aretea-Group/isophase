@@ -16,6 +16,9 @@ rule generalises from Azure to any live tenant); `AGENTS.md` §2, §3, §10
 
 **Extends:** ADR 008 §3 (the derived condition includes the active source set and the alert window)
 
+**Extended by:** [ADR 012](./012-run-corpus-leaves-version-control.md) §13 (the `.data/` rule for
+live-tenant artifacts is unchanged, and `runs/` itself is no longer committed)
+
 ## Context
 
 ADR 010 drew a source-neutral boundary and had nothing to substitute across it. Mock and Azure
