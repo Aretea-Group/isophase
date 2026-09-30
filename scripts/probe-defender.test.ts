@@ -36,7 +36,7 @@ describe("probe output paths", () => {
   });
 
   test.each([
-    ["the committed corpus", "runs"],
+    ["the default runs directory", "runs"],
     ["a trace directory", "runs/traces"],
     ["an escape through ..", ".data/../runs"],
     ["a sibling that merely starts with the same characters", ".database"],

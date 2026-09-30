@@ -180,49 +180,6 @@ export function verdictBand(tpPercent: number | undefined): VerdictBand {
 }
 
 /**
- * Sentinel's four analyst classifications, in the console's own words.
- *
- * `TruePositive` is the API's spelling and it was reaching the analyst raw, which left the same
- * idea spelled three ways in one application: `TRUE POSITIVE` on the verdict band, `true-positive`
- * as a tone, `TruePositive` on the feedback form. An interface is learned through its vocabulary,
- * and three spellings is three vocabularies.
- *
- * The wire keeps the enum — it is Sentinel's, and `drive/feedback.ts` writes it verbatim. Only the
- * reading changes. Sentence case rather than the band's capitals because this is a field's value,
- * not a heading, and a shouting value competes with the heading above it.
- */
-export function classificationLabel(classification: string): string {
-  switch (classification) {
-    case "TruePositive":
-      return "True positive";
-    case "BenignPositive":
-      return "Benign positive";
-    case "FalsePositive":
-      return "False positive";
-    default:
-      return "Undetermined";
-  }
-}
-
-/**
- * Which classification a run's own verdict amounts to.
- *
- * The feedback form opens on this rather than on the first of four. `inconclusive` maps to
- * `Undetermined` and an unscored run does too — a run that reached no conclusion cannot pre-fill
- * one on the analyst's behalf.
- */
-export function classificationForBand(band: VerdictBand): string {
-  switch (band) {
-    case "true-positive":
-      return "TruePositive";
-    case "false-positive":
-      return "FalsePositive";
-    default:
-      return "Undetermined";
-  }
-}
-
-/**
  * The band as a word.
  *
  * Computed since PRD-3 and rendered nowhere until now, which left `TP 45%` for the analyst to

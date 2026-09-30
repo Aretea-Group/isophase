@@ -1,24 +1,23 @@
 import { describe, expect, test } from "bun:test";
 
 /**
- * What the console may do, checked by scanning rather than by trust (PRD-5 §14).
+ * What the console may do, checked by scanning rather than by trust (PRD-5 §14, PRD-10 §4.1 D6).
  *
- * PRD-3's guarantee was "read-only", which a scan could confirm by finding no write primitive
- * anywhere. PRD-5 gives the console a write path, so the replacement is narrower and stronger than
- * "it only writes through the investigator" — no source scan can reason about which *path* a write
- * targets, but it can reason about which *directory* the primitive lives in:
+ * PRD-3's guarantee was "read-only". PRD-5 narrowed it to "no write primitive except in `drive/**`"
+ * when the console gained analyst-feedback capture. PRD-10 removed that capture, and with it the
+ * only thing in `apps/console/src` that wrote to disk — so the claim returns to its stronger form,
+ * with no seam to except:
  *
- *   `apps/console/src` contains no filesystem write primitive except in `drive/**`, and no network
- *   primitive except in `data/alerts.ts`.
+ *   `apps/console/src` contains no filesystem write primitive at all, and no network primitive
+ *   except in `data/alerts.ts`.
  *
- * These pass against the console as it stands and go red on the first write anyone adds outside the
- * seam — which is the point. The seam then has to be named in a diff rather than assumed.
+ * These pass against the console as it stands and go red on the first write anyone adds — which is
+ * the point. A write then has to be argued for in a diff rather than slipped into an existing seam.
  */
 
 const ROOT = "apps/console/src";
 
-/** Excluded per-pattern, never globally: these are the two files allowed to do each thing. */
-const WRITE_SEAM = "/drive/";
+/** Excluded per-pattern, never globally: this is the one file allowed to reach the network. */
 const NETWORK_SEAM = "/data/alerts.ts";
 
 interface SourceFile {
@@ -57,7 +56,7 @@ describe("console write isolation", () => {
     expect(files.length).toBeGreaterThan(10);
   });
 
-  test("no filesystem write primitive outside drive/", () => {
+  test("no filesystem write primitive anywhere in console source", () => {
     const patterns = [
       /Bun\.write\s*\(/,
       /\bwriteFile(?:Sync)?\s*\(/,
@@ -68,10 +67,17 @@ describe("console write isolation", () => {
       /\bunlink(?:Sync)?\s*\(/,
     ];
     const offenders = files
-      .filter((file) => !file.path.includes(WRITE_SEAM))
       .filter((file) => patterns.some((pattern) => pattern.test(file.code)))
       .map((file) => file.path);
     expect(offenders).toEqual([]);
+  });
+
+  test("the drive/ write seam is gone, not merely unused", () => {
+    // PRD-10 AC1. An empty `drive/` left on disk would let the next write land back in a directory
+    // this file used to exempt, without the exemption ever reappearing in a diff.
+    expect(files.filter((file) => file.path.includes("/drive/")).map((file) => file.path)).toEqual(
+      [],
+    );
   });
 
   test("no subprocess spawn anywhere", () => {
@@ -89,17 +95,6 @@ describe("console write isolation", () => {
       .filter((file) => !file.path.includes(NETWORK_SEAM))
       .filter((file) => patterns.some((pattern) => pattern.test(file.code)))
       .map((file) => file.path);
-    expect(offenders).toEqual([]);
-  });
-
-  test("nothing writes under runs/", () => {
-    // The investigator remains the sole writer of run artifacts and transcripts. `drive/` is the
-    // one directory that can write at all, so it is the one directory this has to hold for.
-    // Against code, not prose: `drive/feedback.ts` explains at length *why* it writes outside
-    // `runs/`, and a raw-text scan would flag the documentation of the rule it enforces.
-    const seam = files.filter((file) => file.path.includes(WRITE_SEAM));
-    expect(seam.length).toBeGreaterThan(0);
-    const offenders = seam.filter((file) => /runs\//.test(file.code)).map((file) => file.path);
     expect(offenders).toEqual([]);
   });
 

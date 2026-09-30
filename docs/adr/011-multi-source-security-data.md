@@ -192,6 +192,13 @@ per-tenant CPU allowance that blocks until the next 15-minute cycle, so a retry 
 every other consumer in the tenant. PRD-7 §8 excluded retries; that exclusion holds and is now
 load-bearing for a second reason.
 
+**Narrowed by ADR 013 §11, without weakening it.** What is forbidden is the *connector* re-issuing a
+request. The unattended loop delaying its *next scheduled poll* is a different act with the opposite
+effect: it sends strictly **fewer** requests than the configured cadence would have, and a throttled
+poll waits the documented fifteen-minute cycle rather than a short exponential step. Nothing in
+`packages/sentinel-client/` retries, and nothing here has changed. Read together: the connector never
+retries a request, and the loop may choose to ask again later.
+
 ### 10. Alert listing is bounded by an explicit time window, never by server order
 
 `listAlerts()` filters server-side on `createdDateTime` over `DEFENDER_ALERT_WINDOW` (an ISO 8601
@@ -220,7 +227,9 @@ explicitly included — it described the current environment as `microsoft-senti
 and now reads the selected source.
 
 Two consequences an operator should know, both inherited rather than new: §13 puts every run under
-`.data/`, so a standalone Defender deployment writes no artifact into the committed corpus; and
+`.data/`, so a standalone Defender deployment writes no artifact into the committed corpus (the corpus
+was committed when this was written; [ADR 012](./012-run-corpus-leaves-version-control.md) removed
+it from version control on 2026-09-22, and the `.data/` rule stands unchanged); and
 `scripts/evaluate-runs.ts` joins to `fixtures/scenarios/`, so those runs are unscored by
 construction. Standalone Defender investigates; it does not benchmark.
 

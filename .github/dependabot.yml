@@ -1,0 +1,16 @@
+# Dependency updates arrive as pull requests against main and go through the same `check` gate as
+# everything else (PRD-9 AC22). AGENTS.md §6: do not add or bump a dependency without reviewing
+# the version and updating bun.lock — Dependabot does the second half; the review is still yours.
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

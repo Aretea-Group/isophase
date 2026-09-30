@@ -1,6 +1,7 @@
 {
-  "name": "soc-agent-poc",
+  "name": "isophase",
   "private": true,
+  "license": "MIT",
   "workspaces": [
     "apps/*",
     "packages/*"

@@ -9,6 +9,11 @@ export {
   SecurityAlertResource,
 } from "./alerts.ts";
 export {
+  ALERT_COMMENT_MAX_CHARS,
+  AnalystClassification,
+  INCIDENT_COMMENT_MAX_CHARS,
+} from "./analyst.ts";
+export {
   AccountEntity,
   AlertEntity,
   AzureResourceEntity,

@@ -1,0 +1,32 @@
+name: Bug report
+description: Something behaves differently from what the README or a document says.
+labels: [bug]
+body:
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      description: Which setup were you following?
+      options:
+        - Track A — my own tenant (Defender or Sentinel)
+        - Track B — the local lab (Kusto, Mock Sentinel, scenarios)
+        - Neither / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and what it printed. Redact tenant ids, alert titles and anything from a run artifact.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Quote the README or document that says otherwise, if one does.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`bun --version`, the commit, and for Track B the Docker runtime (Colima, Docker Desktop, Podman)"

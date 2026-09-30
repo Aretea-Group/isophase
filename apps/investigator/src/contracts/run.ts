@@ -67,6 +67,27 @@ export const InvestigationResult = z.object({
   summary: InvestigationSummaryRecord.optional(),
   error: z.object({ name: z.string(), message: z.string() }).optional(),
   /**
+   * Where this investigation's findings went, and whether they arrived (PRD-10 §4.2).
+   *
+   * Fixed-size: a publisher id, an outcome, a reference, and a failure if there was one. Never the
+   * comment body — that is derived from `summary`, which is already here, and storing both would
+   * let an artifact disagree with itself about what was published.
+   *
+   * Optional, so every artifact written before PRD-10 keeps parsing. A completed result with no
+   * publication block is one that predates the write path, not one that failed to publish: a
+   * failure is recorded as `status: "failed"` with its error, because losing the distinction would
+   * make an unpublished finding indistinguishable from an unattempted one.
+   */
+  publication: z
+    .object({
+      publisher: z.string().min(1),
+      status: z.enum(["published", "alreadyPresent", "failed"]),
+      at: z.iso.datetime(),
+      caseRef: z.string().min(1).optional(),
+      error: z.object({ name: z.string(), message: z.string() }).optional(),
+    })
+    .optional(),
+  /**
    * What this investigation cost, in effort and in money (PRD-6 §6.7, ADR 008 §1).
    *
    * Fixed-size and bounded by construction: a count of turns, a tally over the five closed tool
@@ -210,18 +231,30 @@ export const InvestigationRun = z.object({
    */
   completedAt: z.iso.datetime(),
   /**
-   * Lifecycle of the sweep (PRD-3 §7). Deliberately a different axis from
-   * `InvestigationResult.status`, which is per alert and has its own `completed | failed` enum —
-   * `interrupted` describes a sweep, never an alert. Absent on artifacts written before PRD-3.
+   * Lifecycle of the sweep (PRD-3 §7, amended by ADR 013 §10).
+   *
+   * Still a different axis from `InvestigationResult.status`, which is per alert — `interrupted`
+   * describes a sweep and never an alert — but the two are no longer independent at the extremes.
+   * **`failed` now means the sweep has nothing to show:** either it died before investigating
+   * anything, or it ran and no alert inside it succeeded.
+   *
+   * The old reading was that `failed` covered only the first of those. It made an all-failed sweep
+   * indistinguishable from a successful one to anything reading the run alone — the console drew a
+   * green tick over a timed-out investigation — so the narrower meaning was abandoned rather than
+   * papered over downstream. Partial success is still `completed`: one alert failing out of five is
+   * not a failed sweep. Absent on artifacts written before PRD-3.
    */
   status: z.enum(["running", "completed", "interrupted", "failed"]).optional(),
   /**
    * Why a sweep never got started (PRD-5 §5.2).
    *
-   * `failed` is the sweep that died before it could investigate anything — an unknown model, an
-   * unreachable Sentinel, a bad alert id. Previously those produced stderr and exit 1 with *no
-   * file at all*, so the four most likely mistakes were invisible to every reader of `runs/`.
-   * Distinct from `InvestigationResult.error`, which is one alert failing inside a sweep that ran.
+   * Set only on the startup-failure path — an unknown model, an unreachable Sentinel, a bad alert
+   * id. Previously those produced stderr and exit 1 with *no file at all*, so the four most likely
+   * mistakes were invisible to every reader of `runs/`.
+   *
+   * **Absent on a sweep that ran and failed anyway** (ADR 013 §10): there the cause is per alert
+   * and lives on `InvestigationResult.error`, because five alerts can fail five different ways and
+   * flattening them into one run-level string would pick a winner arbitrarily.
    */
   error: z.object({ name: z.string(), message: z.string() }).optional(),
   /**

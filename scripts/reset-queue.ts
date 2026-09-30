@@ -25,13 +25,11 @@
  *   bun run queue:reset --all --yes
  *   bun run queue:reset --restore --alert <id>
  *   bun run queue:reset --purge --run <id> --yes
- *   bun run queue:reset --include-feedback --run <id>
  *   bun run queue:reset --dry-run --all
  */
 import { mkdir, rename, rm } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-import { AnalystFeedback } from "../apps/console/src/drive/feedback.ts";
 import { type BenchmarkMapEntry, buildBenchmarkMap } from "./generate-benchmark-map.ts";
 
 const ARCHIVE_DIR = ".archive";
@@ -45,10 +43,8 @@ export interface ResetArgs {
   restore: boolean;
   purge: boolean;
   dryRun: boolean;
-  includeFeedback: boolean;
   runsDir: string;
   tracesDir: string;
-  feedbackDir: string;
 }
 
 function value(flag: string, next: string | undefined): string {
@@ -66,10 +62,8 @@ export function parseArgs(argv: string[]): ResetArgs {
     restore: false,
     purge: false,
     dryRun: false,
-    includeFeedback: false,
     runsDir: process.env["RUNS_DIR"] ?? "runs",
     tracesDir: process.env["INVESTIGATOR_TRACE_DIR"] ?? "runs/traces",
-    feedbackDir: process.env["FEEDBACK_DIR"] ?? "feedback",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -101,9 +95,6 @@ export function parseArgs(argv: string[]): ResetArgs {
         break;
       case "--dry-run":
         args.dryRun = true;
-        break;
-      case "--include-feedback":
-        args.includeFeedback = true;
         break;
       default:
         if (arg.startsWith("--")) throw new Error(`Unknown option "${arg}".`);
@@ -156,12 +147,6 @@ interface RunFile {
   drawAlertIds: string[];
 }
 
-interface FeedbackFile {
-  path: string;
-  name: string;
-  runId: string;
-}
-
 async function readRunFiles(directory: string): Promise<RunFile[]> {
   const files: RunFile[] = [];
   const glob = new Bun.Glob("*.json");
@@ -189,22 +174,6 @@ async function readRunFiles(directory: string): Promise<RunFile[]> {
   return files;
 }
 
-async function readFeedbackFiles(directory: string): Promise<FeedbackFile[]> {
-  const files: FeedbackFile[] = [];
-  const glob = new Bun.Glob("*.json");
-  for await (const name of glob.scan({ cwd: directory })) {
-    const path = within(directory, name);
-    try {
-      const parsed = AnalystFeedback.safeParse(await Bun.file(path).json());
-      if (!parsed.success) continue;
-      files.push({ path, name, runId: parsed.data.runId });
-    } catch {
-      // Malformed feedback is never moved based on a filename guess.
-    }
-  }
-  return files;
-}
-
 export function select(files: RunFile[], args: ResetArgs, scenarioAlerts: Set<string>): RunFile[] {
   if (args.all) return files;
   const wantedAlerts = new Set([...args.alertIds, ...(args.scenarios ? scenarioAlerts : [])]);
@@ -227,10 +196,8 @@ export async function resetQueue(
 ): Promise<void> {
   const runsDir = resolve(args.runsDir);
   const tracesDir = resolve(args.tracesDir);
-  const feedbackDir = resolve(args.feedbackDir);
   const runsArchive = within(runsDir, ARCHIVE_DIR);
   const tracesArchive = within(tracesDir, ARCHIVE_DIR);
-  const feedbackArchive = within(feedbackDir, ARCHIVE_DIR);
 
   // Needed for `--scenarios` selection, and for `--purge` to state what it is about to destroy.
   const benchmark =
@@ -247,14 +214,6 @@ export async function resetQueue(
     log("[queue:reset] nothing matched.");
     return;
   }
-
-  const selectedRunIds = new Set(selected.map((file) => file.runId));
-  const feedbackSource = args.restore ? feedbackArchive : feedbackDir;
-  const feedbackFiles = args.includeFeedback
-    ? (await readFeedbackFiles(feedbackSource).catch(() => [])).filter((file) =>
-        selectedRunIds.has(file.runId),
-      )
-    : [];
 
   const verb = args.restore ? "restore" : args.purge ? "purge" : "archive";
   // Sequential on purpose: these are renames within one directory, parallelism buys nothing, and
@@ -292,17 +251,6 @@ export async function resetQueue(
     );
   }
 
-  for (const file of feedbackFiles) {
-    const target = args.restore
-      ? within(feedbackDir, file.name)
-      : within(feedbackArchive, file.name);
-    if (args.purge) {
-      if (!args.dryRun) await rm(file.path, { force: true });
-    } else {
-      await moveFile(file.path, target, args.dryRun);
-    }
-  }
-
   /* eslint-enable no-await-in-loop */
 
   if (args.purge) {
@@ -314,8 +262,7 @@ export async function resetQueue(
     log(
       `[queue:reset] ${args.dryRun ? "purging" : "purged"} ${selected.length} run(s) ` +
         `${args.dryRun ? "would remove" : "removed"} ${draws.length} scoreable draw(s) ` +
-        `across ${affected.size} scenario(s). ` +
-        `${feedbackFiles.length} feedback record(s).` +
+        `across ${affected.size} scenario(s).` +
         (draws.length === 0 ? "" : " A draw cannot be re-derived — only bought again."),
     );
     return;
@@ -323,7 +270,6 @@ export async function resetQueue(
 
   log(
     `[queue:reset] ${args.dryRun ? "would affect" : "affected"} ${selected.length} run(s). ` +
-      `${feedbackFiles.length} feedback record(s). ` +
       (args.restore ? "" : "Their alerts are back in the queue."),
   );
 }
