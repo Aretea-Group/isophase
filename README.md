@@ -1,4 +1,4 @@
-# SOC Investigation Agent
+<h1><img src="./assets/isophase.svg" width="48" height="48" alt="" align="middle"> Isophase</h1>
 
 An autonomous LLM agent that investigates security alerts through a local deterministic security
 lab, a read-only Azure Monitor Logs connector, or Microsoft Defender XDR — one of them, or several

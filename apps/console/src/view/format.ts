@@ -29,6 +29,8 @@ export type Tone =
   | "severity-medium"
   | "severity-low"
   | "accent"
+  | "brand-primary"
+  | "brand-secondary"
   | "selected";
 
 export interface Span {
