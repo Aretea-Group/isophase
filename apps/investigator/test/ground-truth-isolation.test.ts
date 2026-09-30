@@ -115,10 +115,31 @@ describe("ground-truth isolation", () => {
     // those paths come from the console's env, never from a model or an operator. The investigator
     // is the tree where a handed-in path would reach the agent, so it is the tree that is scanned.
     const pattern = /(?:Bun\.file|readFileSync|readFile)\s*\(\s*(?!["'`)])/;
+    /**
+     * The one computed-path read in the investigator, named rather than assumed (PRD-10 §4.2).
+     *
+     * `seen-alerts.ts` reads `runs/*.json` at watch startup to learn which alerts already have an
+     * artifact — the deduplication half of D10, and what lets the loop keep no cursor of its own.
+     * It is exempt for three reasons that must all still hold, or the exemption goes:
+     *
+     * 1. It reads only `env.RUNS_DIR`, the investigator's own output directory, which this process
+     *    already writes to through `run-artifact.ts`. `fixtures/scenarios/` is not under it.
+     * 2. It runs in the CLI adapter before any investigation starts, and returns a `Set<string>` of
+     *    alert ids. No path it computes is handed onward, least of all to the agent.
+     * 3. Nothing in the harness, the tools or the prompt can reach it.
+     *
+     * Adding a second name here should feel expensive. The guard's value is that the list is short.
+     */
+    const READ_SEAM = "/apps/investigator/src/seen-alerts.ts";
     const offenders = files
       .filter((f) => f.path.includes("/apps/investigator/src/"))
+      .filter((f) => !f.path.endsWith(READ_SEAM))
       .filter((f) => pattern.test(stripComments(f.text)))
       .map((f) => f.path);
     expect(offenders).toEqual([]);
+
+    // The seam is only a seam while it exists: a rename that left the exemption behind would
+    // silently re-open the whole tree.
+    expect(files.some((f) => f.path.endsWith(READ_SEAM))).toBe(true);
   });
 });

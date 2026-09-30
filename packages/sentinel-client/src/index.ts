@@ -10,12 +10,21 @@ export {
   type AzureSentinelClientOptions,
 } from "./azure.ts";
 export {
+  ALERT_LIST_CAP,
   alertWindowMs,
   DEFAULT_DEFENDER_QUERY_MAX_ROWS,
   DefenderClient,
   defenderGraphUrl,
   type DefenderClientOptions,
 } from "./defender.ts";
+export {
+  findingsMarker,
+  LocalFindingsPublisher,
+  markedBody,
+  type FindingsPublisher,
+  type PublishOutcome,
+  type PublishTarget,
+} from "./publisher.ts";
 export { applyRowCap, cappedResponse, isControlCommand, withRowCap } from "./query-text.ts";
 export {
   assertAzureArtifactDirectories,

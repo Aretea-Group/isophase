@@ -36,5 +36,3 @@ baml_client/
 # trap PRD-3 §12 hit once. scripts/run-artifacts-ignored.test.ts guards it.
 /runs/
 
-# Analyst classifications recorded by the console. Local operational data, not source.
-/feedback/

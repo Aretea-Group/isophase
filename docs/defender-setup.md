@@ -9,17 +9,52 @@ and how to tell whether it worked. Two things consume these same three credentia
 
 ## What you are creating
 
-One Entra **app registration** with a client secret and two **application** permissions on Microsoft
-Graph:
+One Entra **app registration** with a client secret and up to three **application** permissions on
+Microsoft Graph:
 
-| Permission | Reaches | Used by |
-|---|---|---|
-| `SecurityAlert.Read.All` | `GET /security/alerts_v2` | the alert queue |
-| `ThreatHunting.Read.All` | `POST /security/runHuntingQuery` | every telemetry query |
+| Permission | Reaches | Used by | Needed when |
+|---|---|---|---|
+| `SecurityAlert.Read.All` | `GET /security/alerts_v2` | the alert queue | always |
+| `ThreatHunting.Read.All` | `POST /security/runHuntingQuery` | every telemetry query | always |
+| `SecurityIncident.ReadWrite.All` | `POST /security/incidents/{id}/comments` | writing findings onto the case | only to publish (PRD-10) |
 
-Both are read-only, and there is no third. This project never mutates a tenant — no alert update,
-no comment, no classification, no determination, no response action (PRD-8 §3). If you find
-yourself granting a `ReadWrite` permission, something has gone wrong upstream of this document.
+**Grant the first two and stop, unless you want findings written back.** The read pair is the whole
+system minus its last hop: the agent investigates, the verdict lands in `runs/`, and the tenant is
+never touched. That is a complete and useful configuration, and it is the one to start with.
+
+### If you want findings in the portal
+
+The agent adds a **comment** to the incident its alert belongs to, so an analyst working that case
+sees the finding without knowing this tool exists. It does nothing else — PRD-10 §4.1 D5 fixes
+publication as additive comment text, and PRD-10 §3 permanently excludes setting `status`,
+`classification`, `determination` or any response action.
+
+**Read this before granting it.** Three things are true and none of them is obvious:
+
+1. **It is a wider grant than the operation used.** `SecurityIncident.ReadWrite.All` permits updating
+   any incident in the tenant — status, classification, determination, assignment. This project uses
+   exactly one additive comment operation from it. Graph offers no comment-only scope, so you are
+   trusting this project's own fence rather than Entra's, and the fence is asserted by a test
+   (`apps/investigator/test/publish.test.ts`) rather than enforced by the platform.
+2. **The object is bigger than an alert.** An incident groups several alerts, so a mistake behind
+   that fence reaches further than one detection. The same grouping means one incident collects one
+   comment per investigated alert — `bun run probe:defender --only I` reports the ratio for your
+   tenant.
+3. **A comment cannot be deleted through the API** once written.
+
+**Not `SecurityAlert.ReadWrite.All`.** It was the obvious choice and it does not work: `PATCH
+/security/alerts_v2/{id}` carrying a `comments` array returns **200 and discards the field** —
+measured, not assumed (ADR 013 §6). If you granted it for an earlier version of this document, you
+can remove it; it buys nothing.
+
+If you do not want the trade, leave it ungranted. Everything else works without it, and
+`publishFindings` falls back to recording publication in the run artifact.
+
+**Least privilege, stated rather than implied:** each row above is the narrowest documented scope for
+the endpoint beside it. `SecurityActions.ReadWrite.All` and the Defender for Endpoint scopes are
+deliberately absent — every response action is out of scope (PRD-10 §3). Reading incidents as an
+investigation unit stays out too (ADR 011 §1); this grant is used to write a comment and for nothing
+else.
 
 **Application permissions, not delegated.** This diverges from the Azure Sentinel connector, which
 falls back to `az login` or `Connect-AzAccount` when no service principal is configured

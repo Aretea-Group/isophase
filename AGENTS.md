@@ -59,8 +59,12 @@ Out of scope — these are the non-goals other documents cite:
 - production HA;
 - ~~a live second-SIEM connector~~ — **reversed by ADR 011.** Microsoft Defender XDR is a live second
   product, in scope and delivered. What stays out is merging or deduplicating alerts across sources
-  (ADR 011 §4), the Defender incidents API (§1), any write path, and Defender ground truth or
+  (ADR 011 §4), ~~the Defender incidents API (§1), any write path,~~ and Defender ground truth or
   scoring — Defender runs are unscored by construction.
+  **Narrowed by ADR 013:** reading incidents *as an investigation unit* stays out — a run is keyed
+  on one alert id (ADR 011 §1). Writing one additive comment to an alert's incident is in scope and
+  is the only write this system performs; `PATCH`-ing the alert itself was measured and discards the
+  field (ADR 013 §6).
 
 Delivery status is not kept here — see [`docs/README.md`](./docs/README.md).
 
@@ -139,7 +143,6 @@ infra/        docker-compose.yml  kusto/
 scripts/      bootstrap, evaluate, benchmark map, queue reset
 docs/         architecture.md  roadmap.md  prd-*.md  adr/
 runs/         run artifacts, archive and transcripts; ignored, never committed (ADR 012)
-feedback/     analyst classifications, recorded and never fed back to the agent
 ```
 
 Do not create empty future-capability packages. `agent-runtime`, `persistence` and `testkit` are

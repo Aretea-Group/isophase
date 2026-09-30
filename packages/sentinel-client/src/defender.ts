@@ -1,5 +1,6 @@
 import type { TokenCredential } from "@azure/identity";
 import {
+  INCIDENT_COMMENT_MAX_CHARS,
   QueryResponse,
   QueryTable,
   SecurityAlert,
@@ -10,6 +11,12 @@ import { z } from "zod";
 
 import type { SecurityDataSource } from "./client.ts";
 import { SentinelApiError, type SentinelApiErrorCode } from "./errors.ts";
+import {
+  findingsMarker,
+  type FindingsPublisher,
+  type PublishOutcome,
+  type PublishTarget,
+} from "./publisher.ts";
 import { applyRowCap, isControlCommand, withRowCap } from "./query-text.ts";
 
 /**
@@ -43,7 +50,14 @@ const ERROR_BODY_MAX_BYTES = 32 * 1024;
  * operator and reads as agent regression, so the window is the selection criterion and the cap is
  * a refusal.
  */
-const ALERT_LIST_CAP = 500;
+/**
+ * The most alerts one `alerts_v2` page will return.
+ *
+ * Exported since PRD-10: the watch loop needs it to recognise truncation — receiving exactly the cap
+ * means the window holds more than one cycle can see, and the alerts beyond it are invisible rather
+ * than queued (§4.1 D10).
+ */
+export const ALERT_LIST_CAP = 500;
 
 /**
  * Without this header twenty-one evolvable enum members collapse to `unknownFutureValue`, including
@@ -201,6 +215,8 @@ const GraphAlert = z.object({
   categories: z.array(z.string()).nullish(),
   mitreTechniques: z.array(z.string()).nullish(),
   evidence: z.array(z.json()).nullish(),
+  /** The incident this alert belongs to. Surfaced as the source-neutral `caseId` (ADR 013 §6). */
+  incidentId: z.string().nullish(),
 });
 
 export interface DefenderClientOptions {
@@ -284,10 +300,15 @@ function projectAlert(raw: Record<string, unknown>): SecurityAlert {
   const endTimeUtc = iso(alert.lastActivityDateTime);
   const timeGenerated = iso(alert.createdDateTime);
 
+  const caseId = alert.incidentId ?? undefined;
+
   return SecurityAlert.parse({
     id: alert.id,
     title: alert.title,
     description: alert.description ?? "",
+    // The incident this alert sits in, surfaced as the source-neutral `caseId` so the publisher can
+    // address it without reading `native` (ADR 013 §6).
+    ...(caseId === undefined ? {} : { caseId }),
     ...(severity === undefined ? {} : { severity }),
     ...(status === undefined ? {} : { status }),
     ...(startTimeUtc === undefined ? {} : { startTimeUtc }),
@@ -302,7 +323,21 @@ function projectAlert(raw: Record<string, unknown>): SecurityAlert {
   });
 }
 
-export class DefenderClient implements SecurityDataSource {
+export class DefenderClient implements SecurityDataSource, FindingsPublisher {
+  /**
+   * Names this publisher in the run artifact (PRD-10 §4.2).
+   *
+   * The connector is both the read source and the write target because writing to Defender is the
+   * Defender connector's job, and because `#request` already owns the cached token, the timeout and
+   * the error mapping — a parallel publisher class would duplicate all three and acquire a second
+   * token per run. The seam stays explicit at the caller: `executeRun` takes a publisher in
+   * `deps.publisher`, separately from the source (ADR 013 §7).
+   */
+  readonly id = "defender-graph";
+
+  /** Measured: `POST .../incidents/{id}/comments` rejects 2,913 characters (ADR 013 §8). */
+  readonly maxBodyChars = INCIDENT_COMMENT_MAX_CHARS;
+
   readonly #credential: TokenCredential;
   readonly #workspaceId: string | undefined;
   readonly #timeoutMs: number;
@@ -532,10 +567,55 @@ export class DefenderClient implements SecurityDataSource {
     return token.token;
   }
 
+  /**
+   * Add findings as a comment on the alert's incident (ADR 013 §6).
+   *
+   * **Measured against a live tenant on 2026-09-16**, because the documentation settles none of it
+   * and the obvious reading is wrong:
+   *
+   * - `PATCH /security/alerts_v2/{id}` carrying `comments` returns **200 and discards the field**.
+   *   The alert is not the write surface, however much it looks like one.
+   * - `POST /security/incidents/{id}/comments` works, and echoes the whole comments collection back
+   *   in its 200 — which is how a publication confirms itself without a second call.
+   * - `comments` is **not a navigation property** on an incident, so neither `?$expand=comments`
+   *   nor `GET .../incidents/{id}/comments` reads it back; both answer 400. A plain
+   *   `GET /security/incidents/{id}` carries it inline, which is what the idempotency check uses.
+   *
+   * Idempotency is read-then-write against the marker (PRD-10 §4.2), not a transaction: two
+   * processes publishing the same alert in the same instant can both miss the marker and both
+   * write. The loop starts each alert once, so losing that race needs two watch processes against
+   * one tenant, and it costs a duplicate comment rather than a duplicate investigation.
+   */
+  async publishFindings(alert: PublishTarget, body: string): Promise<PublishOutcome> {
+    const caseId = alert.caseId;
+    if (caseId === undefined) {
+      throw new SentinelApiError(
+        "bad_request",
+        400,
+        `Alert ${alert.id} carries no incident id, so there is no case to publish findings to.`,
+      );
+    }
+
+    const incidentUrl = `${GRAPH}/security/incidents/${encodeURIComponent(caseId)}`;
+    const marker = findingsMarker(alert.id);
+
+    const existing = await this.#request("GET", incidentUrl, { purpose: "publish" });
+    if (JSON.stringify(existing ?? null).includes(marker)) {
+      return { status: "alreadyPresent", caseRef: `${incidentUrl}#${marker}` };
+    }
+
+    await this.#request("POST", `${incidentUrl}/comments`, {
+      purpose: "publish",
+      body: { "@odata.type": "microsoft.graph.security.alertComment", comment: body },
+    });
+
+    return { status: "published", caseRef: `${incidentUrl}#${marker}` };
+  }
+
   async #request(
     method: "GET" | "POST",
     url: string,
-    options: { purpose: "alerts" | "query"; body?: unknown },
+    options: { purpose: "alerts" | "query" | "publish"; body?: unknown },
   ): Promise<unknown> {
     const token = await this.#accessToken();
     const headers: Record<string, string> = {
@@ -603,7 +683,7 @@ export class DefenderClient implements SecurityDataSource {
    * per-tenant CPU allowance that blocks until the next 15-minute cycle, so a retry would deepen
    * the outage for every other consumer in the tenant (PRD-7 §8 excluded retries; that holds).
    */
-  #errorCode(status: number, purpose: "alerts" | "query"): SentinelApiErrorCode {
+  #errorCode(status: number, purpose: "alerts" | "query" | "publish"): SentinelApiErrorCode {
     if (status === 401) return "authentication_error";
     if (status === 403) return "authorization_error";
     if (status === 404) return "not_found";

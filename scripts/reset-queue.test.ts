@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import { parseArgs, resetQueue, within } from "./reset-queue.ts";
+import { parseArgs, within } from "./reset-queue.ts";
 
 /**
  * The reset command's two dangerous parts: what it selects, and where it is allowed to point.
  *
  * A reset command that can be pointed at an arbitrary directory is a delete command, so `within`
- * gets the same hostile-input treatment as the feedback path helper (PRD-5 §11, §14).
+ * gets the same hostile-input treatment as every other path this repository builds (PRD-5 §11).
  */
 
 describe("queue:reset — argument parsing", () => {
@@ -38,10 +35,9 @@ describe("queue:reset — argument parsing", () => {
   });
 
   test("collects repeated selectors", () => {
-    const args = parseArgs(["--alert", "a1", "--alert", "a2", "--run", "r1", "--include-feedback"]);
+    const args = parseArgs(["--alert", "a1", "--alert", "a2", "--run", "r1"]);
     expect(args.alertIds).toEqual(["a1", "a2"]);
     expect(args.runIds).toEqual(["r1"]);
-    expect(args.includeFeedback).toBe(true);
   });
 
   test("a flag missing its value is an error, not a silent skip", () => {
@@ -51,58 +47,6 @@ describe("queue:reset — argument parsing", () => {
 
   test("an unknown option is an error", () => {
     expect(() => parseArgs(["--nope"])).toThrow('Unknown option "--nope"');
-  });
-});
-
-describe("queue:reset — explicit feedback inclusion", () => {
-  test("leaves feedback alone by default and moves it only with --include-feedback", async () => {
-    const scratch = await mkdtemp(join(tmpdir(), "queue-reset-feedback-"));
-    const runsDir = join(scratch, "runs");
-    const tracesDir = join(runsDir, "traces");
-    const feedbackDir = join(scratch, "feedback");
-    const runId = "run-1";
-    const alertId = "alert-1";
-    const runPath = join(runsDir, `${runId}.json`);
-    const feedbackPath = join(feedbackDir, `${runId}-${alertId}.json`);
-
-    try {
-      await Bun.write(
-        runPath,
-        JSON.stringify({ runId, results: [{ alertId }], plannedAlerts: [] }),
-      );
-      await Bun.write(
-        feedbackPath,
-        JSON.stringify({
-          schemaVersion: 1,
-          runId,
-          alertId,
-          at: "2026-08-20T00:00:00.000Z",
-          classification: "TruePositive",
-          agentAssessment: {},
-        }),
-      );
-
-      const base = {
-        ...parseArgs(["--run", runId]),
-        runsDir,
-        tracesDir,
-        feedbackDir,
-      };
-      await resetQueue(base, () => undefined);
-      expect(await Bun.file(feedbackPath).exists()).toBe(true);
-
-      await resetQueue({ ...base, restore: true }, () => undefined);
-      await resetQueue({ ...base, includeFeedback: true }, () => undefined);
-      expect(await Bun.file(feedbackPath).exists()).toBe(false);
-      expect(
-        await Bun.file(join(feedbackDir, ".archive", `${runId}-${alertId}.json`)).exists(),
-      ).toBe(true);
-
-      await resetQueue({ ...base, restore: true, includeFeedback: true }, () => undefined);
-      expect(await Bun.file(feedbackPath).exists()).toBe(true);
-    } finally {
-      await rm(scratch, { recursive: true, force: true });
-    }
   });
 });
 

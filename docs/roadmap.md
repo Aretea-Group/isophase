@@ -1,26 +1,45 @@
 ## Roadmap
 
-### 1. Case Memory + Tenant Context
+### 1. Durable State — Case Memory, Human Feedback, Resumable Execution
 
-Introduce durable, tenant-specific context that can improve future investigations without simply reusing previous agent conversations.
+Three capabilities that were deliberately cut, consolidated because they share one obstacle: all
+three need state that outlives a single investigation, and none of them is worth that state yet.
+PRD-10 §3 fences all three out and sends them here.
 
-Potential capabilities:
+**What was removed, and what remains.** PRD-10 Phase 0 deleted the console's analyst-feedback
+capture — `apps/console/src/drive/` and the `feedback/` root — because it collected records nothing
+ever read. The vocabulary it carried survived: `AnalystClassification` and the 30,000-character
+Sentinel comment bound now live in `@soc/contracts` (PRD-10 §4.1 D7), so the four-value taxonomy does
+not have to be re-derived from Microsoft's documentation when this is picked up. Removing `drive/`
+also returned the console to having no filesystem write primitive at all.
 
-* Curated tenant knowledge
-* Searchable previous investigations
-* Human-confirmed case outcomes
-* Simple Hermes-style memory as an initial implementation
+**Case memory and tenant context.** Durable, tenant-specific context improving future
+investigations without replaying previous agent conversations: curated tenant knowledge, searchable
+previous investigations, human-confirmed outcomes. `scripts/evaluate/condition.ts` is already built
+for it — the comparison key is derived from `config`, hashed whole, so a memory field becomes a
+scoreable axis with no change there. The prompt-hash provenance in
+`apps/investigator/src/provenance.ts` exists partly for the same reason.
+
+**Human feedback.** The analyst's final verdict and corrections, fed into case memory and into
+evaluation. This is the input side of the above and has no value without it — which is why PRD-10
+removed the half that shipped alone.
+
+**Resumable execution.** PRD-10 §4.1 D3 rejected a durable-execution runtime (Temporal-style
+workflows, crash-resumable mid-run state) and the reason should be read before anyone adds one: a
+crash mid-investigation leaves no artifact in `runs/`, so the next poll re-picks that alert. **The
+idempotency key already provides crash recovery.** What a durable runtime would add is resumption
+*within* a run — not restarting an investigation that died at turn 30 — which only becomes worth a
+server when a single run is expensive enough that repeating it hurts.
+
+**Before building any of it**, note that `@earendil-works/pi-agent-core` already ships the
+distillation machinery: `compact`, `shouldCompact`, `generateSummary`, `DEFAULT_COMPACTION_SETTINGS`
+and a `harness/session/` module. `apps/investigator/src/harness.ts` imports none of them. Whoever
+picks this up should start there rather than hand-rolling compaction.
 
 ### 2. Human Feedback
 
-Capture the human analyst's final decision and corrections after an investigation.
-
-Potential capabilities:
-
-* Analyst TP/FP verdict
-* Corrections to the agent's assessment
-* Feed confirmed outcomes into case memory
-* Feed outcomes into evaluation and regression
+**Merged into §1.** Kept as a heading because other documents cite `roadmap §N` by number and
+renumbering would silently break them.
 
 ### 3. Security Schema & Context Optimization
 
@@ -83,8 +102,13 @@ Potential capabilities:
 * **Benign True Positive.** The TP/FP split cannot express "the detection is correct and the
   activity was authorised", which is one of the most common real classifications. Microsoft Sentinel
   closes incidents on five classifications (`True Positive – suspicious activity`, `Benign Positive
-  – suspicious but expected`, two `False Positive` variants, `Undetermined`); nothing in the current
-  contract maps onto them, which also blocks any future write-back.
+  – suspicious but expected`, two `False Positive` variants, `Undetermined`). ~~Nothing in the
+  current contract maps onto them, which also blocks any future write-back.~~ **Corrected
+  2026-09-16 (PRD-10 §4.1 D7):** four of the five now live in `@soc/contracts` as
+  `AnalystClassification`, lifted out of the console's feedback capture before it was deleted. What
+  is still missing is the *agent's* ability to reach one — `InvestigationSummarySchema` remains
+  TP/FP — and that is what this item is about. Write-back itself is no longer blocked: PRD-10 §4.1
+  D5 publishes findings as an additive comment and deliberately sets no classification.
 * **Alternative hypotheses, enumerated.** `fpReason` is a strong partial — it is already more than
   the shipping AI-SOC products expose — but the published evaluation checklists ask for hypotheses
   listed individually with the evidence that rejected each.

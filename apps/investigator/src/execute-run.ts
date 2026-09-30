@@ -1,5 +1,6 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SecurityAlert } from "@soc/contracts";
+import { type FindingsPublisher, LocalFindingsPublisher } from "@soc/sentinel-client";
 
 import type { WebSearchClient } from "./clients/brave.ts";
 import type { WebFetchClient } from "./clients/fetch.ts";
@@ -11,6 +12,7 @@ import { investigateAlerts } from "./investigate-alerts.ts";
 import type { LlamaServerAuth, LlamaServerConfig, ResolvedModel } from "./model.ts";
 import { resolveModel as resolveModelDefault } from "./model.ts";
 import { provenanceForProfiles } from "./provenance.ts";
+import { findingsComment } from "./publish.ts";
 import { writeRunArtifact } from "./run-artifact.ts";
 import type { SecuritySourceSet } from "./source-profile.ts";
 import { createTracer } from "./trace.ts";
@@ -60,6 +62,14 @@ export interface InvestigatorDeps {
    * future-capability abstraction with exactly one implementation (PRD-5 §5.2).
    */
   write?: (directory: string, run: InvestigationRun) => Promise<string>;
+  /**
+   * Where findings go when an investigation completes (PRD-10 §4.1 D1, D12).
+   *
+   * Defaults to the local publisher, so a clone with no credentials still exercises the whole path.
+   * An interface rather than a function - unlike `write` above - because it has two implementations
+   * rather than one, which is the test PRD-5 §5.2 actually applies.
+   */
+  publisher?: FindingsPublisher;
   /**
    * Resolved in here rather than handed in, so `config.modelId` is the single source for both the
    * model that executes and the model the artifact records. Overridden only by tests.
@@ -117,6 +127,7 @@ export async function executeRun(
   options: RunOptions,
 ): Promise<InvestigationRun> {
   const write = deps.write ?? writeRunArtifact;
+  const publisher = deps.publisher ?? new LocalFindingsPublisher();
   const resolve = deps.resolveModel ?? resolveModelDefault;
   const log = options.log ?? ((): undefined => undefined);
   const { runId } = options;
@@ -241,6 +252,72 @@ export async function executeRun(
     return queue;
   };
 
+  /**
+   * Publish a finished result, then flush (PRD-10 §4.1 D12).
+   *
+   * Every caller publishes — the loop and a console-launched run alike — because one action that
+   * means two different things depending on the entry point is worse than either meaning.
+   *
+   * Only a completed result with a summary is published: a failed investigation produced no
+   * findings, and "we tried and could not" is not something to write onto an analyst's case.
+   *
+   * **A publication failure never loses the investigation.** The artifact is the durable output and
+   * the comment is a copy, so the error is recorded on the result and the flush proceeds. Both
+   * halves go through the same `queue` as every other write, so publication cannot interleave with
+   * a cancellation flush already in flight.
+   */
+  /**
+   * Publications still in flight, so the terminal flush cannot overtake them.
+   *
+   * `publishThenFlush` is fired from `onResult` and its first `await` is a network round-trip, so
+   * its own `flushQueued("running")` lands on the queue *after* the terminal `flushQueued(status)`
+   * below — and last write wins. Against a real tenant that is deterministic, not a rare race:
+   * every published run ended on disk as `status: "running"` while `run_completed` carried
+   * `completed`, which the console then renders as a run that never finishes.
+   */
+  const publishing: Promise<void>[] = [];
+
+  const publishThenFlush = async (result: InvestigationResult): Promise<void> => {
+    const summary = result.summary;
+    if (result.status !== "completed" || summary === undefined) {
+      await flushQueued("running");
+      return;
+    }
+    const at = new Date().toISOString();
+    try {
+      const alert = alerts.find((candidate) => candidate.id === result.alertId);
+      const outcome = await publisher.publishFindings(
+        {
+          id: result.alertId,
+          title: result.alertTitle,
+          // The grouping the source put this alert in, carried source-neutrally (ADR 013 §6). The
+          // publisher decides what to do with it; nothing here knows it means "incident".
+          ...(alert?.caseId === undefined ? {} : { caseId: alert.caseId }),
+        },
+        findingsComment(result.alertId, summary, publisher.maxBodyChars),
+      );
+      result.publication = {
+        publisher: publisher.id,
+        status: outcome.status,
+        at,
+        caseRef: outcome.caseRef,
+      };
+      log(
+        `[investigator] ${outcome.status === "published" ? "published" : "already published"} ` +
+          `${result.alertId} via ${publisher.id} — ${outcome.caseRef}`,
+      );
+    } catch (error) {
+      result.publication = {
+        publisher: publisher.id,
+        status: "failed",
+        at,
+        error: describe(error),
+      };
+      log(`[investigator] could not publish ${result.alertId} — ${describe(error).message}`);
+    }
+    await flushQueued("running");
+  };
+
   let harness: InvestigationHarness;
   try {
     const { model, streamFn } = await resolve(
@@ -277,6 +354,12 @@ export async function executeRun(
     // Everything above happens before a single alert is investigated, and each step can fail on an
     // ordinary mistake — a typo'd model, a Sentinel that is not running, an alert id that does not
     // exist. Recording it is the whole reason `runId` is an input (PRD-5 §5.2).
+    // Name the alert this run was for. `alerts` is still empty here — the throw happened before
+    // `listAlerts`/`getAlert` returned — so without this the artifact cannot say what it was trying
+    // to investigate, and the console has no result row to offer a re-run against (ADR 013 §10).
+    if (options.alertId !== undefined && alerts.length === 0) {
+      alerts = [{ id: options.alertId, title: "(not retrieved)" } as SecurityAlert];
+    }
     const failed = build("failed", describe(error));
     try {
       await write(config.runsDir, failed);
@@ -310,7 +393,7 @@ export async function executeRun(
     onResult: (result) => {
       collected.push(result);
       options.onResult?.(result);
-      void flushQueued("running");
+      publishing.push(publishThenFlush(result));
     },
     ...(config.trace
       ? {
@@ -350,12 +433,31 @@ export async function executeRun(
     options.signal?.reason instanceof InvestigationSupervisorError
       ? options.signal.reason.fault
       : undefined;
+  /**
+   * A sweep that produced nothing usable is `failed`, not `completed` (ADR 013 §10).
+   *
+   * The two status axes stay distinct — a *result* failing is one alert going wrong inside a sweep
+   * that ran — but a sweep in which **no** alert succeeded has nothing to show, and reporting it as
+   * `completed` made the console draw a green tick over a timed-out investigation and stopped the
+   * watch loop's parking machinery from ever seeing the commonest failure there is.
+   *
+   * Precedence is unchanged: a supervisor fault and an abort both still win, because they describe
+   * *how the sweep ended* rather than what it produced. Partial success stays `completed` — one
+   * alert failing out of five is not a failed sweep.
+   */
+  const producedNothing =
+    collected.length > 0 && !collected.some((result) => result.status === "completed");
   const finalStatus: RunStatus =
     supervisorFault !== undefined
       ? "failed"
       : options.signal?.aborted === true
         ? "interrupted"
-        : "completed";
+        : producedNothing
+          ? "failed"
+          : "completed";
+  // Every publication settles before the last word on the artifact is written. `publishThenFlush`
+  // never rejects — it records failures on the result — so this cannot swallow an error.
+  await Promise.all(publishing);
   await flushQueued(finalStatus, supervisorFault);
   return build(finalStatus, supervisorFault);
 }

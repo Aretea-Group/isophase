@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import type { QueueAlert } from "../src/data/alerts.ts";
 import type { RunArtifact } from "../src/data/runs.ts";
-import { feedbackPath } from "../src/drive/feedback.ts";
 import { coverageByAlert, duplicateSpend, queueRows } from "../src/view/coverage.ts";
 
 /**
@@ -138,24 +137,5 @@ describe("duplicate-spend warning (PRD-5 §8)", () => {
     const runs = [run({ results: [{ alertId: "a2", alertTitle: "t", status: "completed" }] })];
 
     expect(duplicateSpend(selected, alerts, runs)).toEqual({ otherAlerts: 2, withRun: 1 });
-  });
-});
-
-describe("feedback paths — the write seam's only path construction (PRD-5 §14)", () => {
-  test("writes feedback/<runId>-<alertId>.json", () => {
-    expect(feedbackPath("feedback", "r1", "a1")).toBe("feedback/r1-a1.json");
-  });
-
-  test("refuses traversal in either id", () => {
-    // Ids come from artifacts, but this builds a path, so they are treated as untrusted anyway.
-    expect(() => feedbackPath("feedback", "../../etc/passwd", "a1")).toThrow();
-    expect(() => feedbackPath("feedback", "r1", "../../../x")).toThrow();
-    expect(() => feedbackPath("feedback", "r1/../..", "a1")).toThrow();
-    expect(() => feedbackPath("feedback", "", "a1")).toThrow();
-  });
-
-  test("refuses separators that would escape the directory", () => {
-    expect(() => feedbackPath("feedback", "a/b", "c")).toThrow();
-    expect(() => feedbackPath("feedback", "r1", "a\\b")).toThrow();
   });
 });

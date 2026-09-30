@@ -192,6 +192,13 @@ per-tenant CPU allowance that blocks until the next 15-minute cycle, so a retry 
 every other consumer in the tenant. PRD-7 §8 excluded retries; that exclusion holds and is now
 load-bearing for a second reason.
 
+**Narrowed by ADR 013 §11, without weakening it.** What is forbidden is the *connector* re-issuing a
+request. The unattended loop delaying its *next scheduled poll* is a different act with the opposite
+effect: it sends strictly **fewer** requests than the configured cadence would have, and a throttled
+poll waits the documented fifteen-minute cycle rather than a short exponential step. Nothing in
+`packages/sentinel-client/` retries, and nothing here has changed. Read together: the connector never
+retries a request, and the loop may choose to ask again later.
+
 ### 10. Alert listing is bounded by an explicit time window, never by server order
 
 `listAlerts()` filters server-side on `createdDateTime` over `DEFENDER_ALERT_WINDOW` (an ISO 8601
