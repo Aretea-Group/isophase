@@ -19,6 +19,7 @@ baml_client/
 
 # Local implementation plans use GitHub Issues; never commit root scratch plans.
 /*-plan.md
+/fix.md
 
 # Editor / OS
 .DS_Store
@@ -35,4 +36,3 @@ baml_client/
 # depth and silently excludes the committed test fixtures under apps/*/test/fixtures/runs/ — the
 # trap PRD-3 §12 hit once. scripts/run-artifacts-ignored.test.ts guards it.
 /runs/
-

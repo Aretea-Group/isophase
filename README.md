@@ -1,4 +1,4 @@
-# Isophase
+<h1><img src="./assets/isophase.svg" width="48" height="48" alt="" align="middle"> Isophase</h1>
 
 **An autonomous agent that triages your security alerts while nobody is watching, and writes what it
 found onto the case.**

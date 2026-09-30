@@ -36,6 +36,8 @@ export const COLOR = {
   severityMedium: "#ffaf5f",
   severityLow: "#5fafd7",
   accent: "#00afd7",
+  brandPrimary: "#35c8ed",
+  brandSecondary: "#76edbf",
 } as const;
 
 /**
@@ -78,6 +80,10 @@ export function toneColor(tone: Tone | undefined): string {
       return COLOR.severityLow;
     case "accent":
       return COLOR.accent;
+    case "brand-primary":
+      return COLOR.brandPrimary;
+    case "brand-secondary":
+      return COLOR.brandSecondary;
     case "selected":
       return COLOR.selected;
     default:

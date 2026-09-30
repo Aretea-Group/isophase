@@ -71,6 +71,8 @@ type Screen = "dashboard" | "config" | "help";
  * Activity and Transcript are for going back over a finished run, so they follow.
  */
 const TABS: Tab[] = ["verdict", "stream", "activity", "transcript"];
+// Each glyph lights two adjacent quadrants in clockwise order: top, right, bottom, left.
+const LOGO_SPINNER = ["▀", "▐", "▄", "▌"] as const;
 
 /** Display names. "stream" alone did not say whose. */
 const TAB_LABEL: Record<Tab, string> = {
@@ -626,6 +628,8 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   renderer.root.add(screen);
 
   const header = new TextRenderable(renderer, { id: "header", height: 1, fg: COLOR.label });
+  let logoFrame = 0;
+  let logoAnimation: ReturnType<typeof setInterval> | undefined;
   const content = new BoxRenderable(renderer, { id: "content", flexDirection: "row", flexGrow: 1 });
   const keyBar = new TextRenderable(renderer, { id: "keybar", height: 1, fg: COLOR.dim });
   screen.add(header);
@@ -975,6 +979,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
      */
     const small = tooSmall(width, height);
     if (small !== undefined) {
+      stopLogoAnimation();
       header.content = "";
       keyBar.content = "";
       sidebar.visible = false;
@@ -1026,20 +1031,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     // What is on screen is a queue of investigations, not a description of this machine. Provider,
     // model, tracing and spend all moved to the `c` screen, which already carried them (PRD-3 §8.5).
-    header.content = styled([
-      [
-        { text: "SOC ANALYST CONSOLE", tone: "heading", bold: true },
-        {
-          text: `${" ".repeat(4)}${state.runs.length} run${state.runs.length === 1 ? "" : "s"}`,
-          tone: "label",
-        },
-        {
-          text: state.unreadable.length === 0 ? "" : ` · ${state.unreadable.length} unreadable`,
-          tone: "inconclusive",
-        },
-        { text: control === undefined ? " · read-only" : " · active", tone: "dim" },
-      ],
-    ]);
+    renderHeader();
 
     const caseFacts =
       state.mainSource === "queue"
@@ -1456,6 +1448,51 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
 
     state.expandedText = text === "" ? "(nothing recorded for this part)" : text;
     render();
+  }
+
+  function stopLogoAnimation(): void {
+    if (logoAnimation === undefined) return;
+    clearInterval(logoAnimation);
+    logoAnimation = undefined;
+  }
+
+  function renderHeader(): void {
+    const active = state.liveRuns.size > 0 || state.growing.size > 0;
+    if (active && logoAnimation === undefined) {
+      logoAnimation = setInterval(() => {
+        if (closed || (state.liveRuns.size === 0 && state.growing.size === 0)) {
+          stopLogoAnimation();
+          return;
+        }
+        logoFrame = (logoFrame + 1) % LOGO_SPINNER.length;
+        renderHeader();
+      }, 160);
+    } else if (!active) {
+      stopLogoAnimation();
+      logoFrame = 0;
+    }
+
+    header.content = styled([
+      [
+        { text: "I", tone: "brand-primary", bold: true },
+        {
+          text: active ? (LOGO_SPINNER[logoFrame] ?? "▀") : "▪▪",
+          tone: "brand-secondary",
+          bold: true,
+        },
+        { text: "  ", tone: "dim" },
+        { text: "SOC ANALYST CONSOLE", tone: "heading", bold: true },
+        {
+          text: `${" ".repeat(4)}${state.runs.length} run${state.runs.length === 1 ? "" : "s"}`,
+          tone: "label",
+        },
+        {
+          text: state.unreadable.length === 0 ? "" : ` · ${state.unreadable.length} unreadable`,
+          tone: "inconclusive",
+        },
+        { text: control === undefined ? " · read-only" : " · active", tone: "dim" },
+      ],
+    ]);
   }
 
   // ---- driving the agent (PRD-5 §8) ----------------------------------------------------------
@@ -2187,6 +2224,7 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
   function stop(): void {
     if (closed) return;
     closed = true;
+    stopLogoAnimation();
     tail?.stop();
     runsPoll.stop();
     unsubscribeControl?.();
