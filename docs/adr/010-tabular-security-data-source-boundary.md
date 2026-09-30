@@ -1,6 +1,6 @@
 # ADR 010 — Tabular Security Data-Source Boundary
 
-**Status:** Accepted; §4's single-bundle startup is reversed by ADR 011
+**Status:** Accepted; §4's single-bundle startup is reversed by ADR 011; §1 amended by ADR 013
 
 **Date:** 2026-08-23
 
@@ -16,6 +16,9 @@ capability and new artifacts stop writing `sentinelBaseUrl`); `AGENTS.md` §2, �
 §14 and §15
 
 **Extends:** ADR 008 §3 (the derived condition includes the configured source block)
+
+**Amended by:** [ADR 013](./013-findings-write-path.md) §1 (`SecurityDataSource` is no longer the
+only source-neutral capability; `FindingsPublisher` sits beside it)
 
 ## Context
 

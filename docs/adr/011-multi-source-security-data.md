@@ -1,6 +1,6 @@
 # ADR 011 — Multi-source security data and the Microsoft Defender connector
 
-**Status:** Accepted
+**Status:** Accepted; §1 amended by ADR 013
 
 **Date:** 2026-08-25
 
@@ -15,6 +15,9 @@ its primary); ADR 009 §3 (the credential rule gains a documented divergence) an
 rule generalises from Azure to any live tenant); `AGENTS.md` §2, §3, §10
 
 **Extends:** ADR 008 §3 (the derived condition includes the active source set and the alert window)
+
+**Amended by:** [ADR 013](./013-findings-write-path.md) §1 and §7 (Graph gains one write
+operation — an incident comment — and the Defender connector is the Graph publisher, opt-in)
 
 **Extended by:** [ADR 012](./012-run-corpus-leaves-version-control.md) §13 (the `.data/` rule for
 live-tenant artifacts is unchanged, and `runs/` itself is no longer committed)
