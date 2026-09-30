@@ -1,12 +1,13 @@
 # ADR 009 — Azure Monitor Logs Connector
 
-**Status:** Accepted; §2, §4 and §5 amended by ADR 010; §3 and §5 amended by ADR 011
+**Status:** Accepted; §2, §4 and §5 amended by ADR 010; §3 and §5 amended by ADR 011; §1 amended by ADR 013
 
 **Date:** 2026-08-22
 
 **Implements:** PRD-7 — Real Microsoft Sentinel Connector
 
-**Amended by:** [ADR 010](./010-tabular-security-data-source-boundary.md) §2, §4 and §5 (the
+**Amended by:** [ADR 013](./013-findings-write-path.md) §1 (Azure Monitor Logs stays the single
+*read* plane; a write plane — Graph incident comments — now sits beside it); [ADR 010](./010-tabular-security-data-source-boundary.md) §2, §4 and §5 (the
 Sentinel capability becomes a source-neutral one, and new artifacts stop writing `sentinelBaseUrl`);
 [ADR 011](./011-multi-source-security-data.md) §13 (the `.data/` rule generalises from Azure to
 *any* active source that reads a live tenant) and §2 (Defender deliberately has no
