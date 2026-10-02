@@ -1,5 +1,5 @@
 import type { SecurityAlert } from "@soc/contracts";
-import { SentinelApiError } from "@soc/sentinel-client";
+import { describeMockConnectorUnreachable, SentinelApiError } from "@soc/sentinel-client";
 import type { SecurityDataSource } from "@soc/sentinel-client";
 import { z } from "zod";
 
@@ -59,6 +59,8 @@ export interface AlertSource {
   id: string;
   /** Meaningful only when `id` is `sentinel`: the local corpus, or a real workspace. */
   connector: "mock" | "azure";
+  /** The mock connector's base URL, named in its unreachable message (PRD-11 §4.1 D5). */
+  baseUrl?: string;
 }
 
 /**
@@ -81,9 +83,9 @@ export function describeAlertError(error: unknown, source: AlertSource): string 
       if (source.connector === "azure") {
         return `Azure Sentinel returned ${error.code}: ${error.message}`;
       }
-      if (error.code === "unreachable") {
-        return "Mock Sentinel is not reachable — start it with `bun run dev:mock-sentinel`.";
-      }
+      // The loud failure of PRD-11 §4.1 D5, shared with the investigator so the two agree.
+      const mock = describeMockConnectorUnreachable(error, source.baseUrl ?? "");
+      if (mock !== undefined) return mock;
       if (error.code === "upstream_unavailable") {
         return "Mock Sentinel is up but Kusto is not — check `bun run infra:up`.";
       }

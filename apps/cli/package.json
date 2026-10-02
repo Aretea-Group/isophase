@@ -1,5 +1,5 @@
 {
-  "name": "@soc/console",
+  "name": "@soc/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,11 +10,8 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "@opentui/core": "0.5.4",
-    "@soc/contracts": "workspace:*",
+    "@soc/console": "workspace:*",
     "@soc/investigator": "workspace:*",
-    "@soc/sentinel-client": "workspace:*",
-    "@t3-oss/env-core": "0.13.11",
-    "zod": "4.4.3"
+    "@soc/sentinel-client": "workspace:*"
   }
 }

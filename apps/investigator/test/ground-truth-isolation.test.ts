@@ -23,22 +23,22 @@ import { resolve } from "node:path";
  * console source is agent-side source and this is load-bearing. It is also why the queue's scenario
  * mapping arrives as a generated ids-only artifact rather than a read of the fixtures (PRD-5 §7).
  */
-const ROOTS = [
+/**
+ * `apps/cli/src` joins under PRD-11 (§4.3, AC25): it is the tree the published bundle ships, and it
+ * now holds the Defender probe that was `scripts/probe-defender.ts` — the one file this scan used
+ * to name individually. `scripts/` as a whole can never be a root: `evaluate-runs.ts` reads the
+ * answer key on purpose, which is the entire point of ground truth flowing one way, and
+ * .oxlintrc.json exempts the directory for exactly that reason.
+ */
+export const ROOTS = [
   "apps/investigator/src",
   "packages/sentinel-client/src",
   "apps/console/src",
+  "apps/cli/src",
 ] as const;
 
-/**
- * Individual files outside those trees that still have to be scanned (PRD-8 AC14).
- *
- * `scripts/` as a whole can never be a root: `evaluate-runs.ts` reads the answer key on purpose,
- * which is the entire point of ground truth flowing one way, and .oxlintrc.json exempts the
- * directory for exactly that reason. But `scripts/probe-defender.ts` talks to a live security
- * tenant and writes what it learns to disk, so it is agent-adjacent in the way this scan cares
- * about — named here one file at a time rather than by widening the exemption.
- */
-const FILES = ["scripts/probe-defender.ts"] as const;
+/** Individual files outside those trees that still have to be scanned. None since PRD-11. */
+const FILES: readonly string[] = [];
 
 /** Anything naming the answer key, however it is reached. */
 const FORBIDDEN: string[] = [
@@ -83,6 +83,19 @@ const repositoryRoot = resolve(import.meta.dir, "../../..");
 const files = await sourceFiles();
 
 describe("ground-truth isolation", () => {
+  /**
+   * AC25 (PRD-11) — Given `apps/cli/src`, When this suite runs, Then that root is in `ROOTS` and
+   * the scan over it finds no `fixtures/scenarios/` read or import. The second half is the
+   * `FORBIDDEN` and runtime-read tests below, which run over every root; this pins the first and
+   * that the root is not empty — a path that matched nothing would pass them vacuously.
+   */
+  test("apps/cli/src is a scanned root and contributes files", () => {
+    expect(ROOTS).toContain("apps/cli/src");
+    const cli = files.filter((f) => f.path.includes("/apps/cli/src/"));
+    expect(cli.length).toBeGreaterThan(3);
+    expect(cli.some((f) => f.path.endsWith("/probe.ts"))).toBe(true);
+  });
+
   test("the scan covers a non-trivial number of files", () => {
     // Guards the guard: a glob that silently matched nothing would pass every assertion below.
     expect(files.length).toBeGreaterThan(10);

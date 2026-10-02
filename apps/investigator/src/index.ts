@@ -2,10 +2,12 @@
 import {
   ALERT_LIST_CAP,
   assertLiveTenantArtifactDirectories,
+  describeMockConnectorUnreachable,
   securitySourceConfigSetFromEnv,
   type SecuritySourceConfigSet,
 } from "@soc/sentinel-client";
 
+import { USAGE } from "./cli-usage.ts";
 import { BraveSearchClient } from "./clients/brave.ts";
 import { HttpWebFetchClient } from "./clients/fetch.ts";
 import { InProcessControl, serveControl } from "./control.ts";
@@ -25,6 +27,7 @@ export interface CliArgs {
   alertId?: string;
   /** Run as the unattended loop rather than one sweep (PRD-10 §4.1 D2). */
   watch?: boolean;
+  help?: boolean;
 }
 
 /**
@@ -53,10 +56,10 @@ export function parseArgs(argv: string[]): CliArgs {
       alertId = value;
     } else if (arg === "--watch") {
       watch = true;
+    } else if (arg === "--help" || arg === "-h") {
+      return { help: true };
     } else if (arg !== undefined && arg.startsWith("--")) {
-      throw new Error(
-        `Unknown option "${arg}". Usage: bun run investigate [--alert <id>] [--watch]`,
-      );
+      throw new Error(`Unknown option "${arg}".\n\n${USAGE}`);
     }
   }
 
@@ -165,8 +168,12 @@ export function configFromEnv(
  * the signal handler, stdout, and the exit code. The run itself lives in `run.ts` so that a
  * console — or anything else — can run one without becoming a shell (PRD-5 §5.2).
  */
-async function main(): Promise<void> {
-  const args = parseArgs(Bun.argv.slice(2));
+export async function main(argv: readonly string[]): Promise<void> {
+  const args = parseArgs([...argv]);
+  if (args.help === true) {
+    console.log(USAGE);
+    return;
+  }
   /**
    * Watch mode overrides the alert window at the source, not on the run config (PRD-10 §4.1 D10).
    *
@@ -311,7 +318,7 @@ async function main(): Promise<void> {
       path: env.WATCH_CONTROL_SOCKET,
       log,
     });
-    log(`[watch] attach a console with: bun run console --attach ${server.path}`);
+    log(`[watch] attach a console with: isophase console --attach ${server.path}`);
 
     try {
       await runWatch(watchOptions, {
@@ -344,12 +351,46 @@ async function main(): Promise<void> {
   );
 }
 
-if (import.meta.main) {
+/**
+ * What to print when a run could not start (PRD-11 §4.1 D5).
+ *
+ * The one failure worth translating is the default configuration meeting an empty port: the mock
+ * connector is selected, nothing answers, and the operator — most likely someone who just ran
+ * `bunx @aretea-group/isophase` — has never heard of Mock Sentinel. Everything else is printed as
+ * the error said it, which for a connector failure is already specific.
+ */
+export function describeStartupError(
+  error: unknown,
+  sourceConfig?: SecuritySourceConfigSet,
+): string {
+  const mock =
+    sourceConfig !== undefined &&
+    sourceConfig.primary.id === "sentinel" &&
+    sourceConfig.primary.connector === "mock"
+      ? describeMockConnectorUnreachable(error, sourceConfig.primary.baseUrl)
+      : undefined;
+  if (mock !== undefined) return mock;
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Run as a program: argv in, exit code out (PRD-11 §4.1 D3). */
+export async function runCli(argv: readonly string[]): Promise<number> {
+  let sourceConfig: SecuritySourceConfigSet | undefined;
   try {
-    await main();
-    if (interrupted) process.exit(130);
-  } catch (error) {
-    console.error(`[investigator] ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    sourceConfig = securitySourceConfigSetFromEnv(env);
+  } catch {
+    // Reported by `main()` with the message the factory wrote; here it only decides how to
+    // describe a later failure.
   }
+  try {
+    await main(argv);
+    return interrupted ? 130 : 0;
+  } catch (error) {
+    console.error(`[investigator] ${describeStartupError(error, sourceConfig)}`);
+    return 1;
+  }
+}
+
+if (import.meta.main) {
+  process.exit(await runCli(Bun.argv.slice(2)));
 }

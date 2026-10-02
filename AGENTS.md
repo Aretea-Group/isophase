@@ -136,7 +136,7 @@ Do not introduce ESLint or Prettier.
 ## 5. Repository Shape
 
 ```text
-apps/         mock-sentinel/  investigator/  console/
+apps/         mock-sentinel/  investigator/  console/  cli/
 packages/     sentinel-client/  contracts/
 fixtures/     telemetry/  scenarios/  benchmark-map.generated.json
 infra/        docker-compose.yml  kusto/

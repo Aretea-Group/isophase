@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { InvestigationRun } from "../src/contracts/run.ts";
+import rootPackageJson from "../../../package.json" with { type: "json" };
+import { InvestigationRun, RunProvenance } from "../src/contracts/run.ts";
 import {
   computePiVersion,
   computePromptHash,
   computeSubmissionHash,
   INSTRUCTIONS_LABEL,
+  PACKAGE_VERSION,
   provenanceForProfile,
 } from "../src/provenance.ts";
 import { createSentinelSourceBundle } from "../src/source-profile.ts";
@@ -237,5 +239,31 @@ describe("schema generations", () => {
         expect(typeof value).toBe("number");
       }
     }
+  });
+});
+
+/**
+ * AC9 — Given a completed investigation, When the run artifact is written, Then its provenance
+ * block carries `packageVersion`, equal to `0.0.0` from the clone and to the tag's version from a
+ * published package (PRD-11 §4.1 D8).
+ *
+ * The clone half is provable here; the published half is AC19/AC20's, from a real release. What
+ * this pins is that the value is the root `package.json`'s, which is the file the release stamps.
+ */
+describe("packageVersion (PRD-11 D8)", () => {
+  test("the provenance block carries the root package version, 0.0.0 from a clone", () => {
+    expect(PROVENANCE.packageVersion).toBe("0.0.0");
+    expect(PROVENANCE.packageVersion).toBe(rootPackageJson.version);
+    expect(PACKAGE_VERSION).toBe(rootPackageJson.version);
+  });
+
+  test("the artifact schema accepts it and still accepts artifacts written before it existed", () => {
+    const base = {
+      promptHash: "a".repeat(12),
+      submissionHash: "b".repeat(12),
+      piVersion: "core@0.84.2+ai@0.84.2",
+    };
+    expect(RunProvenance.parse({ ...base, packageVersion: "0.1.1" }).packageVersion).toBe("0.1.1");
+    expect(RunProvenance.parse(base).packageVersion).toBeUndefined();
   });
 });

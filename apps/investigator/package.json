@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./control": "./src/control.ts",
     "./execute-run": "./src/execute-run.ts",
-    "./model": "./src/model.ts"
+    "./model": "./src/model.ts",
+    "./cli-usage": "./src/cli-usage.ts",
+    "./env": "./src/env.ts"
   },
   "scripts": {
     "start": "bun src/index.ts"

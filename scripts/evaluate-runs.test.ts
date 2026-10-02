@@ -366,6 +366,26 @@ describe("evaluate — the condition key", () => {
     );
   });
 
+  /**
+   * AC10 (PRD-11) — Given ADR 008's comparison key, When two runs differ only in
+   * `packageVersion`, Then their comparison keys are equal. A release is legibility, not a
+   * condition: the version sits in provenance, and `provenanceKey` reads named fields only.
+   */
+  test("a release does not split the corpus — packageVersion is outside the key", () => {
+    const a = JSON.parse(artifact({ runId: "a", promptHash: "c".repeat(12) })) as {
+      provenance: Record<string, unknown>;
+    };
+    const b = JSON.parse(artifact({ runId: "b", promptHash: "c".repeat(12) })) as {
+      provenance: Record<string, unknown>;
+    };
+    a.provenance["packageVersion"] = "0.0.0";
+    b.provenance["packageVersion"] = "0.1.1";
+    expect(conditionOf(a as never).id).toBe(conditionOf(b as never).id);
+    // And the key is not blind to provenance altogether: a prompt change still splits them.
+    const c = JSON.parse(artifact({ runId: "c", promptHash: "d".repeat(12) }));
+    expect(conditionOf(c).id).not.toBe(conditionOf(a as never).id);
+  });
+
   test("each configured model endpoint setting partitions the condition", () => {
     const configured = {
       modelBaseUrl: "https://host.example/v1",

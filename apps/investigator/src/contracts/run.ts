@@ -215,6 +215,11 @@ export const RunProvenance = z.object({
   /** Separate from `promptHash`: the submission schema is what actually split this corpus. */
   submissionHash: z.string().min(1),
   piVersion: z.string().min(1),
+  /**
+   * The published package's version, `0.0.0` from a clone (PRD-11 §4.1 D8). Legibility only: it is
+   * not part of ADR 008's condition key, so a release does not split the corpus.
+   */
+  packageVersion: z.string().min(1).optional(),
   /** Human-readable companion to `promptHash`. The hash is the truth. */
   instructionsLabel: z.string().min(1).optional(),
   /** What the provider actually served, when it reports one. `model.id` is only an alias. */

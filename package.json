@@ -1,5 +1,6 @@
 {
   "name": "isophase",
+  "version": "0.0.0",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -16,16 +17,16 @@
     "test": "bun test",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun test",
     "dev:mock-sentinel": "bun --filter @soc/mock-sentinel dev",
-    "investigate": "bun apps/investigator/src/index.ts",
+    "investigate": "bun apps/cli/src/index.ts investigate",
     "evaluate": "bun scripts/evaluate-runs.ts",
-    "console": "bun apps/console/src/index.ts",
-    "console:live": "bun scripts/console-live.ts",
+    "console": "bun apps/cli/src/index.ts console",
+    "console:live": "bun apps/cli/src/index.ts console --live",
     "data:bootstrap": "bun scripts/bootstrap-sentinel-data.ts",
     "data:reset": "bun scripts/bootstrap-sentinel-data.ts --reset",
     "data:verify": "bun scripts/bootstrap-sentinel-data.ts --verify-only",
     "data:manifest": "bun scripts/generate-telemetry-manifest.ts && bun scripts/generate-benchmark-map.ts",
     "queue:reset": "bun scripts/reset-queue.ts",
-    "probe:defender": "bun scripts/probe-defender.ts",
+    "probe:defender": "bun apps/cli/src/index.ts probe",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"

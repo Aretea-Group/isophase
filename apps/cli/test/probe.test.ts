@@ -7,7 +7,7 @@ import {
   Recorder,
   ThrottledError,
   Transport,
-} from "./probe-defender.ts";
+} from "../src/probe.ts";
 
 /**
  * The half of PRD-8 AC14 that is testable without a tenant.
@@ -53,7 +53,7 @@ describe("probe output paths", () => {
  * probe actually writes through it. This does: every write in the script has to be derived from
  * `outDir`, so a later addition that hard-codes a path fails here rather than on a tenant.
  */
-const source = await Bun.file(new URL("./probe-defender.ts", import.meta.url)).text();
+const source = await Bun.file(new URL("../src/probe.ts", import.meta.url)).text();
 
 describe("the probe writes nowhere but its own output directory", () => {
   // The lookahead swallows the whitespace itself. Written as `\s*(?!…)` the greedy match simply

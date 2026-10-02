@@ -113,8 +113,10 @@ export interface CliArgs {
   attach?: string;
 }
 
-export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] [--read-only] [--attach <socket>]
+export const USAGE = `isophase console [--live <source>] [--runs <dir>] [--traces <dir>] [--fresh] [--read-only] [--attach <socket>]
 
+  --live <source>  open against a live tenant: defender, sentinel, or both as defender,sentinel;
+                   sets the source and puts both artifact directories under .data/
   --runs <dir>     where run artifacts live (RUNS_DIR, currently "${env.RUNS_DIR}")
   --traces <dir>   where transcripts live (INVESTIGATOR_TRACE_DIR, currently "${env.INVESTIGATOR_TRACE_DIR}")
   --fresh          hide runs that existed when the console opened; new runs appear normally
@@ -122,7 +124,7 @@ export const USAGE = `bun run console [--runs <dir>] [--traces <dir>] [--fresh] 
   --attach <sock>  drive a running "investigate --watch" instead of running investigations here
   --help           this message
 
-The console reads the selected Sentinel connector for the alert queue and can start investigations in this process.
+The console reads the selected source for the alert queue and can start investigations in this process.
 It never writes to runs/ — the investigator remains the sole writer of run artifacts and
 transcripts.`;
 
@@ -177,8 +179,8 @@ export function parseArgs(argv: string[]): CliArgs {
   return args;
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(Bun.argv.slice(2));
+export async function main(argv: readonly string[]): Promise<void> {
+  const args = parseArgs([...argv]);
   if (args.help === true) {
     console.log(USAGE);
     return;
@@ -216,11 +218,18 @@ async function main(): Promise<void> {
   await app.ready;
 }
 
-if (import.meta.main) {
+/** Run as a program: argv in, exit code out (PRD-11 §4.1 D3). */
+export async function runCli(argv: readonly string[]): Promise<number> {
   try {
-    await main();
+    await main(argv);
+    return 0;
   } catch (error) {
     console.error(`[console] ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    return 1;
   }
+}
+
+if (import.meta.main) {
+  const code = await runCli(Bun.argv.slice(2));
+  if (code !== 0) process.exit(code);
 }

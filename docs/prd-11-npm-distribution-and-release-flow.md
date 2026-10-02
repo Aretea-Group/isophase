@@ -363,32 +363,32 @@ every command the README shows under Track A exists in the §4.3 table.
       _(test: unit — the guard; integration — `bun pm pack --dry-run` against the guard)_
 - [ ] **AC4** — Given Bun on `PATH`, When `bunx isophase help` runs from an installed tarball, Then it
       prints every command in the §4.3 table and exits 0. _(test: integration)_
-- [ ] **AC5** — Given the command table, When `help <command>` and `<command> --help` are run for
+- [x] **AC5** — Given the command table, When `help <command>` and `<command> --help` are run for
       each entry, Then both print the same usage text, and an unknown command exits non-zero naming
       `help`. _(test: unit)_
-- [ ] **AC6** — Given an empty directory, When `isophase init --track defender` runs, Then `.env`
+- [x] **AC6** — Given an empty directory, When `isophase init --track defender` runs, Then `.env`
       exists with the `DEFENDER_*` and `SECURITY_SOURCES=defender` lines uncommented and
       `RUNS_DIR`, `INVESTIGATOR_TRACE_DIR` and `WATCH_CONTROL_SOCKET` pointing under `.data/`,
       `.data/runs` and `.data/runs/traces` exist, and the next command printed is `isophase probe`.
       _(test: integration)_
-- [ ] **AC7** — Given a directory where `.env` already exists, When `init` runs without `--force`,
+- [x] **AC7** — Given a directory where `.env` already exists, When `init` runs without `--force`,
       Then it refuses, leaves the file byte-identical, and exits non-zero. _(test: unit)_
-- [ ] **AC8** — Given `init`'s source and the dispatcher's, When scanned, Then neither imports
+- [x] **AC8** — Given `init`'s source and the dispatcher's, When scanned, Then neither imports
       `@azure/identity`, calls `fetch`, or references an Entra, ARM or Graph endpoint — `init`
       performs no network call. _(test: unit)_
-- [ ] **AC9** — Given a completed investigation, When the run artifact is written, Then its
+- [x] **AC9** — Given a completed investigation, When the run artifact is written, Then its
       provenance block carries `packageVersion`, equal to `0.0.0` from the clone and to the tag's
       version from a published package. _(test: unit)_
-- [ ] **AC10** — Given ADR 008's comparison key, When two runs differ only in `packageVersion`, Then
+- [x] **AC10** — Given ADR 008's comparison key, When two runs differ only in `packageVersion`, Then
       their comparison keys are equal. _(test: unit)_
 - [ ] **AC11** — Given `bun run build`, When it completes, Then `dist/cli.js` exists, imports no
       path under `apps/` or `packages/`, and its externals are exactly the root `dependencies`.
       _(test: integration)_
-- [ ] **AC12** — Given `SENTINEL_CONNECTOR=mock` and nothing listening on `SENTINEL_BASE_URL`, When
+- [x] **AC12** — Given `SENTINEL_CONNECTOR=mock` and nothing listening on `SENTINEL_BASE_URL`, When
       `investigate` or `console` starts, Then the message names the mock connector, says it needs
       the local lab, and names `isophase init` — and does not mention `bun run dev:mock-sentinel`.
       _(test: unit)_
-- [ ] **AC13** — Given the root `package.json` after Phase 1, When `bun run investigate`,
+- [x] **AC13** — Given the root `package.json` after Phase 1, When `bun run investigate`,
       `bun run console`, `bun run console:live defender` and `bun run probe:defender` are invoked,
       Then each reaches the dispatcher and behaves as before. _(test: integration)_
 - [ ] **AC14** — Given `release.yml`, When read, Then it triggers only on `release: published`,
@@ -418,18 +418,26 @@ every command the README shows under Track A exists in the §4.3 table.
 - [ ] **AC24** — Given `AGENTS.md` after Phase 2, When read, Then §2 lists "`init` provisions
       nothing in a tenant" and "the lab is not published", and §5 names `dist/` as CI-only build
       output. _(test: unit — document scan)_
-- [ ] **AC25** — Given `apps/cli/src`, When the ground-truth isolation suite runs, Then that root is
+- [x] **AC25** — Given `apps/cli/src`, When the ground-truth isolation suite runs, Then that root is
       in `ROOTS` and the scan over it finds no `fixtures/scenarios/` read or import. _(test: unit)_
-- [ ] **AC26** — Given no `.env` and no provider key, When `apps/investigator/src/env.ts` is
+- [x] **AC26** — Given no `.env` and no provider key, When `apps/investigator/src/env.ts` is
       imported, Then it still throws at import as before, and `parseInvestigatorEnv` rejects the
       same input with the same error. _(test: unit)_
-- [ ] **AC27** — Given the `.env` that `init --track defender` wrote, When `investigate --watch`
+- [x] **AC27** — Given the `.env` that `init --track defender` wrote, When `investigate --watch`
       starts with valid credentials, Then `assertLiveTenantArtifactDirectories` passes without the
       operator editing any directory variable. _(test: unit — the template against the assertion)_
+- [ ] **AC28** — Given a packed tarball and a machine state that has only Bun, When a scripted
+      new-person flow installs the tarball into an empty directory, runs `init --track defender`,
+      `help`, `--version`, and one `investigate --alert` against the lab, Then every step exits 0,
+      `.env` and `.data/runs` exist, and the run artifact appears under `.data/runs`. _(test: e2e —
+      scripted, against the local lab; added 2026-10-02 by §11 A1)_
 
 ## 9. Open questions
 
 - **Q1** — Who holds the `aretea-group` npm org and performs the manual `0.1.0` publish with 2FA?
+  _Partly answered 2026-10-02: the user holds an npm account, not an org. A scope is a username or
+  an org name, so `@aretea-group` needs a free org of that name created from that account before
+  the manual publish. Who clicks is settled; the org does not exist yet._
   Needed at Phase 3, not for sign-off.
 - **Q2** — Does `init` without `--track` ask interactively, or default to `defender` with a printed
   note? Cosmetic; Phase 1 decides and records it in the command table.
@@ -446,3 +454,12 @@ every command the README shows under Track A exists in the §4.3 table.
 - `docs/defender-setup.md` — what `init` points the operator at instead of doing it
 - [npm trusted publishers](https://docs.npmjs.com/trusted-publishers) — OIDC requirements
 - [OpenTUI deployment](https://opentui.com/docs/ship/deploy) — bundle and Node constraints
+
+## 11. Amendments
+
+- **A1 — 2026-10-02 — a scripted new-person end-to-end criterion is added.** Asked for in chat
+  during Phase 1: "we should add an AC to test the whole thing e2e for a new person, so install
+  setup". AC22 already asks for a manual walkthrough of the README from a clean machine; this adds
+  AC28, an automated flow against the packed tarball — install, `init`, `help`, `--version`, one
+  mock investigation — that Phase 2 can run every time the package shape changes. Nothing is
+  struck: it adds a promise and falsifies none.

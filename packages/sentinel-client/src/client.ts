@@ -30,12 +30,42 @@ export interface SentinelApiClientOptions {
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
+ * The loud failure when the default connector meets nothing (PRD-11 §4.1 D5).
+ *
+ * Shared by the investigator and the console so the two cannot tell the story differently. It says
+ * three things and nothing about how to start the lab: which connector is selected, that it needs
+ * the lab the package does not carry, and the command that writes a `.env` for a real tenant. The
+ * previous text prescribed `bun run dev:mock-sentinel`, which an npm user cannot run.
+ *
+ * Returns `undefined` for anything but an unreachable mock connector, so callers can fall through
+ * to the error as written.
+ */
+export function describeMockConnectorUnreachable(
+  error: unknown,
+  baseUrl: string,
+): string | undefined {
+  if (!(error instanceof SentinelApiError) || error.code !== "unreachable") return undefined;
+  return (
+    `The mock Sentinel connector is selected (SENTINEL_CONNECTOR=mock) but nothing answers on ` +
+    `${baseUrl.replace(/\/+$/, "")}. The mock connector needs the local lab, which is not part of ` +
+    `this package. For a real tenant, run \`isophase init\` to write a .env for Defender or Sentinel.`
+  );
+}
+
+/**
  * Typed client for the Mock Sentinel REST boundary (PRD-1 §7).
  *
  * This is an API client, not a generalised connector abstraction (PRD-2 §5.2), and it holds no
  * agent-runtime types — the Pi tool adapters sit above it (PRD-2 §3.4). Every response is parsed
  * through the shared `@soc/contracts` schema so a drift in the service fails here rather than
  * silently downstream.
+ *
+ * **This is the lab's HTTP client, and it is inert without Mock Sentinel** (PRD-11 §4.1 D5). It
+ * carries no fixtures and no telemetry: it talks to `apps/mock-sentinel`, which is a clone-only
+ * service over the Kusto Emulator and is not part of the published package. `SENTINEL_CONNECTOR=mock`
+ * stays the default so a lab checkout keeps working with no credentials; from an installed package
+ * that default meets an empty port, and `describeMockConnectorUnreachable` is what the operator
+ * reads then.
  */
 export class SentinelApiClient implements SecurityDataSource {
   readonly #baseUrl: string;

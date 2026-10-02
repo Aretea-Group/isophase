@@ -2498,7 +2498,11 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
       env.BENCHMARK_MAP_PATH,
       // The active primary, not the Sentinel connector: under a Defender-only run the connector is
       // still whatever `.env` says, which is how a Graph failure came out as "Mock Sentinel".
-      { id: selectedSourceId(env), connector: env.SENTINEL_CONNECTOR },
+      {
+        id: selectedSourceId(env),
+        connector: env.SENTINEL_CONNECTOR,
+        baseUrl: env.SENTINEL_BASE_URL,
+      },
     );
     state.alerts = snapshot.alerts;
     if (snapshot.error === undefined) delete state.alertsError;

@@ -5,11 +5,13 @@ import {
   readsLiveTenant,
   securitySourceConfigSetFromEnv,
   type SecuritySourceEnvironment,
-} from "../packages/sentinel-client/src/index.ts";
-import { type LaunchPlan, planLaunch } from "./console-live.ts";
+} from "@soc/sentinel-client";
+
+import { type LaunchPlan, planLaunch } from "../src/live.ts";
 
 /**
- * What the launcher is for, tested as the two claims its name makes.
+ * What `console --live` is for, tested as the two claims its name makes (PRD-11 §4.1 D3 moved it
+ * here from `scripts/console-live.ts`; the claims are unchanged).
  *
  * "Live": every source it can name must produce a set that `readsLiveTenant` agrees reads a real
  * tenant — a launcher that quietly resolved Mock Sentinel would be the exact failure it exists to
@@ -49,39 +51,51 @@ function directoriesOf(plan: LaunchPlan): string[] {
   return [plan.env["RUNS_DIR"] ?? "", plan.env["INVESTIGATOR_TRACE_DIR"] ?? ""];
 }
 
-describe("console:live — source selection", () => {
+describe("console --live — source selection", () => {
   test("requires a source rather than defaulting to one", () => {
-    // The whole reason this script exists instead of an env prefix: "live" names three
+    // The whole reason the flag takes a value instead of being a switch: "live" names three
     // configurations, and guessing wrong is silent.
-    expect(() => planLaunch([])).toThrow("needs a source");
+    expect(() => planLaunch(["--live"])).toThrow("needs a source");
+    expect(() => planLaunch(["--live", "--live="])).toThrow("needs a source");
   });
 
-  test("a leading flag is not a source", () => {
-    // Otherwise `bun run console:live --fresh` would read `--fresh` as a source name and report an
+  test("a following flag is not a source", () => {
+    // Otherwise `console --live --fresh` would read `--fresh` as a source name and report an
     // unknown source, which sends the reader looking in the wrong place.
-    expect(() => planLaunch(["--fresh"])).toThrow("needs a source");
+    expect(() => planLaunch(["--live", "--fresh"])).toThrow("needs a source");
+  });
+
+  test("without --live there is no overlay and the console opens against .env", () => {
+    expect(planLaunch([])).toEqual({ env: {}, consoleArgs: [] });
+    expect(planLaunch(["--fresh"])).toEqual({ env: {}, consoleArgs: ["--fresh"] });
+  });
+
+  test("the flag may be given once", () => {
+    expect(() => planLaunch(["--live", "defender", "--live", "sentinel"])).toThrow("once");
   });
 
   test("an unknown source names itself and the known set", () => {
-    expect(() => planLaunch(["splunk"])).toThrow('Unknown source "splunk"');
-    expect(() => planLaunch(["defender,splunk"])).toThrow('Unknown source "splunk"');
+    expect(() => planLaunch(["--live", "splunk"])).toThrow('Unknown source "splunk"');
+    expect(() => planLaunch(["--live", "defender,splunk"])).toThrow('Unknown source "splunk"');
   });
 
   test("a duplicate is an error, not a silently deduplicated list", () => {
     // `SECURITY_SOURCES` rejects duplicates downstream; catching it here names the argument that
     // caused it rather than the environment variable the analyst never typed.
-    expect(() => planLaunch(["defender,defender"])).toThrow("more than once");
+    expect(() => planLaunch(["--live", "defender,defender"])).toThrow("more than once");
   });
 
   test("tolerates whitespace and trailing commas in the list", () => {
-    expect(planLaunch(["defender, sentinel"]).env["SECURITY_SOURCES"]).toBe("defender,sentinel");
-    expect(planLaunch(["defender,"]).env["SECURITY_SOURCES"]).toBe("defender");
+    expect(planLaunch(["--live", "defender, sentinel"]).env["SECURITY_SOURCES"]).toBe(
+      "defender,sentinel",
+    );
+    expect(planLaunch(["--live", "defender,"]).env["SECURITY_SOURCES"]).toBe("defender");
   });
 });
 
-describe("console:live — what each source resolves to", () => {
+describe("console --live — what each source resolves to", () => {
   test("defender leaves SENTINEL_CONNECTOR alone", () => {
-    const plan = planLaunch(["defender"]);
+    const plan = planLaunch(["--live", "defender"]);
     expect(plan.env["SECURITY_SOURCES"]).toBe("defender");
     expect(plan.env["RUNS_DIR"]).toBe(".data/defender-runs");
     expect(plan.env["INVESTIGATOR_TRACE_DIR"]).toBe(".data/defender-runs/traces");
@@ -92,14 +106,14 @@ describe("console:live — what each source resolves to", () => {
   });
 
   test("sentinel means the workspace, not the corpus", () => {
-    const plan = planLaunch(["sentinel"]);
+    const plan = planLaunch(["--live", "sentinel"]);
     expect(plan.env["SECURITY_SOURCES"]).toBe("sentinel");
     expect(plan.env["SENTINEL_CONNECTOR"]).toBe("azure");
     expect(plan.env["RUNS_DIR"]).toBe(".data/azure-runs");
   });
 
   test("a mixed run gets its own root and an explicit primary", () => {
-    const plan = planLaunch(["defender,sentinel"]);
+    const plan = planLaunch(["--live", "defender,sentinel"]);
     expect(plan.env["SECURITY_SOURCES"]).toBe("defender,sentinel");
     expect(plan.env["SENTINEL_CONNECTOR"]).toBe("azure");
     expect(plan.env["PRIMARY_ALERT_SOURCE"]).toBe("defender");
@@ -108,22 +122,32 @@ describe("console:live — what each source resolves to", () => {
   });
 
   test("the written order chooses the queue", () => {
-    expect(planLaunch(["sentinel,defender"]).env["PRIMARY_ALERT_SOURCE"]).toBe("sentinel");
+    expect(planLaunch(["--live", "sentinel,defender"]).env["PRIMARY_ALERT_SOURCE"]).toBe(
+      "sentinel",
+    );
   });
 
   test("never sets DEFENDER_ALERT_WINDOW", () => {
     // Deliberate. The window is a fact about a tenant's detection cadence that goes stale on its
     // own — a quiet week empties one that worked yesterday — so it lives in `.env`, not in a repo
     // script that would then be wrong for every other checkout.
-    for (const argv of [["defender"], ["sentinel"], ["defender,sentinel"]]) {
+    for (const argv of [
+      ["--live", "defender"],
+      ["--live", "sentinel"],
+      ["--live", "defender,sentinel"],
+    ]) {
       expect(planLaunch(argv).env["DEFENDER_ALERT_WINDOW"]).toBeUndefined();
     }
   });
 });
 
-describe("console:live — the console actually opens", () => {
+describe("console --live — the console actually opens", () => {
   test("every source reads a live tenant", () => {
-    for (const argv of [["defender"], ["sentinel"], ["defender,sentinel"]]) {
+    for (const argv of [
+      ["--live", "defender"],
+      ["--live", "sentinel"],
+      ["--live", "defender,sentinel"],
+    ]) {
       const set = configSetFor(planLaunch(argv));
       expect(set.sources.length).toBeGreaterThan(0);
       expect(set.sources.every(readsLiveTenant)).toBe(true);
@@ -131,12 +155,16 @@ describe("console:live — the console actually opens", () => {
   });
 
   test("the primary is the source named first", () => {
-    expect(configSetFor(planLaunch(["defender,sentinel"])).primary.id).toBe("defender");
-    expect(configSetFor(planLaunch(["sentinel,defender"])).primary.id).toBe("sentinel");
+    expect(configSetFor(planLaunch(["--live", "defender,sentinel"])).primary.id).toBe("defender");
+    expect(configSetFor(planLaunch(["--live", "sentinel,defender"])).primary.id).toBe("sentinel");
   });
 
   test("the derived directories satisfy the startup guard", () => {
-    for (const argv of [["defender"], ["sentinel"], ["defender,sentinel"]]) {
+    for (const argv of [
+      ["--live", "defender"],
+      ["--live", "sentinel"],
+      ["--live", "defender,sentinel"],
+    ]) {
       const plan = planLaunch(argv);
       const set = configSetFor(plan);
       expect(() =>
@@ -148,29 +176,37 @@ describe("console:live — the console actually opens", () => {
   test("the guard the previous test relies on is not vacuous", () => {
     // Negative control. Without this, moving the launcher's directories back to `runs/` would keep
     // the suite green while the console exited before drawing a frame — the original bug.
-    const set = configSetFor(planLaunch(["defender"]));
+    const set = configSetFor(planLaunch(["--live", "defender"]));
     expect(() => assertLiveTenantArtifactDirectories(set.sources, ["runs", "runs/traces"])).toThrow(
       "must be inside .data/",
     );
   });
 });
 
-describe("console:live — forwarding", () => {
-  test("everything after the source reaches the console untouched", () => {
-    const plan = planLaunch(["defender", "--fresh", "--runs", ".data/scratch"]);
+describe("console --live — forwarding", () => {
+  test("everything but the flag reaches the console untouched", () => {
+    const plan = planLaunch(["--live", "defender", "--fresh", "--runs", ".data/scratch"]);
     expect(plan.consoleArgs).toEqual(["--fresh", "--runs", ".data/scratch"]);
   });
 
   test("a source with no flags forwards nothing", () => {
-    expect(planLaunch(["defender"]).consoleArgs).toEqual([]);
+    expect(planLaunch(["--live", "defender"]).consoleArgs).toEqual([]);
+  });
+
+  test("the flag may sit anywhere among the console's own flags", () => {
+    const plan = planLaunch(["--fresh", "--live=sentinel", "--runs", ".data/scratch"]);
+    expect(plan.consoleArgs).toEqual(["--fresh", "--runs", ".data/scratch"]);
+    expect(plan.env["SECURITY_SOURCES"]).toBe("sentinel");
   });
 
   test("forwarded values are not re-parsed as sources", () => {
     // `--runs sentinel` is a directory named sentinel, not a second source.
-    expect(planLaunch(["defender", "--runs", "sentinel"]).consoleArgs).toEqual([
+    expect(planLaunch(["--live", "defender", "--runs", "sentinel"]).consoleArgs).toEqual([
       "--runs",
       "sentinel",
     ]);
-    expect(planLaunch(["defender", "--runs", "sentinel"]).env["SECURITY_SOURCES"]).toBe("defender");
+    expect(planLaunch(["--live", "defender", "--runs", "sentinel"]).env["SECURITY_SOURCES"]).toBe(
+      "defender",
+    );
   });
 });
