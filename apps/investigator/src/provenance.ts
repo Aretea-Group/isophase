@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import rootPackageJson from "../../../package.json" with { type: "json" };
 import packageJson from "../package.json" with { type: "json" };
 import { buildInitialContext } from "./context.ts";
 import { InvestigationSummarySchema } from "./contracts/summary.ts";
@@ -141,12 +142,27 @@ export function computePiVersion(): string {
   return `core@${core}+ai@${ai}`;
 }
 
+/**
+ * The published package's version (PRD-11 §4.1 D8).
+ *
+ * A static import of the root `package.json`, the same way `computePiVersion` reads the pinned Pi
+ * versions: a runtime read would trip `ground-truth-isolation.test.ts`'s caller-supplied-path scan.
+ * From a clone this is `0.0.0`, which is honest — a clone has no version. The release build stamps
+ * the tag's version into `package.json` before bundling, so the published bundle carries the real
+ * one and `--version` prints the same string.
+ *
+ * Legibility only. ADR 008 §3's condition key reads named provenance fields and this is not one of
+ * them, so a release does not split the corpus (AC10).
+ */
+export const PACKAGE_VERSION: string = rootPackageJson.version;
+
 export function provenanceForProfiles(profiles: SecurityProfileSet) {
   return {
     promptHash: computePromptHash(profiles),
     submissionHash: computeSubmissionHash(),
     piVersion: computePiVersion(),
     instructionsLabel: INSTRUCTIONS_LABEL,
+    packageVersion: PACKAGE_VERSION,
   } as const;
 }
 

@@ -5,15 +5,27 @@
     "": {
       "name": "isophase",
       "dependencies": {
+        "@azure/identity": "4.13.2",
         "@earendil-works/pi-agent-core": "0.84.2",
         "@earendil-works/pi-ai": "0.84.2",
+        "@opentui/core": "0.5.4",
         "@t3-oss/env-core": "0.13.11",
+        "zod": "4.4.3",
       },
       "devDependencies": {
         "@types/bun": "1.3.14",
         "oxfmt": "0.63.0",
         "oxlint": "1.78.0",
         "typescript": "7.0.2",
+      },
+    },
+    "apps/cli": {
+      "name": "@soc/cli",
+      "version": "0.0.0",
+      "dependencies": {
+        "@soc/console": "workspace:*",
+        "@soc/investigator": "workspace:*",
+        "@soc/sentinel-client": "workspace:*",
       },
     },
     "apps/console": {
@@ -282,6 +294,8 @@
     "@smithy/util-buffer-from": ["@smithy/util-buffer-from@2.2.0", "", { "dependencies": { "@smithy/is-array-buffer": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-IJdWBbTcMQ6DA0gdNhh/BwrLkDR+ADW5Kr1aZmd4k3DIF6ezMV4R2NIAmT08wQJ3yUK82thHWmC/TnK/wpMMIA=="],
 
     "@smithy/util-utf8": ["@smithy/util-utf8@2.3.0", "", { "dependencies": { "@smithy/util-buffer-from": "^2.2.0", "tslib": "^2.6.2" } }, "sha512-R8Rdn8Hy72KKcebgLiv8jQcQkXoLMOGGv5uI1/k0l+snqkOzQ1R0ChUBCxWMlBsFMekWjq0wRudIweFs7sKT5A=="],
+
+    "@soc/cli": ["@soc/cli@workspace:apps/cli"],
 
     "@soc/console": ["@soc/console@workspace:apps/console"],
 

@@ -1,4 +1,5 @@
 export {
+  describeMockConnectorUnreachable,
   SentinelApiClient,
   type SecurityDataSource,
   type SentinelApiClientOptions,

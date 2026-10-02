@@ -9,10 +9,15 @@
 /**
  * PRD-8 Phase 0 — probe the Microsoft Graph security API against a real tenant.
  *
- *     bun run probe:defender                       # every section
- *     bun run probe:defender -- --only A,C,D       # one or more sections
- *     bun run probe:defender -- --pace-ms 2000     # slower than the 45/min floor
- *     bun run probe:defender -- --skip-table-probe # skip the per-table existence sweep
+ *     isophase probe                       # every section
+ *     isophase probe --only A,C,D          # one or more sections
+ *     isophase probe --pace-ms 2000        # slower than the 45/min floor
+ *     isophase probe --skip-table-probe    # skip the per-table existence sweep
+ *
+ * From a clone, `bun run probe:defender` reaches the same code through the dispatcher
+ * (`apps/cli/src/index.ts`, PRD-11 §4.1 D3). The file moved here from `scripts/` so the published
+ * bundle can reach it; `scripts/` stays the one tree the ground-truth guards exempt, and this file
+ * is scanned like every other under `apps/cli/src`.
  *
  * PRD-8 §4.1 D12 makes this the gate on the whole PRD: no connector code lands until this has run
  * and its findings are recorded in `docs/research-defender-api.md`. Several design choices in the
@@ -39,6 +44,8 @@
 
 import { mkdir } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+
+import type { CommandModule } from "./command-module.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1980,13 +1987,13 @@ async function sectionI(context: Context): Promise<void> {
     recorder.unanswered(
       "I",
       "PRD-10 §10 Q1 — is `comments` `PATCH`-writable app-only on `alerts_v2`?",
-      "The write probe is off. It is opt-in because it cannot be undone: a `PATCH` adds a comment to a real alert, Microsoft documents no delete, and the comment carries this project's marker where an analyst will see it. Answer it with `bun run probe:defender --only I --write-probe --write-probe-alert <alertId>`, choosing an alert you are willing to mark. Until then PRD-8 §4.1 D12 forbids writing the Graph publisher.",
+      "The write probe is off. It is opt-in because it cannot be undone: a `PATCH` adds a comment to a real alert, Microsoft documents no delete, and the comment carries this project's marker where an analyst will see it. Answer it with `isophase probe --only I --write-probe --write-probe-alert <alertId>`, choosing an alert you are willing to mark. Until then PRD-8 §4.1 D12 forbids writing the Graph publisher.",
     );
     return;
   }
 
   const marker = `[soc-agent:${targetId}]`;
-  const body = `${marker}\n\nProbe write from \`bun run probe:defender --write-probe\`. This alert's status and classification are unchanged.`;
+  const body = `${marker}\n\nProbe write from \`isophase probe --write-probe\`. This alert's status and classification are unchanged.`;
 
   const write = await context.transport.send({
     section: "I",
@@ -2095,7 +2102,7 @@ async function incidentWriteProbe(
     );
   }
 
-  const body = `${marker}\n\nProbe write from \`bun run probe:defender --write-probe\`. This incident's status, classification and assignment are unchanged.`;
+  const body = `${marker}\n\nProbe write from \`isophase probe --write-probe\`. This incident's status, classification and assignment are unchanged.`;
 
   const incidentUrl = `${GRAPH}/security/incidents/${encodeURIComponent(incidentId)}`;
 
@@ -2333,8 +2340,8 @@ function aadstsCode(description: string | undefined): string {
   return match === null ? "" : ` (\`${match[0]}\`)`;
 }
 
-async function main(): Promise<number> {
-  const args = parseArgs(Bun.argv.slice(2));
+export async function main(argv: readonly string[]): Promise<number> {
+  const args = parseArgs(argv);
 
   const tenantId = process.env["DEFENDER_TENANT_ID"];
   const clientId = process.env["DEFENDER_CLIENT_ID"];
@@ -2626,9 +2633,37 @@ async function writeReport(
   );
 }
 
+export const USAGE = `isophase probe [--only <sections>] [--pace-ms <ms>] [--skip-table-probe]
+               [--alert-window <iso-duration>] [--out <dir>]
+               [--write-probe --write-probe-alert <alertId>]
+
+  Probe the Microsoft Graph security API with the DEFENDER_* credential group in .env: confirms
+  admin consent, lists the advanced-hunting tables the tenant holds, and records what the service
+  supports. Reads the tenant; writes only under .data/defender-probe/<stamp>/.
+
+  --only <A,B,...>      run only the named sections
+  --pace-ms <ms>        delay between calls (default 1500; the 45/min floor)
+  --skip-table-probe    skip the per-table existence sweep
+  --alert-window <P7D>  ISO 8601 duration bounding the alert listing
+  --out <dir>           output directory; must sit inside .data/
+  --write-probe         opt in to the one write probe (section I); needs --write-probe-alert
+  --help                this message`;
+
+/** The dispatcher's view of this command (PRD-11 §4.1 D3). */
+export const command: CommandModule = {
+  usage: () => Promise.resolve(USAGE),
+  run: (argv) => {
+    if (argv.includes("--help") || argv.includes("-h")) {
+      console.log(USAGE);
+      return Promise.resolve(0);
+    }
+    return main(argv);
+  },
+};
+
 if (import.meta.main) {
   try {
-    process.exit(await main());
+    process.exit(await main(Bun.argv.slice(2)));
   } catch (error) {
     console.error(`[probe] ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);

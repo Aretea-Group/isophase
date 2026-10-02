@@ -1,10 +1,24 @@
 {
-  "name": "isophase",
-  "private": true,
+  "name": "@aretea-group/isophase",
+  "version": "0.0.0",
+  "description": "Agentic SOC alert investigation for Microsoft Defender XDR and Microsoft Sentinel: one bin, a .env, and a run artifact per sweep",
+  "homepage": "https://github.com/Aretea-Group/isophase#readme",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aretea-Group/isophase.git"
+  },
+  "bin": {
+    "isophase": "dist/cli.js"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "type": "module",
   "scripts": {
@@ -15,25 +29,29 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "check": "bun run fmt:check && bun run lint && bun run typecheck && bun test",
+    "build": "bun scripts/build-package.ts",
     "dev:mock-sentinel": "bun --filter @soc/mock-sentinel dev",
-    "investigate": "bun apps/investigator/src/index.ts",
+    "investigate": "bun apps/cli/src/index.ts investigate",
     "evaluate": "bun scripts/evaluate-runs.ts",
-    "console": "bun apps/console/src/index.ts",
-    "console:live": "bun scripts/console-live.ts",
+    "console": "bun apps/cli/src/index.ts console",
+    "console:live": "bun apps/cli/src/index.ts console --live",
     "data:bootstrap": "bun scripts/bootstrap-sentinel-data.ts",
     "data:reset": "bun scripts/bootstrap-sentinel-data.ts --reset",
     "data:verify": "bun scripts/bootstrap-sentinel-data.ts --verify-only",
     "data:manifest": "bun scripts/generate-telemetry-manifest.ts && bun scripts/generate-benchmark-map.ts",
     "queue:reset": "bun scripts/reset-queue.ts",
-    "probe:defender": "bun scripts/probe-defender.ts",
+    "probe:defender": "bun apps/cli/src/index.ts probe",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"
   },
   "dependencies": {
+    "@azure/identity": "4.13.2",
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",
-    "@t3-oss/env-core": "0.13.11"
+    "@opentui/core": "0.5.4",
+    "@t3-oss/env-core": "0.13.11",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",

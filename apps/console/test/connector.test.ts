@@ -73,3 +73,30 @@ describe("Defender connector console behavior", () => {
     );
   });
 });
+
+/**
+ * AC12 (console half) — Given `SENTINEL_CONNECTOR=mock` and nothing listening on
+ * `SENTINEL_BASE_URL`, When `console` starts, Then the message names the mock connector, says it
+ * needs the local lab, and names `isophase init` — and does not mention
+ * `bun run dev:mock-sentinel` (PRD-11 §4.1 D5).
+ */
+describe("the mock connector fails loudly (PRD-11 AC12)", () => {
+  test("an unreachable mock connector names itself, the lab, and isophase init", () => {
+    const error = new SentinelApiError("unreachable", 0, "GET http://localhost:8787/alerts failed");
+    const message = describeAlertError(error, {
+      id: "sentinel",
+      connector: "mock",
+      baseUrl: "http://localhost:8787",
+    });
+    expect(message).toContain("mock Sentinel connector is selected (SENTINEL_CONNECTOR=mock)");
+    expect(message).toContain("nothing answers on http://localhost:8787");
+    expect(message).toContain("needs the local lab");
+    expect(message).toContain("isophase init");
+    expect(message).not.toContain("dev:mock-sentinel");
+  });
+
+  test("Kusto being down is still a different message", () => {
+    const error = new SentinelApiError("upstream_unavailable", 503, "kusto down");
+    expect(describeAlertError(error, { id: "sentinel", connector: "mock" })).toContain("Kusto");
+  });
+});
