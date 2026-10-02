@@ -176,6 +176,10 @@ export function parseInvestigatorEnv(source: Record<string, string | undefined>)
     },
     runtimeEnv: source,
     emptyStringAsUndefined: true,
+    // Always a server schema. The library's default guesses from `typeof window`, and under
+    // `bun test` a file that stubs a `window` earlier in the same process flips the guess and every
+    // read throws "attempted to access a server-side environment variable" (seen in CI).
+    isServer: true,
   });
 }
 
