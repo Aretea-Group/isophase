@@ -15,11 +15,11 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.2",
-    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-agent-core": "0.87.1",
+    "@earendil-works/pi-ai": "0.87.1",
     "@soc/contracts": "workspace:*",
     "@soc/sentinel-client": "workspace:*",
     "@t3-oss/env-core": "0.13.11",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   }
 }

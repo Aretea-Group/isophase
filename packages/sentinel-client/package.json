@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@azure/identity": "4.13.2",
+    "@azure/identity": "4.13.3",
     "@soc/contracts": "workspace:*",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   }
 }

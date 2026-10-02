@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@soc/contracts": "workspace:*",
-    "hono": "4.13.2",
-    "zod": "4.4.3"
+    "hono": "4.13.11",
+    "zod": "4.6.5"
   }
 }
