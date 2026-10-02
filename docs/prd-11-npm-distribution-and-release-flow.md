@@ -358,10 +358,10 @@ every command the README shows under Track A exists in the §4.3 table.
 - [x] **AC2** — Given the same installation, When one mock investigation is started from the
       console, Then it completes and writes a run artifact under the configured `RUNS_DIR`.
       _(test: e2e, manual, recorded in §4.4)_
-- [ ] **AC3** — Given the packed tarball, When its file list is read, Then it contains no path under
+- [x] **AC3** — Given the packed tarball, When its file list is read, Then it contains no path under
       `fixtures/`, `apps/mock-sentinel/` or any `.env`, and the build fails if it would.
       _(test: unit — the guard; integration — `bun pm pack --dry-run` against the guard)_
-- [ ] **AC4** — Given Bun on `PATH`, When `bunx isophase help` runs from an installed tarball, Then it
+- [x] **AC4** — Given Bun on `PATH`, When `bunx isophase help` runs from an installed tarball, Then it
       prints every command in the §4.3 table and exits 0. _(test: integration)_
 - [x] **AC5** — Given the command table, When `help <command>` and `<command> --help` are run for
       each entry, Then both print the same usage text, and an unknown command exits non-zero naming
@@ -381,7 +381,7 @@ every command the README shows under Track A exists in the §4.3 table.
       version from a published package. _(test: unit)_
 - [x] **AC10** — Given ADR 008's comparison key, When two runs differ only in `packageVersion`, Then
       their comparison keys are equal. _(test: unit)_
-- [ ] **AC11** — Given `bun run build`, When it completes, Then `dist/cli.js` exists, imports no
+- [x] **AC11** — Given `bun run build`, When it completes, Then `dist/cli.js` exists, imports no
       path under `apps/` or `packages/`, and its externals are exactly the root `dependencies`.
       _(test: integration)_
 - [x] **AC12** — Given `SENTINEL_CONNECTOR=mock` and nothing listening on `SENTINEL_BASE_URL`, When
@@ -415,7 +415,7 @@ every command the README shows under Track A exists in the §4.3 table.
 - [ ] **AC23** — Given the README, When read from the top, Then the Install section precedes "Choose
       your path", and every `isophase` command it shows is in the §4.3 table. _(test: unit — a
       README scan, like `scripts/run-artifacts-ignored.test.ts`)_
-- [ ] **AC24** — Given `AGENTS.md` after Phase 2, When read, Then §2 lists "`init` provisions
+- [x] **AC24** — Given `AGENTS.md` after Phase 2, When read, Then §2 lists "`init` provisions
       nothing in a tenant" and "the lab is not published", and §5 names `dist/` as CI-only build
       output. _(test: unit — document scan)_
 - [x] **AC25** — Given `apps/cli/src`, When the ground-truth isolation suite runs, Then that root is
@@ -426,7 +426,7 @@ every command the README shows under Track A exists in the §4.3 table.
 - [x] **AC27** — Given the `.env` that `init --track defender` wrote, When `investigate --watch`
       starts with valid credentials, Then `assertLiveTenantArtifactDirectories` passes without the
       operator editing any directory variable. _(test: unit — the template against the assertion)_
-- [ ] **AC28** — Given a packed tarball and a machine state that has only Bun, When a scripted
+- [x] **AC28** — Given a packed tarball and a machine state that has only Bun, When a scripted
       new-person flow installs the tarball into an empty directory, runs `init --track defender`,
       `help`, `--version`, and one `investigate --alert` against the lab, Then every step exits 0,
       `.env` and `.data/runs` exist, and the run artifact appears under `.data/runs`. _(test: e2e —

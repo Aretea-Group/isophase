@@ -21,8 +21,10 @@ Append new sections; never renumber or reuse one. Gaps in the numbering are deli
 | `bun run evaluate [--run <id>] [--compare <a> <b>] [--gaps]` | score runs against the hidden ground truth |
 | `bun run console [--runs <dir>] [--traces <dir>]` | read-only TUI over `runs/` |
 
-There is no build step: workspace packages are consumed as TypeScript **source** through their
-`exports`, so `tsc` only ever type-checks. Integration suites under `**/test/integration/` probe for
+There is no build step for development: workspace packages are consumed as TypeScript **source**
+through their `exports`, so `tsc` only ever type-checks. The release build (`bun run build`,
+PRD-11, ADR 014) bundles the `isophase` bin into `dist/`, is run by CI only, and is never
+committed — `dist/` is ignored, and nothing in development reads it. Integration suites under `**/test/integration/` probe for
 their live dependency and `describe.skipIf` themselves out with a printed reason — `bun test` stays
 green without Docker and proves nothing about them.
 
@@ -53,6 +55,11 @@ Out of scope — these are the non-goals other documents cite:
 - web/product frontend — a *local operator console* is in scope from PRD-3 and PRD-5 (ADR 006 §1,
   ADR 007);
 - RBAC/authentication;
+- `init` provisions nothing in a tenant — no Entra application, service principal, permission
+  grant or Azure resource; it writes a `.env`, creates local directories and makes no network call
+  (PRD-11 §3, ADR 014);
+- the lab is not published — `apps/mock-sentinel`, `fixtures/`, `infra/` and the benchmark tooling
+  under `scripts/` stay clone-only; the npm package is Track A only (PRD-11 §3, ADR 014);
 - threat intelligence;
 - alert grouping;
 - multi-tenancy;
@@ -140,9 +147,10 @@ apps/         mock-sentinel/  investigator/  console/  cli/
 packages/     sentinel-client/  contracts/
 fixtures/     telemetry/  scenarios/  benchmark-map.generated.json
 infra/        docker-compose.yml  kusto/
-scripts/      bootstrap, evaluate, benchmark map, queue reset
+scripts/      bootstrap, evaluate, benchmark map, queue reset, the release build
 docs/         architecture.md  roadmap.md  prd-*.md  adr/
 runs/         run artifacts, archive and transcripts; ignored, never committed (ADR 012)
+dist/         CI-only build output of `bun run build`; ignored, never committed (ADR 014)
 ```
 
 Do not create empty future-capability packages. `agent-runtime`, `persistence` and `testkit` are
