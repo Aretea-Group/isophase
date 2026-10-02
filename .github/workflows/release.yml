@@ -1,0 +1,54 @@
+# The only publish path (PRD-11 §4.1 D4, ADR 014).
+#
+# A *published* GitHub Release is the trigger — not a pushed tag. The Release's notes are the
+# changelog this repository does not otherwise keep, and publishing one is a deliberate click. The
+# job checks out the Release's tag, runs the same `bun run check` the pull-request gate runs, stamps
+# the tag's version into package.json (refusing anything that is not vX.Y.Z or vX.Y.Z-<pre>), builds
+# dist/, and publishes through npm trusted publishing with no token secret, ever. `id-token: write` is what
+# lets npm mint the short-lived credential, and provenance is generated automatically for a public
+# package from a public repository.
+#
+# The trusted publisher on npmjs.com names this repository and this file by name — `release.yml`.
+# Renaming the file means reconfiguring the publisher; the name is part of the contract.
+#
+# Pre-release tags (v0.2.0-rc.1) publish under the `next` dist-tag so `bunx @aretea-group/isophase`
+# never resolves to one.
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish ${{ github.event.release.tag_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+      # npm trusted publishing needs npm 11.5.1+ on Node 22.14+; setup-node's npm is older.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - run: npm --version
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - id: version
+        run: bun scripts/release-version.ts "${{ github.event.release.tag_name }}"
+      - run: bun run build
+      - run: npm publish --access public ${{ steps.version.outputs.dist_tag_flag }}

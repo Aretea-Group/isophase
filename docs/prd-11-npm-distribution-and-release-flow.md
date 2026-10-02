@@ -391,14 +391,14 @@ every command the README shows under Track A exists in the §4.3 table.
 - [x] **AC13** — Given the root `package.json` after Phase 1, When `bun run investigate`,
       `bun run console`, `bun run console:live defender` and `bun run probe:defender` are invoked,
       Then each reaches the dispatcher and behaves as before. _(test: integration)_
-- [ ] **AC14** — Given `release.yml`, When read, Then it triggers only on `release: published`,
+- [x] **AC14** — Given `release.yml`, When read, Then it triggers only on `release: published`,
       declares `id-token: write` and `contents: read` and nothing more, and runs `bun run check`
       before `bun run build`. _(test: unit — a workflow-shape test, like the existing ruleset test)_
-- [ ] **AC15** — Given a release tag that is not `vX.Y.Z` or `vX.Y.Z-<pre>`, When the version stamp
+- [x] **AC15** — Given a release tag that is not `vX.Y.Z` or `vX.Y.Z-<pre>`, When the version stamp
       step runs, Then the job fails before publishing. _(test: unit — the stamp script)_
-- [ ] **AC16** — Given a pre-release tag, When the publish step runs, Then it passes `--tag next`;
+- [x] **AC16** — Given a pre-release tag, When the publish step runs, Then it passes `--tag next`;
       given a release tag, it passes no dist-tag. _(test: unit — the stamp script)_
-- [ ] **AC17** — Given the repository's secrets and every workflow file, When scanned, Then no
+- [x] **AC17** — Given the repository's secrets and every workflow file, When scanned, Then no
       `NPM_TOKEN` or `NODE_AUTH_TOKEN` is referenced. _(test: unit)_
 - [ ] **AC18** — Given the `0.1.0` publish, When the trusted publisher is configured, Then the npm
       package settings name `Aretea-Group/isophase` and `release.yml`. _(test: e2e, manual)_
@@ -407,7 +407,7 @@ every command the README shows under Track A exists in the §4.3 table.
       _(test: e2e, manual)_
 - [ ] **AC20** — Given a machine that has never seen the repository, When
       `bunx @aretea-group/isophase@0.1.1 --version` runs, Then it prints `0.1.1`. _(test: e2e, manual)_
-- [ ] **AC21** — Given git's `package.json`, When read on `main` after Phase 3, Then its version is
+- [x] **AC21** — Given git's `package.json`, When read on `main` after Phase 3, Then its version is
       `0.0.0`. _(test: unit)_
 - [ ] **AC22** — Given a clean machine with Bun and a Defender credential, When a reader follows the
       README's Install section from the top, Then they reach a running `investigate --watch` in
