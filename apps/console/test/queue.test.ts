@@ -114,17 +114,18 @@ describe("coverage — derived, never stored (PRD-5 §4.2)", () => {
   });
 });
 
-describe("duplicate-spend warning (PRD-5 §8)", () => {
-  const withEntity = (
-    alertId: string,
-    startTimeUtc: string,
-    compromisedEntity?: string,
-  ): QueueAlert => ({
-    ...alert(alertId),
-    startTimeUtc,
-    ...(compromisedEntity === undefined ? {} : { compromisedEntity }),
-  });
+/** A queue alert with an explicit start time and, optionally, a compromised entity. */
+const withEntity = (
+  alertId: string,
+  startTimeUtc: string,
+  compromisedEntity?: string,
+): QueueAlert => ({
+  ...alert(alertId),
+  startTimeUtc,
+  ...(compromisedEntity === undefined ? {} : { compromisedEntity }),
+});
 
+describe("duplicate-spend warning (PRD-5 §8)", () => {
   test("counts exact-entity matches within ±1 second and how many already have a run", () => {
     const selected = withEntity("a1", "2026-08-20T00:00:01.000Z", "host-1");
     const alerts = [

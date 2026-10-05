@@ -15,6 +15,22 @@ const base = {
   results: [],
 };
 
+/** Parse a fixture-corpus artifact with the given source kind and query language. */
+const parseLanguage = (kind: string, queryLanguage: string) =>
+  InvestigationRun.parse({
+    ...base,
+    config: {
+      resultMaxChars: 40_000,
+      source: {
+        kind,
+        connector: "in-memory",
+        target: "fixture-corpus",
+        queryLanguage,
+      },
+      webSearchConfigured: false,
+    },
+  }).config?.source;
+
 describe("InvestigationRun", () => {
   test("still accepts an artifact written before the lifecycle fields existed", () => {
     const parsed = InvestigationRun.parse(base);
@@ -62,21 +78,6 @@ describe("InvestigationRun", () => {
   });
 
   test("keeps FixtureQL artifact identity distinct from Sentinel KQL", () => {
-    const parseLanguage = (kind: string, queryLanguage: string) =>
-      InvestigationRun.parse({
-        ...base,
-        config: {
-          resultMaxChars: 40_000,
-          source: {
-            kind,
-            connector: "in-memory",
-            target: "fixture-corpus",
-            queryLanguage,
-          },
-          webSearchConfigured: false,
-        },
-      }).config?.source;
-
     const fixture = parseLanguage("contract-fixture", "fixtureql");
     const sentinel = parseLanguage("microsoft-sentinel", "kql");
     expect(fixture?.queryLanguage).toBe("fixtureql");

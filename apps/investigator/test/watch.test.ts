@@ -149,6 +149,10 @@ function deps(control: Parameters<typeof runWatch>[1]["control"], seen: string[]
   };
 }
 
+/** A one-minute window against a one-minute poll: the AC18 refusal case. */
+const startTooShortWindow = (): void =>
+  assertWatchWindow({ ...OPTIONS, alertWindow: "PT1M", pollIntervalMs: 60_000 });
+
 describe("the unattended loop (PRD-10 §4.2)", () => {
   test("AC7 — Given n alerts and no runs, When one sweep completes, Then exactly n runs exist, one per alert", async () => {
     const alerts = [alert("a1"), alert("a2"), alert("a3")];
@@ -279,12 +283,9 @@ describe("the unattended loop (PRD-10 §4.2)", () => {
   });
 
   test("AC18 — Given a window shorter than k poll intervals, When the loop starts, Then it refuses and names both values", () => {
-    const attempt = (): void =>
-      assertWatchWindow({ ...OPTIONS, alertWindow: "PT1M", pollIntervalMs: 60_000 });
-
-    expect(attempt).toThrow(WatchConfigurationError);
-    expect(attempt).toThrow("PT1M");
-    expect(attempt).toThrow("60000 ms");
+    expect(startTooShortWindow).toThrow(WatchConfigurationError);
+    expect(startTooShortWindow).toThrow("PT1M");
+    expect(startTooShortWindow).toThrow("60000 ms");
   });
 
   test("AC18 — a window that clears the ratio starts", () => {
