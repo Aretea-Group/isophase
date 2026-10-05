@@ -142,8 +142,33 @@ that the workspace you named was the one queried, and a typo looks exactly like 
 configuration (`research-defender-api.md` §9.6).
 
 What remains unsettled is narrower — whether naming a *legitimate* onboarded workspace changes any
-result. That needs a tenant with Sentinel onboarded to the Defender portal, which this one is not,
-so an identical result would prove nothing either way (PRD-8 §7 Q5).
+result when the tenant has exactly one workspace, which is then also the primary. The development
+tenant is onboarded, so this can now be measured; it has not been yet (PRD-8 §7 Q5).
+
+## If your Sentinel workspace is onboarded to the Defender portal
+
+Onboarding a Sentinel workspace to the Defender portal (**System → Settings → Microsoft Sentinel →
+Connect a workspace**) changes what this one credential reaches. Microsoft documents both effects,
+and the development tenant runs this way:
+
+- **Sentinel alerts appear in `alerts_v2`** with `serviceSource: microsoftSentinel`, so analytics-rule
+  detections enter the same queue as Defender's own. Without onboarding they are absent from the
+  Graph API entirely.
+- **Sentinel tables are queryable through advanced hunting**, natively for the primary workspace and
+  through `workspace('<id>').<Table>` for any connected one. Data held only in the Sentinel data
+  lake is not reachable this way.
+
+So `SECURITY_SOURCES=defender` with the three `DEFENDER_*` values already covers Sentinel alerts
+*and* Sentinel telemetry on an onboarded tenant. `bun run probe:defender --only I` reports whether
+`alerts_v2` on your tenant carries Sentinel alerts, which is the observable form of onboarding — on a
+workspace whose rules have never fired, it cannot tell "not onboarded" from "onboarded and quiet".
+
+**This does not make the Defender credential work for `SENTINEL_CONNECTOR=azure`.** That connector
+talks to the Log Analytics query API directly, which is Azure RBAC, not Graph. The Defender app
+registration holds Graph application permissions and no role on the workspace, so reusing its
+tenant, client id and secret as the `AZURE_*` triple fails until the same service principal is
+granted **Log Analytics Reader** on the workspace. The two connectors remain distinct: the Azure one
+is the route for a workspace that is *not* onboarded, or a tenant without Defender XDR.
 
 ## Verify
 
