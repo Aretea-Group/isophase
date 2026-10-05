@@ -18,13 +18,30 @@ import { assertTarballClean, OUTPUT, packedFiles } from "../../../../scripts/bui
  */
 const ROOT = resolve(import.meta.dir, "../../../..");
 
+/**
+ * Keys the repository's own `.env` sets that would otherwise reach the consumer directory.
+ *
+ * Bun loads the checkout's `.env` into this test process, and a variable already present in the
+ * environment wins over the `.env` that `isophase init` writes in `consumer`. With `RUNS_DIR=runs`
+ * inherited, the investigation lands in `runs/` and AC28's `.data/runs/` assertion fails on a
+ * developer's machine while passing in CI, where no `.env` exists. The consumer must see only what
+ * `init` wrote plus what a test passes explicitly.
+ */
+const REPO_ENV_KEYS = ["RUNS_DIR", "INVESTIGATOR_TRACE_DIR", "WATCH_CONTROL_SOCKET"] as const;
+
+function inheritedEnv(): Record<string, string | undefined> {
+  const env = { ...process.env };
+  for (const key of REPO_ENV_KEYS) delete env[key];
+  return env;
+}
+
 async function sh(cmd: string[], cwd: string, env: Record<string, string> = {}) {
   const proc = Bun.spawn(cmd, {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-    env: { ...process.env, ...env },
+    env: { ...inheritedEnv(), ...env },
   });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).text(),
