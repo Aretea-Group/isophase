@@ -1649,6 +1649,13 @@ async function sectionE(context: Context, tables: readonly string[]): Promise<vo
     );
   }
 }
+/** The `ProbeRows` count a section-F hunt returned, when the body carried one. */
+const rowCount = (call: ProbeCall): number | undefined => {
+  const first = huntingResults(call.body)?.results[0];
+  const value = first?.["ProbeRows"];
+  return typeof value === "number" ? value : undefined;
+};
+
 /** Section F — §7 Q5, `DEFENDER_WORKSPACE_ID`, and the silent fallback that hides a mistake. */
 async function sectionF(context: Context, tables: readonly string[]): Promise<void> {
   const { recorder } = context;
@@ -1658,11 +1665,6 @@ async function sectionF(context: Context, tables: readonly string[]): Promise<vo
   // whatever workspace answered, so a "no observable difference" reading was guaranteed by the
   // query and said nothing about the parameter.
   const query = `${table} | summarize ProbeRows = count()`;
-  const rowCount = (call: ProbeCall): number | undefined => {
-    const first = huntingResults(call.body)?.results[0];
-    const value = first?.["ProbeRows"];
-    return typeof value === "number" ? value : undefined;
-  };
 
   const none = await hunt(context, "F1", "§7 Q5 baseline — no workspaceId", query);
   const bogus = await hunt(

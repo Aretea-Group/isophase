@@ -306,6 +306,14 @@ describe("evaluate — failures are scored", () => {
   });
 });
 
+/** The condition of a minimal artifact carrying only the given analyst premise. */
+const conditionWithContext = (analystContext?: string) =>
+  conditionOf(
+    JSON.parse(
+      artifact({ runId: "r", ...(analystContext === undefined ? {} : { analystContext }) }),
+    ),
+  );
+
 describe("evaluate — analyst context is an axis", () => {
   test("a steered run is scored and lands in its own condition", async () => {
     const draws = [{ alertId: truePositive.startingAlertId, tpPercent: 99 }];
@@ -325,15 +333,9 @@ describe("evaluate — analyst context is an axis", () => {
   });
 
   test("two different premises are two conditions", () => {
-    const parse = (analystContext?: string) =>
-      conditionOf(
-        JSON.parse(
-          artifact({ runId: "r", ...(analystContext === undefined ? {} : { analystContext }) }),
-        ),
-      );
-    const a = parse("host is a scanner");
-    const b = parse("host is a jump box");
-    const baseline = parse();
+    const a = conditionWithContext("host is a scanner");
+    const b = conditionWithContext("host is a jump box");
+    const baseline = conditionWithContext();
     expect(new Set([a.id, b.id, baseline.id]).size).toBe(3);
     expect(baseline.fields.analystContext).toBe("baseline");
   });
@@ -354,9 +356,13 @@ describe("evaluate — the condition key", () => {
     // `webSearchUsed` records whether the agent actually searched. Two runs configured identically
     // must land in the same cell whether or not it happened to, or a result would decide which runs
     // are comparable and the cell could never average over the thing it exists to average over.
-    const withUse = JSON.parse(artifact({ runId: "a" })) as { config: Record<string, unknown> };
+    const withUse = JSON.parse(artifact({ runId: "a" })) as {
+      config: Record<string, unknown>;
+    };
     withUse.config["webSearchUsed"] = true;
-    const withoutUse = JSON.parse(artifact({ runId: "b" })) as { config: Record<string, unknown> };
+    const withoutUse = JSON.parse(artifact({ runId: "b" })) as {
+      config: Record<string, unknown>;
+    };
     withoutUse.config["webSearchUsed"] = false;
 
     expect(conditionOf(withUse as never).id).toBe(conditionOf(withoutUse as never).id);

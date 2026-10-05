@@ -187,6 +187,59 @@ describe("AC8 — the source parameter", () => {
 });
 
 /**
+ * Drive `executeRun` far enough to list alerts, then stop.
+ *
+ * `resolveModel` throwing would abort *before* listing and make every assertion below vacuous, so
+ * it resolves successfully and the run is stopped by an already-aborted signal instead. That
+ * ordering is the whole point of the test: alert listing has to have actually happened.
+ */
+const listAlertsVia = async (primaryId: "alpha" | "beta") => {
+  const { set, alpha, beta } = twoSourceSet(primaryId);
+  const aborted = AbortSignal.abort();
+  let written: unknown;
+
+  await executeRun(
+    {
+      provider: "test",
+      modelId: "test-model",
+      maxTurns: 1,
+      timeoutMs: 1_000,
+      resultMaxChars: 1_000,
+      webSearchConfigured: false,
+      runsDir: ".data/test-runs",
+      trace: false,
+      traceDir: ".data/test-runs/traces",
+      traceStream: false,
+    },
+    {
+      securitySources: set,
+      webSearch: WEB_SEARCH_STUB,
+      webFetch: WEB_FETCH_STUB,
+      // Captured rather than written: the artifact is the evidence, and no test may write into
+      // the repository's runs directory.
+      write: async (_dir, run) => {
+        written = run;
+        return "";
+      },
+      resolveModel: async () =>
+        ({
+          model: { id: "test-model", api: "openai" },
+          streamFn: () => {
+            throw new Error("no model turn should be reached");
+          },
+        }) as never,
+    },
+    { runId: "01a00000-0000-7000-0000-00000000000a", signal: aborted },
+  ).catch(() => undefined);
+
+  return {
+    alpha,
+    beta,
+    written: written as { plannedAlerts?: { alertId: string }[] } | undefined,
+  };
+};
+
+/**
  * AC11 — primacy is a role, not a property of a connector.
  *
  * The second half is the one that matters and the one a weaker test would skip: the *same* two
@@ -195,59 +248,6 @@ describe("AC8 — the source parameter", () => {
  * itself decided.
  */
 describe("AC11 — only the primary produces alerts", () => {
-  /**
-   * Drive `executeRun` far enough to list alerts, then stop.
-   *
-   * `resolveModel` throwing would abort *before* listing and make every assertion below vacuous, so
-   * it resolves successfully and the run is stopped by an already-aborted signal instead. That
-   * ordering is the whole point of the test: alert listing has to have actually happened.
-   */
-  const listAlertsVia = async (primaryId: "alpha" | "beta") => {
-    const { set, alpha, beta } = twoSourceSet(primaryId);
-    const aborted = AbortSignal.abort();
-    let written: unknown;
-
-    await executeRun(
-      {
-        provider: "test",
-        modelId: "test-model",
-        maxTurns: 1,
-        timeoutMs: 1_000,
-        resultMaxChars: 1_000,
-        webSearchConfigured: false,
-        runsDir: ".data/test-runs",
-        trace: false,
-        traceDir: ".data/test-runs/traces",
-        traceStream: false,
-      },
-      {
-        securitySources: set,
-        webSearch: WEB_SEARCH_STUB,
-        webFetch: WEB_FETCH_STUB,
-        // Captured rather than written: the artifact is the evidence, and no test may write into
-        // the repository's runs directory.
-        write: async (_dir, run) => {
-          written = run;
-          return "";
-        },
-        resolveModel: async () =>
-          ({
-            model: { id: "test-model", api: "openai" },
-            streamFn: () => {
-              throw new Error("no model turn should be reached");
-            },
-          }) as never,
-      },
-      { runId: "01a00000-0000-7000-0000-00000000000a", signal: aborted },
-    ).catch(() => undefined);
-
-    return {
-      alpha,
-      beta,
-      written: written as { plannedAlerts?: { alertId: string }[] } | undefined,
-    };
-  };
-
   test("with alpha primary, alpha is asked and beta is never asked", async () => {
     const { alpha, beta, written } = await listAlertsVia("alpha");
 

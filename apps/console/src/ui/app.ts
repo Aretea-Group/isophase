@@ -560,6 +560,19 @@ interface ComposeState {
   runId?: string;
 }
 
+/**
+ * The keys that work on the row that has focus, rather than every key the overlay knows.
+ *
+ * The overlay's original defect was a hint naming `⇥` in a placeholder that disappeared as soon
+ * as anything was typed, so the one route to the model field was invisible exactly when it was
+ * needed. This line is unconditional and changes with focus.
+ */
+function composeHint(compose: ComposeState): string {
+  if (compose.field === -1) return "← → choose   ⏎ act   ↑ ⇥ fields   ⎋ close";
+  if (compose.field === MODEL_FIELD) return "↑ ↓ move   type to filter   ⏎ accept   ⎋ close";
+  return "type to fill   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
+}
+
 export async function runApp(options: AppOptions): Promise<AppHandle> {
   const { env, runsDir, tracesDir } = options;
   const owned = options.renderer === undefined;
@@ -2245,19 +2258,6 @@ export async function runApp(options: AppOptions): Promise<AppHandle> {
     stop();
     if (owned) renderer.destroy();
     exit(code);
-  }
-
-  /**
-   * The keys that work on the row that has focus, rather than every key the overlay knows.
-   *
-   * The overlay's original defect was a hint naming `⇥` in a placeholder that disappeared as soon
-   * as anything was typed, so the one route to the model field was invisible exactly when it was
-   * needed. This line is unconditional and changes with focus.
-   */
-  function composeHint(compose: ComposeState): string {
-    if (compose.field === -1) return "← → choose   ⏎ act   ↑ ⇥ fields   ⎋ close";
-    if (compose.field === MODEL_FIELD) return "↑ ↓ move   type to filter   ⏎ accept   ⎋ close";
-    return "type to fill   ↑ ↓ ⇥ move   ⏎ accept   ⎋ close";
   }
 
   /**
