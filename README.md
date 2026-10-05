@@ -51,12 +51,37 @@ bunx @aretea-group/isophase init --track defender   # or --track sentinel
 That writes a `.env` with the blanks to fill in, creates `.data/runs/`, checks the file against the
 investigator's own schema and the Bun version, and prints the next command. It creates nothing in
 your tenant — no app registration, no service principal, no permission — and makes no network
-call. Fill in the credential and the model key, then:
+call.
+
+**Fill in the blanks.** For Defender there are four, plus one window worth widening:
+
+```dotenv
+# The app registration from docs/defender-setup.md: three values, granted admin consent
+DEFENDER_TENANT_ID=<tenant-guid>
+DEFENDER_CLIENT_ID=<application-client-guid>
+DEFENDER_CLIENT_SECRET=<client-secret-value>
+# A quiet tenant shows an empty queue at the seven-day default
+DEFENDER_ALERT_WINDOW=P30D
+
+# The model key. Defaults are OpenAI; for Anthropic or Google also set
+# INVESTIGATOR_PROVIDER and INVESTIGATOR_MODEL, and the matching key instead.
+OPENAI_API_KEY=sk-...
+```
+
+For Sentinel, `--track sentinel` leaves the workspace GUID and the three `AZURE_*` service-principal
+values blank instead; the identity needs `Log Analytics Reader` on the workspace. If your Sentinel
+workspace is onboarded to the Defender portal, the Defender track already sees its alerts and
+tables and you need no Sentinel credential at all.
+
+Then:
 
 ```bash
-bunx @aretea-group/isophase probe               # Defender: confirms consent, records what the tenant supports
-bunx @aretea-group/isophase investigate --watch # the product: poll, investigate, record
+bunx @aretea-group/isophase probe                 # Defender: confirms consent, records what the tenant supports
+bunx @aretea-group/isophase console --live defender  # pick an alert, watch it being investigated
+bunx @aretea-group/isophase investigate --watch   # the product: poll, investigate, record
 ```
+
+Set `WATCH_SPEND_CEILING_USD` in `.env` before leaving the loop running unattended.
 
 `npm i -g @aretea-group/isophase` gives you a plain `isophase` on the path instead of `bunx …`; the
 rest of this README writes it that way. The bin needs Bun to run either way — `npx` works, Node
@@ -144,7 +169,7 @@ DEFENDER_CLIENT_SECRET=<local-secret>
 ```
 
 **Microsoft Sentinel** instead, through Azure Monitor Logs — the identity needs the workspace-scoped
-`Log Analytics Data Reader` role, and for local development you may sign in with `az login` rather
+`Log Analytics Reader` role, and for local development you may sign in with `az login` rather
 than configuring a service principal. `init --track sentinel` leaves these for you:
 
 ```dotenv
@@ -411,7 +436,7 @@ exercised` otherwise, since an empty queue is a property of the tenant. It write
 
 ### Use a real Microsoft Sentinel workspace
 
-The selected Microsoft Entra identity needs the workspace-scoped `Log Analytics Data Reader` role.
+The selected Microsoft Entra identity needs the workspace-scoped `Log Analytics Reader` role.
 Role assignment can take time to propagate. This project does not create identities, secrets or
 role assignments and never writes to Azure.
 
