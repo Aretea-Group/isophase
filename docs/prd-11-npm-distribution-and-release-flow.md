@@ -238,10 +238,20 @@ For a real tenant, run `isophase init` to write a .env for Defender or Sentinel.
 - **Verified 2026-10-02** — `@aretea-group` returns `{"error":"Scope not found"}` from
   `registry.npmjs.org/-/org/aretea-group/package`, and `@aretea-group/isophase` returns 404.
   `@aretea` is taken (see §4.2).
-- **Verified 2026-10-02** — npm trusted publishing (OIDC) needs npm CLI 11.5.1+ and Node 22.14+;
+- ~~**Verified 2026-10-02** — npm trusted publishing (OIDC) needs npm CLI 11.5.1+ and Node 22.14+;
   provenance is generated automatically for a public package from a public repository; the
   configured workflow filename must match exactly. `bun publish` has no OIDC support. The publish
-  step therefore uses npm even though everything else uses Bun. AC14–AC17 lean on this.
+  step therefore uses npm even though everything else uses Bun. AC14–AC17 lean on this.~~ →
+  **corrected 2026-10-05**: every requirement above holds and the workflow meets them, but npm's
+  token exchange rejects this repository's identity. GitHub issues *immutable* OIDC subject claims
+  (`repo:Aretea-Group@317917008/isophase@1338561688:…`) to every repository created after
+  2026-07-15 — this one dates from 2026-08-18 — and the setting cannot be disabled at repository or
+  organisation level. npm's registry only accepts the classic `repo:<owner>/<repo>:…` subject and
+  answers `403 OIDC permission denied for this action` after the token is minted and provenance is
+  already signed to the transparency log. Measured on run 37279008153 of `release.yml` for
+  `v0.1.1`, three attempts, with the trusted publisher configured exactly as §4.3 says. Tracked as
+  [npm/cli#9969](https://github.com/npm/cli/issues/9969), open, no fix announced. AC19 and AC20
+  are blocked on it; AC14–AC18 are unaffected and proven.
 - **Verified 2026-10-02** — a trusted publisher can only be configured on a package that already
   exists on npm; the first version must be published with a token. Phase 3's manual `0.1.0` and
   AC18 lean on this.
@@ -400,7 +410,7 @@ every command the README shows under Track A exists in the §4.3 table.
       given a release tag, it passes no dist-tag. _(test: unit — the stamp script)_
 - [x] **AC17** — Given the repository's secrets and every workflow file, When scanned, Then no
       `NPM_TOKEN` or `NODE_AUTH_TOKEN` is referenced. _(test: unit)_
-- [ ] **AC18** — Given the `0.1.0` publish, When the trusted publisher is configured, Then the npm
+- [x] **AC18** — Given the `0.1.0` publish, When the trusted publisher is configured, Then the npm
       package settings name `Aretea-Group/isophase` and `release.yml`. _(test: e2e, manual)_
 - [ ] **AC19** — Given a published `v0.1.1` Release, When the workflow completes, Then
       `@aretea-group/isophase@0.1.1` exists on npm with provenance pointing at the release commit.
