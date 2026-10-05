@@ -439,10 +439,10 @@ every command the README shows under Track A exists in the §4.3 table.
       `0.0.0`.~~ _(test: unit)_ **Superseded 2026-10-05 — §11 A2.** Proven as written on
       2026-10-02; release-please now keeps the real version in git, and a test pins that it matches
       the release-please manifest.
-- [ ] **AC22** — Given a clean machine with Bun and a Defender credential, When a reader follows the
+- [x] **AC22** — Given a clean machine with Bun and a Defender credential, When a reader follows the
       README's Install section from the top, Then they reach a running `investigate --watch` in
       three commands without cloning. _(test: e2e, manual walkthrough)_
-- [ ] **AC23** — Given the README, When read from the top, Then the Install section precedes "Choose
+- [x] **AC23** — Given the README, When read from the top, Then the Install section precedes "Choose
       your path", and every `isophase` command it shows is in the §4.3 table. _(test: unit — a
       README scan, like `scripts/run-artifacts-ignored.test.ts`)_
 - [x] **AC24** — Given `AGENTS.md` after Phase 2, When read, Then §2 lists "`init` provisions

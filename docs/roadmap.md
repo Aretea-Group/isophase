@@ -264,12 +264,25 @@ failed with `InvestigationAbortedError`. See PRD-5 §19 for the dated live evide
 
 ### 11. Track A Distribution — Container Image and Release Binary
 
-Added by PRD-9 §4.1.12. Track A — pointing the agent at a real Defender or Sentinel tenant — needs
-no Docker, no emulator and no fixtures, and the README now says so. It still asks an operator to
-clone a repository and install a language runtime, which is the wrong shape for someone whose job
-is responding to alerts rather than building software.
+Added by PRD-9 §4.1.12; **narrowed by PRD-11** (2026-10-05). Track A — pointing the agent at a real
+Defender or Sentinel tenant — needs no Docker, no emulator and no fixtures. ~~It still asks an
+operator to clone a repository and install a language runtime, which is the wrong shape for someone
+whose job is responding to alerts rather than building software.~~ Since PRD-11 it asks for Bun and
+one command: `bunx @aretea-group/isophase init` writes the `.env`, and the same bin runs the loop,
+the console and the Defender probe. The npm package is published by release-please and
+`release.yml` (ADR 014). What remains here is the two packagings that need *no* runtime at all.
 
-Two packagings would remove that, and the ordering is the opposite of the intuition. Against Track
+Two things PRD-11 §3 deliberately left out, and the reasons, so they are not re-opened by accident:
+
+* **Running on Node without Bun.** Twenty-five source files use Bun-only APIs (`Bun.file`,
+  `Bun.serve`, `Bun.spawn`, …) and OpenTUI needs Bun 1.3 or Node 26.4 with `--experimental-ffi`.
+  The bin's shebang hands execution to Bun; `npx` works when Bun is on the path, Node alone does not
+* **A configuration file beside `.env`.** Both apps already validate exactly that file; a second
+  format would be a fourth reader of the environment and a second place every variable is
+  documented. `isophase init` writes the `.env` instead
+
+Two packagings would remove the runtime requirement, and the ordering is the opposite of the
+intuition. Against Track
 B they are both useless: the Kusto emulator is amd64-only and needs a Rosetta-backed VM, which is
 host configuration no artifact can carry. Against Track A:
 

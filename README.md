@@ -37,8 +37,41 @@ on this and measure whether a change made the agent better. It is not needed to 
 This README is the canonical setup and usage guide; the files under `docs/` contain design history
 and decisions rather than a second getting started path.
 
-**You do not need the local lab to use this against a real tenant.** The next section splits the
-setup into two independent tracks — pick one.
+**You do not need the local lab to use this against a real tenant.** Install the package and point
+it at your tenant; the lab is for people changing the agent.
+
+## Install
+
+With [Bun](https://bun.sh) 1.3 or newer on your `PATH`, in an empty directory:
+
+```bash
+bunx @aretea-group/isophase init --track defender   # or --track sentinel
+```
+
+That writes a `.env` with the blanks to fill in, creates `.data/runs/`, checks the file against the
+investigator's own schema and the Bun version, and prints the next command. It creates nothing in
+your tenant — no app registration, no service principal, no permission — and makes no network
+call. Fill in the credential and the model key, then:
+
+```bash
+bunx @aretea-group/isophase probe               # Defender: confirms consent, records what the tenant supports
+bunx @aretea-group/isophase investigate --watch # the product: poll, investigate, record
+```
+
+`npm i -g @aretea-group/isophase` gives you a plain `isophase` on the path instead of `bunx …`; the
+rest of this README writes it that way. The bin needs Bun to run either way — `npx` works, Node
+alone does not.
+
+| Command | What it does |
+|---|---|
+| `isophase init` | write `.env` and the working directories for a Defender or Sentinel tenant; `--track`, `--force` |
+| `isophase investigate` | investigate one alert with `--alert <id>`, or run the unattended loop with `--watch` |
+| `isophase console` | the operator console; `--live <source>` points it at a real tenant, `--attach` at a running loop |
+| `isophase probe` | check a Defender credential's consent and record what the tenant supports |
+| `isophase help` | list the commands, or `help <command>` for one; `--help` works everywhere, `--version` too |
+
+The package is Track A only. The local lab — Mock Sentinel, the Kusto emulator, the fixtures and
+the scoring harness — is clone-only and is what the rest of this page calls Track B.
 
 ## Choose your path
 
@@ -47,6 +80,7 @@ Two ways in. Neither is a subset of the other, and most people only ever want on
 | | **Track A — your own tenant** | **Track B — the local lab** |
 |---|---|---|
 | Use it to | investigate real alerts in Microsoft Defender XDR or Microsoft Sentinel | customise the agent, or score it against 14 scenarios whose answers are known |
+| Install | `bunx @aretea-group/isophase init` | `git clone`, then `bun install` |
 | Needs | Bun, a model API key, a read-only tenant credential | the same, plus Docker |
 | Docker, Kusto, bootstrap | **no** | yes |
 | Slow step | your tenant admin granting consent | ~10 minutes of local setup |
@@ -56,12 +90,14 @@ If you want both, do Track A first.
 
 ## Common setup
 
+Track A's `.env` comes from `isophase init`. Track B's comes from the clone:
+
 ```bash
 bun install
 cp .env.example .env
 ```
 
-Set the provider, model, and matching API key in `.env`. The default is:
+Either way, set the provider, model, and matching API key in `.env`. The default is:
 
 ```dotenv
 INVESTIGATOR_PROVIDER=openai
@@ -80,7 +116,8 @@ LLAMA_SERVER_MODEL=qwen3.8-27b
 ```
 
 Supply all four, plus the context and token limits; [`.env.example`](./.env.example) documents each
-one and the optional bearer token, which is never written to a run artifact. Run artifacts record
+one and the optional bearer token, which is never written to a run artifact. The file `init` writes
+carries the same variables with their defaults in comments. Run artifacts record
 the endpoint, the limits and the reasoning profile, so two server configurations stay distinct
 measurements. That file is the reference for every other variable too. The investigator validates
 its configuration before the first alert, so a missing key stops the process rather than surfacing
@@ -89,13 +126,15 @@ credentials are present.
 
 ## Track A — point it at your own tenant
 
-No Docker. No emulator. No fixtures. You need [Bun](https://bun.sh) 1.3 or newer, a model API key,
-and a read-only credential for one tenant.
+No Docker. No emulator. No fixtures. No clone. You need [Bun](https://bun.sh) 1.3 or newer, a model
+API key, and a read-only credential for one tenant. Start with `isophase init --track defender` or
+`--track sentinel` from [Install](#install); it writes the `.env` the rest of this section fills in,
+with every artifact directory already under `.data/`.
 
 **Microsoft Defender XDR** is the shortest route, because it needs no workspace id. Create the app
 registration and grant consent following
 [`docs/defender-setup.md`](./docs/defender-setup.md) — that is the slow step, and it needs a tenant
-administrator. Then add four lines to `.env`:
+administrator. Then fill in the four lines `init --track defender` left blank in `.env`:
 
 ```dotenv
 SECURITY_SOURCES=defender
@@ -106,27 +145,24 @@ DEFENDER_CLIENT_SECRET=<local-secret>
 
 **Microsoft Sentinel** instead, through Azure Monitor Logs — the identity needs the workspace-scoped
 `Log Analytics Data Reader` role, and for local development you may sign in with `az login` rather
-than configuring a service principal:
+than configuring a service principal. `init --track sentinel` leaves these for you:
 
 ```dotenv
 SENTINEL_CONNECTOR=azure
 AZURE_LOG_ANALYTICS_WORKSPACE_ID=<workspace-guid>
 ```
 
-Check the credential without spending a token on a model:
+Check a Defender credential without spending a token on a model, then start the loop:
 
 ```bash
-DEFENDER_LIVE_TEST=true bun test packages/sentinel-client/test/integration/defender.test.ts
-# or, for Sentinel
-AZURE_SENTINEL_LIVE_TEST=true bun test packages/sentinel-client/test/integration/azure.test.ts
+isophase probe                  # confirms consent and records what the tenant supports
+isophase investigate --watch    # the loop; set PUBLISH_FINDINGS=true in .env to write findings back
 ```
 
-Then start the loop:
-
-```bash
-bun run probe:defender        # confirms consent and records what the tenant supports
-RUNS_DIR=.data/runs SECURITY_SOURCES=defender PUBLISH_FINDINGS=true bun run investigate --watch
-```
+From a clone the same two are `bun run probe:defender` and `bun run investigate --watch`; the
+`bun run` scripts and the package share one dispatcher. A Sentinel credential has no probe — the
+clone's live smoke test (`AZURE_SENTINEL_LIVE_TEST=true bun test
+packages/sentinel-client/test/integration/azure.test.ts`) is the check there.
 
 That is the whole product path: the loop polls Defender for alerts created inside
 `WATCH_ALERT_WINDOW`, investigates each one exactly once, and records the finding.
@@ -142,7 +178,7 @@ tenant looks hung for a minute or two and is not — watch `.data/runs/` rather 
 set `INVESTIGATOR_TRACE=true` to see each turn as it happens.
 
 Set `WATCH_SPEND_CEILING_USD` before leaving it running — unattended means nobody notices the bill.
-Only `investigate --watch` reads it: the one-shot `bun run investigate` has no dollar cap, just
+Only `investigate --watch` reads it: the one-shot `isophase investigate` has no dollar cap, just
 `INVESTIGATOR_MAX_TURNS`.
 
 **Writing findings back needs two things, and the permission is only one of them.** Set
@@ -155,12 +191,13 @@ With either one missing, everything else still works and the finding stays in `r
 says `published … via local`, which means the run artifact, not the portal.
 
 `RUNS_DIR` must sit under `.data/` for any live tenant — run artifacts can contain tenant data, and
-the investigator refuses to start otherwise.
+the investigator refuses to start otherwise. `init` sets it, the trace directory and the control
+socket there already.
 
 Attach the console to a running loop, and detach again, without stopping it:
 
 ```bash
-bun run console --attach runs/control.sock --runs .data/runs
+isophase console --attach .data/runs/control.sock --runs .data/runs
 ```
 
 `--runs` must match the loop's `RUNS_DIR`, and `--attach` must match its `WATCH_CONTROL_SOCKET`;
@@ -173,33 +210,33 @@ neither derives from the other. Quit the console with `q` — it detaches and th
 | `WATCH_SPEND_CEILING_USD` | unset | stop when this much has been spent; `--watch` only |
 | `WATCH_SKIP_STATUSES` | empty | vendor status values to skip, e.g. `resolved` |
 | `WATCH_MAX_FAILURES_PER_ALERT` | `2` | park an alert after this many failures |
-| `WATCH_CONTROL_SOCKET` | `runs/control.sock` | where a console attaches |
+| `WATCH_CONTROL_SOCKET` | `runs/control.sock`; `init` sets `.data/runs/control.sock` | where a console attaches |
 | `PUBLISH_FINDINGS` | `false` | **write findings to the source's case.** Off unless set |
 
 `WATCH_SKIP_STATUSES` is empty on purpose: a wrong default silently skips alerts. The loop prints
 the status values it saw in its first cycle, so set it from your tenant's own vocabulary.
 
 If your alerts live in Microsoft Sentinel, they are reachable here only if the workspace is
-onboarded to the Defender portal — `bun run probe:defender --only I` tells you whether it is.
+onboarded to the Defender portal — `isophase probe --only I` tells you whether it is.
 
 Or open the console against the tenant instead of running the loop:
 
 ```bash
-bun run console:live defender           # Defender XDR
-bun run console:live sentinel           # a real Log Analytics workspace
-bun run console:live defender,sentinel  # both; the first named produces the alerts
+isophase console --live defender           # Defender XDR
+isophase console --live sentinel           # a real Log Analytics workspace
+isophase console --live defender,sentinel  # both; the first named produces the alerts
 ```
 
-Use `console:live` rather than `bun run console` — it sets the source and both artifact directories
-together, which is what keeps tenant data under ignored `.data/` and out of the repository. The
-details are in [Open the console against a live tenant](#open-the-console-against-a-live-tenant),
-and the full configuration for each source is under
-[Security data sources](#security-data-sources).
+Use `--live` rather than a bare `isophase console` — it sets the source and both artifact
+directories together, which is what keeps tenant data under ignored `.data/` and out of the
+repository. The details are in
+[Open the console against a live tenant](#open-the-console-against-a-live-tenant), and the full
+configuration for each source is under [Security data sources](#security-data-sources).
 
 **If the queue is empty, check the window before concluding anything is broken.**
 `DEFENDER_ALERT_WINDOW` defaults to `P7D`, and a tenant whose detections are older than seven days
 reports `0 alert(s)` and exits successfully. Widen the window, or reach a known alert directly with
-`bun run investigate --alert <id>`.
+`isophase investigate --alert <id>`.
 
 That is Track A. Everything below about Kusto, telemetry and scenarios belongs to Track B and you
 can skip it.
@@ -298,16 +335,17 @@ bun run console --traces <dir>          # another transcript directory
 ### Open the console against a live tenant
 
 ```bash
-bun run console:live defender           # Defender XDR
-bun run console:live sentinel           # a real Log Analytics workspace
-bun run console:live defender,sentinel  # both; the first named produces the alerts
+isophase console --live defender           # Defender XDR
+isophase console --live sentinel           # a real Log Analytics workspace
+isophase console --live defender,sentinel  # both; the first named produces the alerts
+bun run console:live defender              # the same, from a clone
 ```
 
-Use it rather than `bun run console`, which resolves whatever `.env` names — on a checkout set up
-for the local lab that is Mock Sentinel, so the queue reports it unreachable and the connector looks
-broken when it is merely unselected. `console:live` sets the source and both artifact directories
+Use `--live` rather than a bare console, which resolves whatever `.env` names — on a checkout set
+up for the local lab that is Mock Sentinel, so the queue reports it unreachable and the connector
+looks broken when it is merely unselected. `--live` sets the source and both artifact directories
 together (`.data/defender-runs`, `.data/azure-runs`, or `.data/live-runs` for a mixed run), which is
-what keeps tenant data out of the repository, and forwards any remaining flags untouched.
+what keeps tenant data out of the repository, and forwards every other flag untouched.
 
 It deliberately does not set `DEFENDER_ALERT_WINDOW`: that is a fact about a tenant's detection
 cadence, not about running live, so it belongs in `.env` beside the credentials.
@@ -584,6 +622,13 @@ Tests needing Kusto or Mock Sentinel skip explicitly when those services are una
 stack with `bun run infra:up` to exercise them. Tests that call a paid model or a live tenant are
 opt-in, so `bun run check` needs no credential. Do not add dependencies without reviewing the
 version and updating `bun.lock`.
+
+The `bun run` scripts and the published `isophase` bin share one dispatcher, `apps/cli`:
+`bun run investigate` is `bun apps/cli/src/index.ts investigate`, and there is no build step for
+development. `bun run build` is the release build — one bundle in ignored `dist/` — and is run by
+CI only. Releases are release-please's: merging the release pull request it keeps open on `main`
+creates the tag and the GitHub Release and publishes `@aretea-group/isophase` to npm (PRD-11,
+ADR 014).
 Repository-specific implementation rules are in [`AGENTS.md`](./AGENTS.md).
 
 ## Design documents
