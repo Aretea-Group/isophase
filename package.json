@@ -1,6 +1,6 @@
 {
   "name": "@aretea-group/isophase",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agentic SOC alert investigation for Microsoft Defender XDR and Microsoft Sentinel: one bin, a .env, and a run artifact per sweep",
   "homepage": "https://github.com/Aretea-Group/isophase#readme",
   "license": "MIT",
