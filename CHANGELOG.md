@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/Aretea-Group/isophase/compare/v0.1.1...v1.0.0) (2026-10-05)
+
+
+### Chores
+
+* release 1.0.0 ([9b42bee](https://github.com/Aretea-Group/isophase/commit/9b42beeeb9637054b0d341eaa7bb40fc3f45a2b8))
+
 ## [0.1.1](https://github.com/Aretea-Group/isophase/compare/v0.1.0...v0.1.1) (2026-10-05)
 
 
