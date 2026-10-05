@@ -133,9 +133,16 @@ rather than silently.
 PRD exists to end. A classic or long-lived token is no longer issued by npm. Publishing from a
 different, pre-cutoff repository would move the source of truth to escape a claim format.
 
-**Reverts when.** npm/cli#9969 closes with the immutable subject accepted: drop the `env` from the
-publish step, delete the secret, and the job is back to §1's design with no other change. The
-trusted publisher stays configured in the meantime.
+**The trusted publisher is deleted in the meantime, not kept.** Measured on the first token
+publish (2026-10-05): with `id-token: write` on the job and a trusted publisher on the package,
+npm performs the OIDC exchange first, obtains a credential, and the registry rejects the publish
+for the subject mismatch — it never falls back to the token. With no publisher configured the
+exchange finds nothing, npm uses `NODE_AUTH_TOKEN`, and provenance is still signed through the
+GitHub token (`0.1.1`'s attestation names `release.yml` and the `v0.1.1` commit).
+
+**Reverts when.** npm/cli#9969 closes with the immutable subject accepted: re-create the trusted
+publisher naming `Aretea-Group/isophase` and `release.yml`, drop the `env` from the publish step,
+delete the secret, and the job is back to §1's design with no other change.
 
 **Also changed by PRD-11 §11 A2, an amendment rather than a deviation.** The trigger moved from a
 hand-published Release to release-please: on every push to `main` it keeps one release pull

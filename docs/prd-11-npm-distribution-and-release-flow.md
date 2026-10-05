@@ -259,8 +259,12 @@ For a real tenant, run `isophase init` to write a .env for Defender or Sentinel.
   answers `403 OIDC permission denied for this action` after the token is minted and provenance is
   already signed to the transparency log. Measured on run 37279008153 of `release.yml` for
   `v0.1.1`, three attempts, with the trusted publisher configured exactly as §4.3 says. Tracked as
-  [npm/cli#9969](https://github.com/npm/cli/issues/9969), open, no fix announced. AC19 and AC20
-  are blocked on it; AC14–AC18 are unaffected and proven.
+  [npm/cli#9969](https://github.com/npm/cli/issues/9969), open, no fix announced. ~~AC19 and AC20
+  are blocked on it; AC14–AC18 are unaffected and proven.~~ Unblocked 2026-10-05 by the token
+  deviation (ADR 014 §6): `0.1.1` published from run 37285405958 with provenance whose source
+  digest is the `v0.1.1` commit `6835f88`. One more fact measured on the way: while a trusted
+  publisher exists on the package, npm tries the OIDC exchange first and never falls back to the
+  token, so the publisher had to be deleted for the token to be used.
 - **Verified 2026-10-02** — a trusted publisher can only be configured on a package that already
   exists on npm; the first version must be published with a token. Phase 3's manual `0.1.0` and
   AC18 lean on this.
@@ -426,10 +430,10 @@ every command the README shows under Track A exists in the §4.3 table.
       now reaches the publish step alone, which AC29 pins.
 - [x] **AC18** — Given the `0.1.0` publish, When the trusted publisher is configured, Then the npm
       package settings name `Aretea-Group/isophase` and `release.yml`. _(test: e2e, manual)_
-- [ ] **AC19** — Given a published `v0.1.1` Release, When the workflow completes, Then
+- [x] **AC19** — Given a published `v0.1.1` Release, When the workflow completes, Then
       `@aretea-group/isophase@0.1.1` exists on npm with provenance pointing at the release commit.
       _(test: e2e, manual)_
-- [ ] **AC20** — Given a machine that has never seen the repository, When
+- [x] **AC20** — Given a machine that has never seen the repository, When
       `bunx @aretea-group/isophase@0.1.1 --version` runs, Then it prints `0.1.1`. _(test: e2e, manual)_
 - [x] **AC21** — ~~Given git's `package.json`, When read on `main` after Phase 3, Then its version is
       `0.0.0`.~~ _(test: unit)_ **Superseded 2026-10-05 — §11 A2.** Proven as written on
