@@ -13,9 +13,9 @@
  * emits the shebang after Bun's own preamble, which fails with a syntax error, so it is prepended
  * after the build.
  *
- * The version is not stamped here. `apps/cli/src/index.ts` and the investigator's provenance read
- * the root `package.json` through a static import, so the release workflow stamps the tag's version
- * into `package.json` *before* this runs and the bundle carries it.
+ * The version is whatever `package.json` carries: release-please bumps it in its release pull
+ * request (PRD-11 §11 A2), and `apps/cli/src/index.ts` and the investigator's provenance read it
+ * through a static import, so the bundle built at the release tag carries the released version.
  */
 import { chmod } from "node:fs/promises";
 import { resolve } from "node:path";

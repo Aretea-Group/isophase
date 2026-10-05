@@ -1,54 +1,77 @@
-# The only publish path (PRD-11 §4.1 D4, ADR 014).
+# The only publish path (PRD-11 §4.1 D4 as amended by §11 A2; ADR 014 §6).
 #
-# A *published* GitHub Release is the trigger — not a pushed tag. The Release's notes are the
-# changelog this repository does not otherwise keep, and publishing one is a deliberate click. The
-# job checks out the Release's tag, runs the same `bun run check` the pull-request gate runs, stamps
-# the tag's version into package.json (refusing anything that is not vX.Y.Z or vX.Y.Z-<pre>), builds
-# dist/, and publishes through npm trusted publishing with no token secret, ever. `id-token: write` is what
-# lets npm mint the short-lived credential, and provenance is generated automatically for a public
-# package from a public repository.
+# Two jobs on every push to main. `release-please` reads the Conventional Commits since the last
+# release and keeps one release pull request open — version bump in package.json, CHANGELOG.md,
+# the manifest. Merging that pull request is the release: release-please then creates the tag and
+# the GitHub Release, and `publish` runs. Nothing else publishes.
 #
-# The trusted publisher on npmjs.com names this repository and this file by name — `release.yml`.
-# Renaming the file means reconfiguring the publisher; the name is part of the contract.
+# `publish` authenticates with a granular npm access token in the NPM_TOKEN secret. That is a
+# recorded deviation from the trusted-publishing design (ADR 014 §6): npm's token exchange rejects
+# the immutable OIDC subject claims GitHub issues to this repository (npm/cli#9969). The token is
+# scoped to this package, bypasses 2FA for CI only, and expires within 90 days — npm's ceiling —
+# so it has to be rotated. `id-token: write` stays so provenance is still signed, and the job
+# returns to OIDC-only when npm accepts the immutable subject.
 #
-# Pre-release tags (v0.2.0-rc.1) publish under the `next` dist-tag so `bunx @aretea-group/isophase`
-# never resolves to one.
+# Pre-release versions (0.2.0-rc.1) publish under the `next` dist-tag so `bunx
+# @aretea-group/isophase` never resolves to one.
 name: release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
-  group: release-${{ github.event.release.tag_name }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   publish:
-    name: publish ${{ github.event.release.tag_name }}
+    name: publish ${{ needs.release-please.outputs.tag_name }}
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.4
-      # npm trusted publishing needs npm 11.5.1+ on Node 22.14+; setup-node's npm is older.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@11
-      - run: npm --version
       - run: bun install --frozen-lockfile
       - run: bun run check
       - id: version
-        run: bun scripts/release-version.ts "${{ github.event.release.tag_name }}"
+        run: bun scripts/release-version.ts
       - run: bun run build
-      - run: npm publish --access public ${{ steps.version.outputs.dist_tag_flag }}
+      - run: npm publish --access public --provenance ${{ steps.version.outputs.dist_tag_flag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

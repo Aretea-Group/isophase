@@ -244,15 +244,14 @@ describe("schema generations", () => {
 
 /**
  * AC9 — Given a completed investigation, When the run artifact is written, Then its provenance
- * block carries `packageVersion`, equal to `0.0.0` from the clone and to the tag's version from a
- * published package (PRD-11 §4.1 D8).
+ * block carries `packageVersion`, equal to the root `package.json`'s version — which, since PRD-11
+ * §11 A2, release-please keeps in git (PRD-11 §4.1 D8).
  *
  * The clone half is provable here; the published half is AC19/AC20's, from a real release. What
  * this pins is that the value is the root `package.json`'s, which is the file the release stamps.
  */
 describe("packageVersion (PRD-11 D8)", () => {
-  test("the provenance block carries the root package version, 0.0.0 from a clone", () => {
-    expect(PROVENANCE.packageVersion).toBe("0.0.0");
+  test("the provenance block carries the root package version", () => {
     expect(PROVENANCE.packageVersion).toBe(rootPackageJson.version);
     expect(PACKAGE_VERSION).toBe(rootPackageJson.version);
   });

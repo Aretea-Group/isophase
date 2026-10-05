@@ -45,7 +45,7 @@ describe("the command table (PRD-11 §4.1 D3)", () => {
     expect(PACKAGE_VERSION).toBe(rootPackageJson.version);
     const version = await run(["--version"]);
     expect(version.code).toBe(0);
-    expect(version.stdout.trim()).toBe("0.0.0");
+    expect(version.stdout.trim()).toBe(rootPackageJson.version);
   });
 });
 

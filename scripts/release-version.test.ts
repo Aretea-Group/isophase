@@ -1,54 +1,55 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import { distTagFor, publishFlags, stampVersion, versionFromTag } from "./release-version.ts";
+import { distTagFor, publishFlags, releaseVersion } from "./release-version.ts";
 
 /**
- * AC15 — Given a release tag that is not `vX.Y.Z` or `vX.Y.Z-<pre>`, When the version stamp step
- * runs, Then the job fails before publishing.
+ * The publish step's two decisions (PRD-11 §4.1 D4 as amended by §11 A2). release-please owns the
+ * version; this only reads it back, refuses nonsense, and picks the dist-tag.
  */
-describe("AC15 — the stamp refuses a malformed tag", () => {
+describe("the version the publish step reads", () => {
   test.each([
-    ["no v prefix", "0.1.1"],
-    ["two components", "v0.1"],
-    ["four components", "v0.1.1.1"],
-    ["a branch name", "main"],
-    ["a word", "release"],
-    ["an empty pre-release", "v0.1.1-"],
-    ["a build suffix", "v0.1.1+build.5"],
-    ["leading garbage", "tag-v0.1.1"],
-  ])("%s (%s) throws naming the tag", (_label, tag) => {
-    expect(() => versionFromTag(tag)).toThrow(`"${tag}"`);
+    ["a release", "0.1.1", "0.1.1"],
+    ["a pre-release", "0.2.0-rc.1", "0.2.0-rc.1"],
+  ])("%s is accepted", (_label, manifest, version) => {
+    expect(releaseVersion(manifest)).toBe(version);
+    expect(releaseVersion(manifest, `v${version}`)).toBe(version);
   });
 
-  test("the stamp step fails as a program, before anything is written", async () => {
-    const root = await mkdtemp(join(tmpdir(), "isophase-stamp-"));
-    await Bun.write(join(root, "package.json"), '{"name":"x","version":"0.0.0"}\n');
-    await expect(stampVersion(root, "v1")).rejects.toThrow("not vX.Y.Z");
-    expect(
-      ((await Bun.file(join(root, "package.json")).json()) as { version: string }).version,
-    ).toBe("0.0.0");
+  test.each([
+    ["a v prefix", "v0.1.1"],
+    ["two components", "0.1"],
+    ["an empty pre-release", "0.1.1-"],
+    ["a build suffix", "0.1.1+build.5"],
+    ["a word", "latest"],
+    ["nothing", undefined],
+  ])("%s is refused before anything is published", (_label, manifest) => {
+    expect(() => releaseVersion(manifest)).toThrow("refusing to publish");
+  });
 
-    const proc = Bun.spawn(["bun", join(import.meta.dir, "release-version.ts"), "v1"], {
+  test("a tag that disagrees with package.json is refused", () => {
+    expect(() => releaseVersion("0.1.1", "v0.1.2")).toThrow("does not match");
+  });
+
+  test("the program reads the real manifest and exits zero", async () => {
+    const proc = Bun.spawn(["bun", `${import.meta.dir}/release-version.ts`], {
+      cwd: `${import.meta.dir}/..`,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    expect(code).toBe(0);
+    expect(stdout).toContain("[release] publishing ");
+  });
+
+  test("the program refuses a tag that disagrees with the manifest", async () => {
+    const proc = Bun.spawn(["bun", `${import.meta.dir}/release-version.ts`, "v99.0.0"], {
+      cwd: `${import.meta.dir}/..`,
       stdout: "pipe",
       stderr: "pipe",
     });
     const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
     expect(code).not.toBe(0);
-    expect(stderr).toContain("refusing to stamp or publish");
-  });
-
-  test("a well-formed tag stamps package.json and a committed version is refused", async () => {
-    const root = await mkdtemp(join(tmpdir(), "isophase-stamp-"));
-    await Bun.write(join(root, "package.json"), '{"name":"x","version":"0.0.0"}\n');
-    expect(await stampVersion(root, "v0.1.1")).toBe("0.1.1");
-    expect(
-      ((await Bun.file(join(root, "package.json")).json()) as { version: string }).version,
-    ).toBe("0.1.1");
-    // Stamping again finds 0.1.1, not 0.0.0: the guard that git never carries a version.
-    await expect(stampVersion(root, "v0.1.2")).rejects.toThrow("not 0.0.0");
+    expect(stderr).toContain("does not match");
   });
 });
 
@@ -57,15 +58,14 @@ describe("AC15 — the stamp refuses a malformed tag", () => {
  * release tag, it passes no dist-tag.
  */
 describe("AC16 — pre-releases go to next, releases to the default", () => {
-  const cases: [string, string, "next" | undefined, string[]][] = [
-    ["v0.1.1", "0.1.1", undefined, []],
-    ["v1.0.0", "1.0.0", undefined, []],
-    ["v0.2.0-rc.1", "0.2.0-rc.1", "next", ["--tag", "next"]],
-    ["v0.2.0-beta", "0.2.0-beta", "next", ["--tag", "next"]],
-    ["v0.2.0-alpha.3.x", "0.2.0-alpha.3.x", "next", ["--tag", "next"]],
+  const cases: [string, "next" | undefined, string[]][] = [
+    ["0.1.1", undefined, []],
+    ["1.0.0", undefined, []],
+    ["0.2.0-rc.1", "next", ["--tag", "next"]],
+    ["0.2.0-beta", "next", ["--tag", "next"]],
+    ["0.2.0-alpha.3.x", "next", ["--tag", "next"]],
   ];
-  test.each(cases)("%s", (tag, version, distTag, flags) => {
-    expect(versionFromTag(tag)).toBe(version);
+  test.each(cases)("%s", (version, distTag, flags) => {
     expect(distTagFor(version)).toBe(distTag);
     expect(publishFlags(version)).toEqual(flags);
   });

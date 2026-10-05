@@ -147,9 +147,9 @@ export function computePiVersion(): string {
  *
  * A static import of the root `package.json`, the same way `computePiVersion` reads the pinned Pi
  * versions: a runtime read would trip `ground-truth-isolation.test.ts`'s caller-supplied-path scan.
- * From a clone this is `0.0.0`, which is honest — a clone has no version. The release build stamps
- * the tag's version into `package.json` before bundling, so the published bundle carries the real
- * one and `--version` prints the same string.
+ * release-please keeps the version in git (PRD-11 §11 A2), so a clone reports the last release it
+ * contains and the bundle built at a release tag carries that release's version; `--version`
+ * prints the same string.
  *
  * Legibility only. ADR 008 §3's condition key reads named provenance fields and this is not one of
  * them, so a release does not split the corpus (AC10).
