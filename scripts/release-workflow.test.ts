@@ -120,7 +120,7 @@ describe("release-please's committed state", () => {
     expect(manifest["."]).toBe(pkg.version);
   });
 
-  test("tags are v<version> with no component, and 0.x feats bump the patch", async () => {
+  test("tags are v<version> with no component, and the pre-1.0 bump flags are gone", async () => {
     const config = (await Bun.file(join(ROOT, "release-please-config.json")).json()) as Record<
       string,
       unknown
@@ -128,7 +128,8 @@ describe("release-please's committed state", () => {
     expect(config["release-type"]).toBe("node");
     expect(config["include-v-in-tag"]).toBe(true);
     expect(config["include-component-in-tag"]).toBe(false);
-    expect(config["bump-minor-pre-major"]).toBe(true);
-    expect(config["bump-patch-for-minor-pre-major"]).toBe(true);
+    // Removed with the 1.0.0 release: after a major they have no effect and would only mislead.
+    expect(config["bump-minor-pre-major"]).toBeUndefined();
+    expect(config["bump-patch-for-minor-pre-major"]).toBeUndefined();
   });
 });
