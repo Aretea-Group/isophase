@@ -2,7 +2,7 @@
 /**
  * The version the release publishes, and the dist-tag it gets (PRD-11 §4.1 D4, §11 A2).
  *
- *     bun scripts/release-version.ts            # reads package.json; writes $GITHUB_OUTPUT
+ *     bun scripts/release-version.ts [vX.Y.Z]   # reads package.json; writes $GITHUB_OUTPUT
  *
  * release-please owns the version: its release pull request bumps `package.json`, and the tag it
  * creates on merge is `v<that version>`. This script no longer stamps anything — it reads the
@@ -50,7 +50,9 @@ if (import.meta.main) {
     const manifest = (await Bun.file(resolve(import.meta.dir, "../package.json")).json()) as {
       version?: unknown;
     };
-    const version = releaseVersion(manifest.version, Bun.argv[2] ?? process.env["GITHUB_REF_NAME"]);
+    // The tag is an explicit argument, never read from GITHUB_REF_NAME: on a pull-request run that
+    // variable is the branch, and comparing it to the version would fail every check run.
+    const version = releaseVersion(manifest.version, Bun.argv[2]);
     const flags = publishFlags(version).join(" ");
     console.info(`[release] publishing ${version}${flags === "" ? "" : ` (${flags})`}`);
     const output = process.env["GITHUB_OUTPUT"];

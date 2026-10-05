@@ -76,6 +76,9 @@ describe("AC29 — release.yml", () => {
     expect(at("bun run check")).toBeGreaterThanOrEqual(0);
     expect(at("bun run check")).toBeLessThan(at("scripts/release-version.ts"));
     expect(at("scripts/release-version.ts")).toBeLessThan(at("bun run build"));
+    expect(runs[at("scripts/release-version.ts")]).toContain(
+      "${{ needs.release-please.outputs.tag_name }}",
+    );
     expect(at("bun run build")).toBeLessThan(at("npm publish"));
   });
 

@@ -70,7 +70,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check
       - id: version
-        run: bun scripts/release-version.ts
+        run: bun scripts/release-version.ts "${{ needs.release-please.outputs.tag_name }}"
       - run: bun run build
       - run: npm publish --access public --provenance ${{ steps.version.outputs.dist_tag_flag }}
         env:
