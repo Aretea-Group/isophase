@@ -216,7 +216,7 @@ export const RunProvenance = z.object({
   submissionHash: z.string().min(1),
   piVersion: z.string().min(1),
   /**
-   * The published package's version, `0.0.0` from a clone (PRD-11 §4.1 D8). Legibility only: it is
+   * The published package's version, as the root `package.json` carries it (PRD-11 §4.1 D8). Legibility only: it is
    * not part of ADR 008's condition key, so a release does not split the corpus.
    */
   packageVersion: z.string().min(1).optional(),

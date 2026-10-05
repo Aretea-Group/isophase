@@ -60,8 +60,9 @@ asks for a runtime.
   three. Goes to `docs/roadmap.md`.
 - **Publishing the lab.** Mock Sentinel, `fixtures/`, `scripts/evaluate-runs.ts`, the benchmark map,
   the Kusto bootstrap. Track B stays clone-only, and `AGENTS.md` §5 says so.
-- **Automated changelogs or version-bump pull requests.** The Release notes are the changelog. Can be
-  added later without changing the trigger; no document needed.
+- ~~**Automated changelogs or version-bump pull requests.** The Release notes are the changelog. Can be
+  added later without changing the trigger; no document needed.~~ → reversed 2026-10-05, §11 A2:
+  release-please keeps `CHANGELOG.md` and opens the version-bump pull request.
 - **Changing the environment defaults.** `SENTINEL_CONNECTOR=mock` and `SECURITY_SOURCES=sentinel`
   stay the defaults so a zero-configuration lab checkout keeps working. The package fails loudly
   instead (§4.1 D5).
@@ -94,14 +95,22 @@ asks for a runtime.
   `scripts/` is the one tree both ground-truth guards exempt (AGENTS.md §3, ADR 006 §5). Rationale:
   an npm user has no `bun run` scripts, and four entry files with four parsers are routing, not
   product. Same ADR as D1. _(ADR 014)_
-- **D4 — A published GitHub Release is the only publish trigger.** `.github/workflows/release.yml`
-  runs on `release: published`, checks out the tag, runs `bun run check`, builds, stamps
-  `package.json`'s version from the tag (refusing anything that is not `vX.Y.Z` or
-  `vX.Y.Z-<pre>`), and publishes with `npm publish --access public` under `id-token: write`. Git's
-  `package.json` stays at `0.0.0` so a stale committed version can never be published. Pre-release
-  tags publish under the `next` dist-tag so `bunx @aretea-group/isophase` never resolves to one.
-  Rationale: a pushed tag is cheap and reversible; a published Release is a deliberate click with
-  notes attached, and those notes are the changelog this repository does not otherwise keep.
+- **D4 — ~~A published GitHub Release is the only publish trigger.~~ Merging release-please's
+  release pull request is the only publish trigger** (amended 2026-10-05, §11 A2).
+  `.github/workflows/release.yml` ~~runs on `release: published`, checks out the tag, runs
+  `bun run check`, builds, stamps `package.json`'s version from the tag (refusing anything that is
+  not `vX.Y.Z` or `vX.Y.Z-<pre>`), and publishes with `npm publish --access public` under
+  `id-token: write`. Git's `package.json` stays at `0.0.0` so a stale committed version can never
+  be published.~~ runs on every push to `main`: release-please keeps one release pull request open
+  with the version bump and the changelog and, when it merges, creates the tag and the Release;
+  the `publish` job then checks out that tag, runs `bun run check`, builds, and publishes with
+  `npm publish --access public --provenance`. Authentication is the granular token recorded as a
+  deviation in ADR 014 §6, not OIDC. Pre-release
+  versions publish under the `next` dist-tag so `bunx @aretea-group/isophase` never resolves to
+  one. Rationale: ~~a pushed tag is cheap and reversible; a published Release is a deliberate click
+  with notes attached, and those notes are the changelog this repository does not otherwise keep.~~
+  the user's instruction; the release pull request is the deliberate click, and it carries the
+  changelog.
 - **D5 — The mock connector stays the default and fails loudly.** When `SENTINEL_CONNECTOR=mock` is
   selected and `SENTINEL_BASE_URL` does not answer, the investigator and the console report that
   the mock connector is selected, that it needs the local lab, and that `init` writes a `.env` for a
@@ -347,7 +356,7 @@ every command the README shows under Track A exists in the §4.3 table.
 |---|---|---|---|
 | Commands from zero to a running Track A loop, Bun present | `git clone`, `bun install`, `cp .env.example .env`, edit, `bun run probe:defender`, `bun run investigate --watch`: 6 | 3 (`bunx … init`, edit `.env`, `isophase investigate --watch`) | the README's Install section, walked on a clean machine (AC22) |
 | Published versions | 0 | `0.1.0` manual, `0.1.1` by the workflow | the npm package page |
-| Long-lived npm credentials in the repository or its secrets | 0 | 0 | AC17 |
+| Long-lived npm credentials in the repository or its secrets | 0 | ~~0~~ one 90-day granular token in `NPM_TOKEN`, rotated (ADR 014 §6, 2026-10-05) | ~~AC17~~ AC29 |
 | Run artifacts that name the version that produced them | 0 of all | all new artifacts | AC9 |
 
 ## 7. Observability
@@ -401,15 +410,20 @@ every command the README shows under Track A exists in the §4.3 table.
 - [x] **AC13** — Given the root `package.json` after Phase 1, When `bun run investigate`,
       `bun run console`, `bun run console:live defender` and `bun run probe:defender` are invoked,
       Then each reaches the dispatcher and behaves as before. _(test: integration)_
-- [x] **AC14** — Given `release.yml`, When read, Then it triggers only on `release: published`,
+- [x] **AC14** — ~~Given `release.yml`, When read, Then it triggers only on `release: published`,
       declares `id-token: write` and `contents: read` and nothing more, and runs `bun run check`
-      before `bun run build`. _(test: unit — a workflow-shape test, like the existing ruleset test)_
-- [x] **AC15** — Given a release tag that is not `vX.Y.Z` or `vX.Y.Z-<pre>`, When the version stamp
-      step runs, Then the job fails before publishing. _(test: unit — the stamp script)_
+      before `bun run build`.~~ _(test: unit — a workflow-shape test, like the existing ruleset test)_
+      **Superseded 2026-10-05 — §11 A2.** Proven as written on 2026-10-02; replaced by AC29.
+- [x] **AC15** — ~~Given a release tag that is not `vX.Y.Z` or `vX.Y.Z-<pre>`, When the version stamp
+      step runs, Then the job fails before publishing.~~ _(test: unit — the stamp script)_
+      **Superseded 2026-10-05 — §11 A2.** release-please mints every tag; the publish step instead
+      refuses a `package.json` version that is not semantic or disagrees with the tag (AC30).
 - [x] **AC16** — Given a pre-release tag, When the publish step runs, Then it passes `--tag next`;
       given a release tag, it passes no dist-tag. _(test: unit — the stamp script)_
-- [x] **AC17** — Given the repository's secrets and every workflow file, When scanned, Then no
-      `NPM_TOKEN` or `NODE_AUTH_TOKEN` is referenced. _(test: unit)_
+- [x] **AC17** — ~~Given the repository's secrets and every workflow file, When scanned, Then no
+      `NPM_TOKEN` or `NODE_AUTH_TOKEN` is referenced.~~ _(test: unit)_
+      **Superseded 2026-10-05 — ADR 014 §6, §11 A2.** Proven as written on 2026-10-02; one token
+      now reaches the publish step alone, which AC29 pins.
 - [x] **AC18** — Given the `0.1.0` publish, When the trusted publisher is configured, Then the npm
       package settings name `Aretea-Group/isophase` and `release.yml`. _(test: e2e, manual)_
 - [ ] **AC19** — Given a published `v0.1.1` Release, When the workflow completes, Then
@@ -417,8 +431,10 @@ every command the README shows under Track A exists in the §4.3 table.
       _(test: e2e, manual)_
 - [ ] **AC20** — Given a machine that has never seen the repository, When
       `bunx @aretea-group/isophase@0.1.1 --version` runs, Then it prints `0.1.1`. _(test: e2e, manual)_
-- [x] **AC21** — Given git's `package.json`, When read on `main` after Phase 3, Then its version is
-      `0.0.0`. _(test: unit)_
+- [x] **AC21** — ~~Given git's `package.json`, When read on `main` after Phase 3, Then its version is
+      `0.0.0`.~~ _(test: unit)_ **Superseded 2026-10-05 — §11 A2.** Proven as written on
+      2026-10-02; release-please now keeps the real version in git, and a test pins that it matches
+      the release-please manifest.
 - [ ] **AC22** — Given a clean machine with Bun and a Defender credential, When a reader follows the
       README's Install section from the top, Then they reach a running `investigate --watch` in
       three commands without cloning. _(test: e2e, manual walkthrough)_
@@ -441,6 +457,17 @@ every command the README shows under Track A exists in the §4.3 table.
       `help`, `--version`, and one `investigate --alert` against the lab, Then every step exits 0,
       `.env` and `.data/runs` exist, and the run artifact appears under `.data/runs`. _(test: e2e —
       scripted, against the local lab; added 2026-10-02 by §11 A1)_
+
+- [x] **AC29** — Given `release.yml`, When read, Then it triggers only on pushes to `main`; a
+      `release-please` job with `contents: write` and `pull-requests: write` is the only job that
+      can write to the repository; `publish` runs only when that job reports `release_created`,
+      checks out the tag it names, and runs `bun run check` before `bun run build` before
+      `npm publish --access public --provenance`; and the `NPM_TOKEN` secret reaches the publish
+      step alone, as `NODE_AUTH_TOKEN`, with no other workflow naming a secret. _(test: unit — the
+      workflow-shape test; added 2026-10-05 by §11 A2)_
+- [x] **AC30** — Given a `package.json` version that is not `X.Y.Z` or `X.Y.Z-<pre>`, or that
+      disagrees with the tag being published, When the publish step reads it, Then the job fails
+      before `npm publish`. _(test: unit — the version script; added 2026-10-05 by §11 A2)_
 
 ## 9. Open questions
 
@@ -473,3 +500,12 @@ every command the README shows under Track A exists in the §4.3 table.
   AC28, an automated flow against the packed tarball — install, `init`, `help`, `--version`, one
   mock investigation — that Phase 2 can run every time the package shape changes. Nothing is
   struck: it adds a promise and falsifies none.
+- **A2 — 2026-10-05 — release-please owns versions and releases; merging its pull request is
+  the publish trigger.** Asked for in chat after npm refused the workflow's OIDC identity: "lets do
+  Deviate to a granular npm token and also implement release-pls with automatic release". The
+  token half is a deviation from D4 and is recorded in ADR 014 §6, not here. The release-please
+  half is this amendment: it reverses the §3 non-goal on changelogs and version-bump pull
+  requests, strikes D4's trigger and its `0.0.0` clause, supersedes AC14, AC15, AC17 and AC21 (all
+  proven as written before the change, boxes kept), and adds AC29 and AC30. The §6 credentials row
+  is struck to one rotated token. AC19 and AC20 keep their wording: the first release-please
+  publishes is `0.1.1`.

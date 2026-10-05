@@ -104,6 +104,47 @@ fields and this is not one of them, which a test pins. The value is a static imp
 `package.json`, the same way the Pi version is read, so the release stamps the version before the
 build and the bundle carries it.
 
+### 6. Deviation: a granular token publishes, not OIDC — until npm accepts immutable subjects
+
+**What PRD-11 said.** §4.1 D4: the release workflow publishes "under `id-token: write`" through npm
+trusted publishing, and "no `NPM_TOKEN` secret, ever" (§4.3; AC17). ADR 014 §1 above and the
+original `release.yml` implemented exactly that, and the trusted publisher was configured on the
+package naming `Aretea-Group/isophase` and `release.yml`.
+
+**What reality refused.** GitHub issues *immutable* OIDC subject claims —
+`repo:Aretea-Group@317917008/isophase@1338561688:…` — to every repository created after
+2026-07-15, and this one dates from 2026-08-18. The setting cannot be disabled at repository or
+organisation level. npm's token exchange accepts only the classic `repo:<owner>/<repo>:…` subject
+and answers `403 OIDC permission denied for this action` after the token is minted and the
+provenance statement is already in the transparency log. Measured three times on run 37279008153
+on 2026-10-05; tracked as npm/cli#9969, open, no fix announced. Recorded in PRD-11 §4.4.
+
+**What was built instead, with the user's agreement on 2026-10-05.** The `publish` job
+authenticates with a granular npm access token held in the `NPM_TOKEN` repository secret, passed
+to `npm publish` as `NODE_AUTH_TOKEN` on that one step and nowhere else — a test reads the
+workflow back and fails if the secret appears anywhere else. `id-token: write` stays on the job
+and `npm publish --provenance` is explicit, so provenance is still signed and linked to the
+release commit (AC19's substance). The token is scoped to `@aretea-group/isophase` with
+read-write, bypasses 2FA for CI only, and expires within 90 days, which is npm's ceiling for
+write tokens: **rotation is an operator duty**, and a lapsed token fails the publish step loudly
+rather than silently.
+
+**Why not the alternatives.** Waiting for npm leaves every release manual, which is the state the
+PRD exists to end. A classic or long-lived token is no longer issued by npm. Publishing from a
+different, pre-cutoff repository would move the source of truth to escape a claim format.
+
+**Reverts when.** npm/cli#9969 closes with the immutable subject accepted: drop the `env` from the
+publish step, delete the secret, and the job is back to §1's design with no other change. The
+trusted publisher stays configured in the meantime.
+
+**Also changed by PRD-11 §11 A2, an amendment rather than a deviation.** The trigger moved from a
+hand-published Release to release-please: on every push to `main` it keeps one release pull
+request open with the version bump and `CHANGELOG.md`, and merging that pull request creates the
+tag and the Release and runs `publish`. The version therefore lives in git — `package.json` is
+no longer `0.0.0` and nothing stamps it — and `scripts/release-version.ts` only reads it back,
+checks it against the tag, and picks the dist-tag. ADR 014 §1's "git's `package.json` stays at
+`0.0.0`" consequence below is withdrawn accordingly.
+
 ## Consequences
 
 - The published surface is `dist/cli.js`, `package.json`, `README.md` and `LICENSE`. The build
@@ -111,4 +152,8 @@ build and the bundle carries it.
 - `bunx @aretea-group/isophase` needs Bun on `PATH`; npm and npx users can install it and run the
   bin through the shebang. Node without Bun is out (PRD-11 §3) — 25 source files use Bun-only APIs.
 - The `@soc/*` workspace names stay; only the root package is renamed.
-- Git's `package.json` stays at `0.0.0`. A stale committed version can never be published.
+- ~~Git's `package.json` stays at `0.0.0`. A stale committed version can never be published.~~
+  Withdrawn 2026-10-05 (§6): release-please owns the version in git, and the publish step refuses
+  a version that disagrees with the tag.
+- Publishing authenticates with a 90-day granular token until npm accepts immutable OIDC subjects
+  (§6). Someone rotates it; the publish step fails loudly when nobody did.

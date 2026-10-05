@@ -1,33 +1,37 @@
 #!/usr/bin/env bun
 /**
- * Stamp the release tag's version into `package.json` (PRD-11 §4.1 D4).
+ * The version the release publishes, and the dist-tag it gets (PRD-11 §4.1 D4, §11 A2).
  *
- *     bun scripts/release-version.ts v0.1.1        # package.json version becomes 0.1.1
- *     bun scripts/release-version.ts v0.2.0-rc.1   # 0.2.0-rc.1, and the dist-tag is `next`
+ *     bun scripts/release-version.ts [vX.Y.Z]   # reads package.json; writes $GITHUB_OUTPUT
  *
- * Git keeps `0.0.0`; the version a consumer sees comes from the tag and nowhere else, so a stale
- * committed version can never be published. The tag must be `vX.Y.Z` or `vX.Y.Z-<pre>`; anything
- * else fails here, before the build and before `npm publish` (AC15). A pre-release publishes under
- * the `next` dist-tag so `bunx @aretea-group/isophase` never resolves to one (AC16).
+ * release-please owns the version: its release pull request bumps `package.json`, and the tag it
+ * creates on merge is `v<that version>`. This script no longer stamps anything — it reads the
+ * version back, refuses one that is not a semantic version, confirms it matches the tag when one
+ * is given, and emits `dist_tag_flag` for `npm publish`: `--tag next` for a pre-release so
+ * `bunx @aretea-group/isophase` never resolves to one (AC16), nothing for a release.
  *
- * Runs *before* `bun run build`: the dispatcher and the investigator's provenance read the version
- * through a static import of `package.json`, so the bundle carries whatever is stamped when it is
- * built. The dist-tag is written to `$GITHUB_OUTPUT` as `dist_tag_flag` for the publish step.
+ * The dispatcher and the investigator's provenance read the same `package.json` through a static
+ * import, so the bundle built after this carries the same string `--version` prints.
  */
 import { resolve } from "node:path";
 
-const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
-/** The version a tag names, or a throw naming the tag and the two accepted shapes. */
-export function versionFromTag(tag: string): string {
-  const match = RELEASE_TAG.exec(tag.trim());
-  if (match === null) {
+/** The version `package.json` carries, or a throw naming what was found. */
+export function releaseVersion(manifestVersion: unknown, tag?: string): string {
+  const version = typeof manifestVersion === "string" ? manifestVersion.trim() : "";
+  const match = SEMVER.exec(version);
+  if (match === null || match[4] === "") {
     throw new Error(
-      `Release tag "${tag}" is not vX.Y.Z or vX.Y.Z-<pre>; refusing to stamp or publish.`,
+      `package.json version "${String(manifestVersion)}" is not X.Y.Z or X.Y.Z-<pre>; refusing to publish.`,
     );
   }
-  const [, major, minor, patch, pre] = match;
-  return `${major}.${minor}.${patch}${pre === undefined ? "" : `-${pre}`}`;
+  if (tag !== undefined && tag !== "" && tag !== `v${version}`) {
+    throw new Error(
+      `Tag "${tag}" does not match package.json version ${version}; refusing to publish.`,
+    );
+  }
+  return version;
 }
 
 /** `next` for a pre-release, nothing for a release — `latest` is npm's default and stays implicit. */
@@ -41,37 +45,22 @@ export function publishFlags(version: string): string[] {
   return tag === undefined ? [] : ["--tag", tag];
 }
 
-export async function stampVersion(root: string, tag: string): Promise<string> {
-  const version = versionFromTag(tag);
-  const path = resolve(root, "package.json");
-  const manifest = (await Bun.file(path).json()) as Record<string, unknown>;
-  if (manifest["version"] !== "0.0.0") {
-    throw new Error(
-      `package.json version is "${String(manifest["version"])}", not 0.0.0 — git must not carry a version.`,
-    );
-  }
-  manifest["version"] = version;
-  await Bun.write(path, `${JSON.stringify(manifest, null, 2)}\n`);
-  return version;
-}
-
 if (import.meta.main) {
   try {
-    const tag = Bun.argv[2] ?? process.env["GITHUB_REF_NAME"];
-    if (tag === undefined || tag === "") throw new Error("usage: release-version.ts <tag>");
-    const version = await stampVersion(resolve(import.meta.dir, ".."), tag);
+    const manifest = (await Bun.file(resolve(import.meta.dir, "../package.json")).json()) as {
+      version?: unknown;
+    };
+    // The tag is an explicit argument, never read from GITHUB_REF_NAME: on a pull-request run that
+    // variable is the branch, and comparing it to the version would fail every check run.
+    const version = releaseVersion(manifest.version, Bun.argv[2]);
     const flags = publishFlags(version).join(" ");
-    console.info(
-      `[release] package.json version is now ${version}${flags === "" ? "" : ` (${flags})`}`,
-    );
+    console.info(`[release] publishing ${version}${flags === "" ? "" : ` (${flags})`}`);
     const output = process.env["GITHUB_OUTPUT"];
     if (output !== undefined) {
-      await Bun.write(
-        output,
-        `${await Bun.file(output)
-          .text()
-          .catch(() => "")}version=${version}\ndist_tag_flag=${flags}\n`,
-      );
+      const existing = await Bun.file(output)
+        .text()
+        .catch(() => "");
+      await Bun.write(output, `${existing}version=${version}\ndist_tag_flag=${flags}\n`);
     }
   } catch (error) {
     console.error(`[release] ${error instanceof Error ? error.message : String(error)}`);

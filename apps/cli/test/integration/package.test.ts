@@ -110,7 +110,7 @@ describe("AC3 — the tarball", () => {
  */
 const stage = await mkdtemp(join(tmpdir(), "isophase-pack-"));
 const packed = await sh(["bun", "pm", "pack", "--destination", stage], ROOT);
-const tarball = join(stage, "aretea-group-isophase-0.0.0.tgz");
+const tarball = join(stage, `aretea-group-isophase-${rootPackageJson.version}.tgz`);
 const consumer = await mkdtemp(join(tmpdir(), "isophase-consumer-"));
 await Bun.write(join(consumer, "package.json"), '{"name":"consumer","private":true}\n');
 const installed = await sh(["bun", "add", tarball], consumer);
@@ -134,7 +134,7 @@ describe("the installed package (Phase 2 exit)", () => {
   test("bunx isophase --version prints the manifest version", async () => {
     const result = await sh(["bunx", "isophase", "--version"], consumer);
     expect(result.code).toBe(0);
-    expect(result.stdout.trim()).toBe("0.0.0");
+    expect(result.stdout.trim()).toBe(rootPackageJson.version);
   });
 
   test("bunx isophase init --track defender writes .env and .data/runs with no repository", async () => {
@@ -191,7 +191,9 @@ describe.skipIf(!labUp || !hasKey)("AC28 — a new person's first investigation"
     expect(await Bun.file(join(consumer, ".env")).exists()).toBe(true);
     expect((await stat(join(consumer, ".data/runs"))).isDirectory()).toBe(true);
     expect((await sh(["bunx", "isophase", "help"], consumer)).code).toBe(0);
-    expect((await sh(["bunx", "isophase", "--version"], consumer)).stdout.trim()).toBe("0.0.0");
+    expect((await sh(["bunx", "isophase", "--version"], consumer)).stdout.trim()).toBe(
+      rootPackageJson.version,
+    );
 
     const alerts = (await (await fetch(`${labUrl}/alerts`)).json()) as {
       value: { properties: { systemAlertId: string } }[];
@@ -218,6 +220,6 @@ describe.skipIf(!labUp || !hasKey)("AC28 — a new person's first investigation"
       provenance: { packageVersion?: string };
     };
     expect(artifact.status).toBe("completed");
-    expect(artifact.provenance.packageVersion).toBe("0.0.0");
+    expect(artifact.provenance.packageVersion).toBe(rootPackageJson.version);
   }, 600_000);
 });

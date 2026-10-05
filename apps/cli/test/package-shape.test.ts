@@ -15,8 +15,14 @@ describe("the package manifest (PRD-11 §4.3)", () => {
     expect("private" in rootPackageJson).toBe(false);
   });
 
-  test("AC21 — git's package.json version is 0.0.0", () => {
-    expect(rootPackageJson.version).toBe("0.0.0");
+  test("the version is release-please's: a semantic version that matches its manifest", async () => {
+    // AC21 (git stays at 0.0.0) was dropped by PRD-11 §11 A2: release-please bumps the version in
+    // its release pull request, so git carries the real one and the manifest file agrees.
+    expect(rootPackageJson.version).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+    const manifest = (await Bun.file(
+      resolve(repositoryRoot, ".release-please-manifest.json"),
+    ).json()) as Record<string, string>;
+    expect(manifest["."]).toBe(rootPackageJson.version);
   });
 
   test("the lab's HTTP framework is not a published dependency", () => {
