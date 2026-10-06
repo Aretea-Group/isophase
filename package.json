@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@azure/identity": "4.13.3",
-    "@earendil-works/pi-agent-core": "0.84.2",
+    "@earendil-works/pi-agent-core": "1.0.0",
     "@earendil-works/pi-ai": "0.84.2",
     "@opentui/core": "0.5.14",
     "@t3-oss/env-core": "0.13.11",
