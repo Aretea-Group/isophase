@@ -10,7 +10,7 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
-    "@opentui/core": "0.5.14",
+    "@opentui/core": "0.6.0",
     "@soc/contracts": "workspace:*",
     "@soc/investigator": "workspace:*",
     "@soc/sentinel-client": "workspace:*",
