@@ -46,17 +46,17 @@
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f"
   },
   "dependencies": {
-    "@azure/identity": "4.13.3",
+    "@azure/identity": "4.14.0",
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",
-    "@opentui/core": "0.5.14",
+    "@opentui/core": "0.6.6",
     "@t3-oss/env-core": "0.13.11",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2",
-    "oxfmt": "0.71.0",
-    "oxlint": "1.86.0",
+    "@types/bun": "1.4.3",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
     "typescript": "7.0.2"
   },
   "engines": {
